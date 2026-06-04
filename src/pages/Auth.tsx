@@ -161,7 +161,10 @@ export default function AdminLogin() {
             <h1 className="text-5xl font-bold leading-tight">Secure Administrator<br/>Access</h1>
             <p className="text-white/70 mt-4">Institutional gateway for state TSCs and Academy facilitators.</p>
           </div>
-          <div className="bg-white/10 rounded-xl p-4 border border-white/20">
+          <div className="bg-white/10 rounded-xl p-4 border border-white/20 flex flex-row gap-2 items-center">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            </svg>
             Enterprise Grade Security Enabled
           </div>
         </div>
