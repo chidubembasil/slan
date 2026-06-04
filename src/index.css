@@ -1,0 +1,246 @@
+@import "tailwindcss";
+/* @import "tw-animate-css"; */
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+:root {
+  /* SLAN Online Design System - Deep Navy Blue (#1E3A8A), Forest Green (#15803D), Warm Amber (#F59E0B) */
+  
+  /* Primary colors */
+  --slan-navy: #1E3A8A;
+  --slan-green: #15803D;
+  --slan-amber: #F59E0B;
+  
+  /* Neutral colors */
+  --slan-bg: #F8FAFC;
+  --slan-surface: #FFFFFF;
+  --slan-text-primary: #0F172A;
+  --slan-text-secondary: #475569;
+  --slan-border: #E2E8F0;
+  --slan-sidebar-bg: #F1F5F9;
+  
+  --primary: #0D2147;
+  --primary-foreground: #F8F9FA;
+  --sidebar-primary: #0D2147;
+  --sidebar-primary-foreground: #F8F9FA;
+  --chart-1: #0D2147;
+  --chart-2: #1B5E20;
+  --chart-3: #C5A001;
+  --chart-4: #2E7D32;
+  --chart-5: #558B2F;
+  --radius: 0.75rem;
+  
+  --background: #F8F9FA;
+  --foreground: #0D2147;
+  --card: #FFFFFF;
+  --card-foreground: #0D2147;
+  --popover: #FFFFFF;
+  --popover-foreground: #0D2147;
+  --secondary: #1B5E20;
+  --secondary-foreground: #F8F9FA;
+  --muted: #E8EAED;
+  --muted-foreground: #5F6368;
+  --accent: #C5A001;
+  --accent-foreground: #0D2147;
+  --destructive: #D32F2F;
+  --destructive-foreground: #FFFFFF;
+  --border: #E8EAED;
+  --input: #FFFFFF;
+  --ring: #0D2147;
+  --sidebar: #0D2147;
+  --sidebar-foreground: #F8F9FA;
+  --sidebar-accent: #1B5E20;
+  --sidebar-accent-foreground: #F8F9FA;
+  --sidebar-border: #1B5E20;
+  --sidebar-ring: #C5A001;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground font-sans;
+  }
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  [type="button"]:not(:disabled),
+  [type="submit"]:not(:disabled),
+  [type="reset"]:not(:disabled),
+  a[href],
+  select:not(:disabled),
+  input[type="checkbox"]:not(:disabled),
+  input[type="radio"]:not(:disabled) {
+    @apply cursor-pointer;
+  }
+}
+
+@layer components {
+  .container {
+    width: 100%;
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .flex {
+    min-height: 0;
+    min-width: 0;
+  }
+
+  /* SLAN Learner Header - 56px fixed */
+  .learner-header {
+    @apply fixed top-0 left-0 right-0 h-14 bg-white border-b border-border z-40 flex items-center px-4;
+  }
+
+  /* SLAN Learner Bottom Navigation - 5 tabs */
+  .learner-nav {
+    @apply fixed bottom-0 left-0 right-0 h-16 bg-white border-t border-border z-40 flex justify-around items-center;
+  }
+
+  .learner-nav-item {
+    @apply flex flex-col items-center justify-center gap-1 flex-1 h-full cursor-pointer transition-colors;
+  }
+
+  .learner-nav-item.active {
+    @apply text-primary;
+  }
+
+  .learner-nav-item.inactive {
+    @apply text-muted-foreground;
+  }
+
+  /* SLAN Admin Sidebar - 260px fixed */
+  .admin-sidebar {
+    @apply fixed left-0 top-0 bottom-0 w-64 bg-sidebar text-sidebar-foreground z-40 flex flex-col;
+  }
+
+  .admin-sidebar-header {
+    @apply p-6 border-b border-sidebar-border;
+  }
+
+  .admin-sidebar-menu {
+    @apply flex-1 overflow-y-auto py-4;
+  }
+
+  .admin-sidebar-item {
+    @apply px-4 py-3 flex items-center gap-3 cursor-pointer transition-colors hover:bg-white/10;
+  }
+
+  .admin-sidebar-item.active {
+    @apply bg-white/12 border-l-4 border-accent;
+  }
+
+  .admin-sidebar-footer {
+    @apply p-4 border-t border-sidebar-border;
+  }
+
+  /* SLAN Admin Top Bar */
+  .admin-topbar {
+    @apply fixed top-0 left-64 right-0 h-14 bg-white border-b border-border z-30 flex items-center justify-between px-6;
+  }
+
+  /* SLAN Admin Main Content */
+  .admin-main {
+    @apply ml-64 pt-14 pb-0;
+  }
+
+  /* Learner Main Content */
+  .learner-main {
+    @apply pt-14 pb-20;
+  }
+
+  /* Card component with SLAN styling */
+  .slan-card {
+    @apply bg-white rounded-3xl border border-border p-6 shadow-sm hover:shadow-md transition-shadow;
+  }
+
+  /* Button variants for SLAN */
+  .slan-btn-primary {
+    @apply bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg h-12 px-6 font-semibold transition-colors;
+  }
+
+  .slan-btn-secondary {
+    @apply bg-secondary text-secondary-foreground hover:bg-secondary/90 rounded-lg h-12 px-6 font-semibold transition-colors;
+  }
+
+  .slan-btn-outline {
+    @apply border-2 border-primary text-primary hover:bg-primary/5 rounded-lg h-12 px-6 font-semibold transition-colors;
+  }
+
+  .slan-btn-accent {
+    @apply bg-accent text-accent-foreground hover:bg-accent/90 rounded-lg h-12 px-6 font-semibold transition-colors;
+  }
+
+  /* Status badges */
+  .slan-badge-success {
+    @apply bg-green-100 text-green-700 rounded-full px-3 py-1 text-xs font-semibold;
+  }
+
+  .slan-badge-warning {
+    @apply bg-amber-100 text-amber-700 rounded-full px-3 py-1 text-xs font-semibold;
+  }
+
+  .slan-badge-error {
+    @apply bg-red-100 text-red-700 rounded-full px-3 py-1 text-xs font-semibold;
+  }
+
+  .slan-badge-neutral {
+    @apply bg-slate-100 text-slate-700 rounded-full px-3 py-1 text-xs font-semibold;
+  }
+
+  @media (min-width: 640px) {
+    .container {
+      padding-left: 1.5rem;
+      padding-right: 1.5rem;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .container {
+      padding-left: 2rem;
+      padding-right: 2rem;
+      max-width: 1280px;
+    }
+  }
+}
