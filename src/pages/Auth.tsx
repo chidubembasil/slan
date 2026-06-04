@@ -1,269 +1,321 @@
-import { ArrowRightIcon } from "lucide-react";
-import { useState } from "react";
+// AdminLogin.tsx
+import { useState, useRef, useEffect } from "react";
 
-export default function Auth() {
+const BASE = import.meta.env.VITE_BASE_URL || "http://localhost:5000";
 
-  const [formData, setFormData] = useState({
-    email: "",
-    otp: "",
-  });
-
-  const [errors, setErrors] = useState<any>({});
+export default function AdminLogin() {
+  const [step, setStep] = useState<"credentials" | "otp">("credentials");
+  const [mode, setMode] = useState<"password" | "otp">("password");
   const [loading, setLoading] = useState(false);
-  const [otpSent, setOtpSent] = useState(false);
 
-  function handleChange(
-    e: React.ChangeEvent<HTMLInputElement>
-  ) {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value,
-    });
+  // STEP 1: Email + Password
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [trustDevice, setTrustDevice] = useState(false);
 
-    setErrors({
-      ...errors,
-      [e.target.name]: "",
-    });
-  }
+  // STEP 2: OTP Code (6 digits)
+  const [otp, setOtp] = useState<string[]>(Array(6).fill(""));
+  const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  function validateEmail() {
-    let newErrors:any = {};
+  const [credErrors, setCredErrors] = useState<Record<string, string>>({});
+  const [otpError, setOtpError] = useState("");
+  const [resendTimer, setResendTimer] = useState(0);
 
-    if (!formData.email.trim()) {
-      newErrors.email = "Email required";
+  // Store the OTP sent by backend for comparison
+  const [backendOtp, setBackendOtp] = useState<string>("");
+
+  useEffect(() => {
+    if (resendTimer > 0) {
+      const t = setTimeout(() => setResendTimer(resendTimer - 1), 1000);
+      return () => clearTimeout(t);
     }
+  }, [resendTimer]);
 
-    setErrors(newErrors);
-
-    return Object.keys(newErrors).length === 0;
-  }
-
-  function validateOTP() {
-
-    let newErrors:any = {};
-
-    if (!formData.otp.trim()) {
-      newErrors.otp = "OTP required";
-    }
-
-    setErrors(newErrors);
-
-    return Object.keys(newErrors).length === 0;
-  }
-
-  async function sendOTP() {
-
-    if (!validateEmail()) return;
-
-    try {
-
-      setLoading(true);
-
-      const res = await fetch(
-        "http://localhost:5000/api/auth/send-otp",
-        {
-          method:"POST",
-          headers:{
-            "Content-Type":"application/json"
-          },
-          body:JSON.stringify({
-            email:formData.email
-          })
-        }
-      );
-
-      const data = await res.json();
-
-      if(data.success){
-        setOtpSent(true);
-      }
-
-    } catch(err){
-      console.log(err);
-    }
-    finally{
-      setLoading(false);
-    }
-
-  }
-
-  async function verifyOTP(
-    e:React.FormEvent
-  ) {
-
+  // STEP 1 SUBMIT
+  const handleAuthorize = async (e: React.FormEvent) => {
     e.preventDefault();
+    setCredErrors({});
 
-    if(!validateOTP()) return;
+    if (!email.trim()) return setCredErrors({ email: "Email is required" });
+    if (mode === "password" && !password) return setCredErrors({ password: "Password is required" });
 
-    try{
-
-      setLoading(true);
-
-      const res = await fetch(
-        "http://localhost:5000/api/auth/verify-otp",
-        {
-          method:"POST",
-          headers:{
-            "Content-Type":"application/json"
-          },
-          body:JSON.stringify({
-            email:formData.email,
-            otp:formData.otp
-          })
-        }
-      );
+    setLoading(true);
+    try {
+      const endpoint = mode === "password" ? "/api/admin/login" : "/api/admin/send-otp";
+      const res = await fetch(`${BASE}${endpoint}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email,
+          ...(mode === "password" && { password }),
+          trustDevice
+        }),
+      });
 
       const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed");
 
-      /*
-      backend response:
-      {
-      success:true,
-      token:"jwt_here",
-      role:"admin"
-      }
-      */
-
-      if(data.success){
-
-        localStorage.setItem(
-          "token",
-          data.token
-        );
-
-        localStorage.setItem(
-          "role",
-          data.role
-        );
-
-        window.location.href="/dashboard";
+      // Store the OTP sent by backend for comparison
+      if (data.otp) {
+        setBackendOtp(data.otp);
       }
 
-    }catch(err){
-      console.log(err);
-    }
-    finally{
+      // Go to OTP screen
+      setStep("otp");
+      setOtp(Array(6).fill(""));
+      setResendTimer(60);
+      setTimeout(() => otpRefs.current[0]?.focus(), 100);
+    } catch (err: any) {
+      setCredErrors({ submit: err.message });
+    } finally {
       setLoading(false);
     }
+  };
 
-  }
+  // STEP 2: OTP INPUT HANDLER - Numbers only
+  const handleOtpChange = (index: number, value: string) => {
+    // Only allow numeric input
+    if (!/^\d*$/.test(value)) return;
 
-  return(
-    <div className="w-full flex justify-center items-center h-screen bg-gray-50">
+    const newOtp = [...otp];
+    newOtp[index] = value.slice(-1);
+    setOtp(newOtp);
+    setOtpError("");
 
-      <form
-      onSubmit={verifyOTP}
-      className="shadow-md bg-white w-full max-w-[30%] min-w-[320px] p-6 rounded-xl flex flex-col gap-4">
+    // Auto-focus next input
+    if (value && index < 5) otpRefs.current[index + 1]?.focus();
 
-        <div>
-          <h1 className="text-2xl font-semibold text-[#0d2147]">
-            Admin Login
-          </h1>
+    // Auto-verify when all 6 digits are entered
+    if (newOtp.every(d => d)) {
+      handleVerifyOtp(newOtp.join(""));
+    }
+  };
 
-          <p className="text-sm text-gray-500">
-            Please enter your credentials to access the management dashboard.
-          </p>
-        </div>
+  const handleVerifyOtp = async (code?: string) => {
+    const otpCode = code || otp.join("");
+    if (otpCode.length !== 6) return setOtpError("Enter 6 digits");
 
-        <div className="flex flex-col gap-1">
+    setLoading(true);
+    try {
+      // Compare with backend OTP first (for OTP-only mode)
+      if (backendOtp && otpCode !== backendOtp) {
+        throw new Error("Invalid code");
+      }
 
-          <label>Email*</label>
+      const res = await fetch(`${BASE}/api/admin/verify-otp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ email, otp: otpCode, trustDevice }),
+      });
 
-          <input
-          type="email"
-          name="email"
-          value={formData.email}
-          onChange={handleChange}
-          placeholder="admin@slan.com"
-          className={`h-10 p-2 border rounded-md
-          ${
-            errors.email
-            ? "border-red-500"
-            : "border-[#c8d1c1]"
-          }
-          `}
-          />
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Invalid code");
 
-          {
-            errors.email &&
-            <p className="text-red-500 text-sm">
-              {errors.email}
-            </p>
-          }
+      localStorage.setItem("adminToken", data.token);
+      window.location.href = "/admin/dashboard";
+    } catch (err: any) {
+      setOtpError(err.message);
+      setOtp(Array(6).fill(""));
+      otpRefs.current[0]?.focus();
+    } finally {
+      setLoading(false);
+    }
+  };
 
-        </div>
+  const handleResend = async () => {
+    if (resendTimer > 0) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`${BASE}/api/admin/send-otp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
 
-        {
-          otpSent && (
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to resend");
 
-          <div className="flex flex-col gap-1">
+      // Update stored OTP if backend returns it
+      if (data.otp) {
+        setBackendOtp(data.otp);
+      }
 
-            <label>OTP Code*</label>
+      setResendTimer(60);
+      setOtp(Array(6).fill(""));
+      setOtpError("");
+    } catch (err: any) {
+      setOtpError(err.message || "Failed to resend");
+    } finally {
+      setLoading(false);
+    }
+  };
 
-            <input
-            type="text"
-            name="otp"
-            value={formData.otp}
-            onChange={handleChange}
-            placeholder="OTP"
-            className={`h-10 p-2 border rounded-md
-            ${
-              errors.otp
-              ? "border-red-500"
-              : "border-[#c8d1c1]"
-            }
-            `}
-            />
-
-            {
-              errors.otp &&
-              <p className="text-red-500 text-sm">
-                {errors.otp}
-              </p>
-            }
-
+  return (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+      <div className="w-full max-w-6xl grid lg:grid-cols-2 bg-white rounded-2xl shadow-xl overflow-hidden">
+        {/* LEFT PANEL */}
+        <div className="bg-[#004900] p-12 text-white flex flex-col justify-between">
+          <div>
+            <p className="font-bold mb-20">SLAN ADMIN</p>
+            <h1 className="text-5xl font-bold leading-tight">Secure Administrator<br/>Access</h1>
+            <p className="text-white/70 mt-4">Institutional gateway for state TSCs and Academy facilitators.</p>
           </div>
+          <div className="bg-white/10 rounded-xl p-4 border border-white/20">
+            Enterprise Grade Security Enabled
+          </div>
+        </div>
 
-          )
-        }
+        {/* RIGHT PANEL */}
+        <div className="p-12 flex flex-col justify-center">
+          {step === "credentials" ? (
+            <>
+              <h2 className="text-2xl font-semibold mb-1">Authorize Access</h2>
+              <p className="text-sm text-gray-600 mb-6">Enter your credentials to continue.</p>
 
-        {
-          !otpSent ? (
+              <div className="flex border-b mb-6">
+                <button
+                  onClick={() => setMode("password")}
+                  className={`flex-1 pb-2 text-sm font-medium border-b-2 ${
+                    mode === "password" ? "border-[#004900] text-[#004900]" : "border-transparent text-gray-500"
+                  }`}
+                >
+                  Password Login
+                </button>
+                <button
+                  onClick={() => setMode("otp")}
+                  className={`flex-1 pb-2 text-sm font-medium border-b-2 ${
+                    mode === "otp" ? "border-[#004900] text-[#004900]" : "border-transparent text-gray-500"
+                  }`}
+                >
+                  OTP-Only Access
+                </button>
+              </div>
 
-            <button
-            type="button"
-            onClick={sendOTP}
-            className="w-full h-10 bg-[#004900] text-white rounded-md"
-            >
-              {
-                loading
-                ? "Sending..."
-                : "Send OTP"
-              }
-            </button>
+              <form onSubmit={handleAuthorize} className="space-y-4">
+                {/* EMAIL INPUT - STEP 1 ONLY */}
+                <div>
+                  <label className="text-xs font-medium text-gray-700 block mb-1.5">
+                    Email Address or Administrator ID
+                  </label>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="Enter your email"
+                    className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20"
+                  />
+                  {credErrors.email && <p className="text-xs text-red-600 mt-1">{credErrors.email}</p>}
+                </div>
 
+                {mode === "password" && (
+                  <div>
+                    <label className="text-xs font-medium text-gray-700 block mb-1.5">System Password</label>
+                    <input
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Enter password"
+                      className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20"
+                    />
+                    {credErrors.password && <p className="text-xs text-red-600 mt-1">{credErrors.password}</p>}
+                  </div>
+                )}
+
+                {mode === "otp" && (
+                  <div className="bg-green-50 p-3 rounded-lg border border-green-200">
+                    <p className="text-xs text-green-800">We'll send a 6-digit code to your email.</p>
+                  </div>
+                )}
+
+                <label className="flex items-center gap-2 text-xs">
+                  <input type="checkbox" checked={trustDevice} onChange={(e) => setTrustDevice(e.target.checked)} />
+                  Trust this workstation for 8 hours
+                </label>
+
+                {credErrors.submit && <p className="text-xs text-red-600">{credErrors.submit}</p>}
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full bg-[#004900] text-white py-2.5 rounded-lg font-medium disabled:opacity-60"
+                >
+                  {loading ? "Processing..." : mode === "password" ? "Authorize Access →" : "Send Access OTP →"}
+                </button>
+              </form>
+            </>
           ) : (
+            <>
+              <button onClick={() => setStep("credentials")} className="text-xs mb-4 hover:underline w-fit">← Back</button>
+              <h2 className="text-2xl font-semibold">Enter Verification Code</h2>
+              <p className="text-sm text-gray-600 mb-6">Code sent to <b>{email}</b></p>
 
-            <button
-            type="submit"
-            className="w-full h-10 bg-[#004900] text-white rounded-md flex justify-center items-center"
-            >
-              {
-                loading
-                ? "Authenticating..."
-                :
-                <>
-                Authorize Access
-                <ArrowRightIcon size={18}/>
-                </>
-              }
-            </button>
+              {/* OTP INPUTS - STEP 2 ONLY - 6 SEPARATE BOXES FOR NUMBERS ONLY */}
+              <div className="flex gap-3 justify-center mb-6">
+                {otp.map((digit, i) => (
+                  <input
+                    key={i}
+                    ref={(el) => { otpRefs.current[i] = el; }}
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={1}
+                    placeholder="Provide the OTP given to you"
+                    value={digit}
+                    onChange={(e) => handleOtpChange(i, e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Backspace" && !digit && i > 0) {
+                        otpRefs.current[i - 1]?.focus();
+                      }
+                    }}
+                    onPaste={(e) => {
+                      e.preventDefault();
+                      const pastedData = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6);
+                      if (pastedData) {
+                        const newOtp = [...otp];
+                        pastedData.split("").forEach((char, idx) => {
+                          if (idx < 6) newOtp[idx] = char;
+                        });
+                        setOtp(newOtp);
+                        // Focus the next empty input or the last one
+                        const nextEmptyIndex = newOtp.findIndex(d => !d);
+                        if (nextEmptyIndex !== -1) {
+                          otpRefs.current[nextEmptyIndex]?.focus();
+                        } else {
+                          otpRefs.current[5]?.focus();
+                          handleVerifyOtp(newOtp.join(""));
+                        }
+                      }
+                    }}
+                    className="w-12 h-14 text-center text-2xl font-semibold border-2 border-gray-300 rounded-xl focus:border-[#004900] focus:outline-none focus:ring-2 focus:ring-[#004900]/20"
+                  />
+                ))}
+              </div>
 
-          )
-        }
+              {otpError && <p className="text-xs text-red-600 text-center mb-3">{otpError}</p>}
 
-      </form>
+              <button
+                onClick={() => handleVerifyOtp()}
+                disabled={otp.join("").length !== 6 || loading}
+                className="w-full bg-[#004900] text-white py-3 rounded-lg font-medium disabled:opacity-50"
+              >
+                {loading ? "Verifying..." : "Verify & Continue"}
+              </button>
 
+              <p className="text-xs text-center mt-4 text-gray-500">
+                Didn't receive code?{" "}
+                <button
+                  onClick={handleResend}
+                  disabled={resendTimer > 0}
+                  className="text-[#004900] font-medium disabled:text-gray-400"
+                >
+                  {resendTimer > 0 ? `Resend in ${resendTimer}s` : "Resend code"}
+                </button>
+              </p>
+            </>
+          )}
+        </div>
+      </div>
     </div>
-  )
+  );
 }

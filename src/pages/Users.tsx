@@ -1,12 +1,6 @@
 // UsersTable.tsx
-
 import { useEffect, useState } from "react";
-import {
-  Search,
-  Eye,
-  Pencil,
-  Trash2,
-} from "lucide-react";
+import { Search, Eye, Pencil, Trash2 } from "lucide-react";
 
 interface User {
   id: string;
@@ -20,211 +14,251 @@ interface User {
   avatar?: string;
 }
 
+interface Column {
+  key: string;
+  label: string;
+}
+
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
+
 export default function Users() {
   const [users, setUsers] = useState<User[]>([]);
-  const [search, setSearch] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState("All");
+  const [appliedRole, setAppliedRole] = useState("All");
+  const [loading, setLoading] = useState(true);
+
+  // Columns are visible immediately - no waiting for API
+  const [columns, setColumns] = useState<Column[]>([
+    { key: "user", label: "User" },
+    { key: "schoolName", label: "School Name" },
+    { key: "state", label: "State" },
+    { key: "role", label: "Role" },
+    { key: "progress", label: "Progress" },
+    { key: "status", label: "Status" },
+    { key: "actions", label: "Actions" },
+  ]);
 
   useEffect(() => {
-    fetchUsers();
+    fetchData();
   }, []);
 
-  async function fetchUsers() {
+  async function fetchData() {
     try {
-      const res = await fetch(
-        "http://localhost:5000/api/users"
-      );
+      setLoading(true);
+      const [usersRes, colsRes] = await Promise.all([
+        fetch(`${API_BASE}/api/users`),
+        fetch(`${API_BASE}/api/users/columns`).catch(() => null),
+      ]);
 
-      const data = await res.json();
+      if (usersRes.ok) {
+        const usersData = await usersRes.json();
+        setUsers(usersData);
+      }
 
-      setUsers(data);
+      // Override columns only if API provides them
+      if (colsRes?.ok) {
+        const colsData = await colsRes.json();
+        if (colsData?.length) setColumns(colsData);
+      }
     } catch (err) {
-      console.log(err);
+      console.error("Failed to fetch:", err);
+    } finally {
+      setLoading(false);
     }
   }
 
   const filteredUsers = users.filter((user) => {
-    const matchesSearch =
-      user.fullName
-        .toLowerCase()
-        .includes(search.toLowerCase()) ||
-      user.email
-        .toLowerCase()
-        .includes(search.toLowerCase()) ||
-      user.school
-        .toLowerCase()
-        .includes(search.toLowerCase());
+    const q = searchQuery.toLowerCase();
+    const matchesSearch =!q ||
+      user.fullName.toLowerCase().includes(q) ||
+      user.email.toLowerCase().includes(q) ||
+      user.school.toLowerCase().includes(q) ||
+      user.location.toLowerCase().includes(q);
 
-    const matchesRole =
-      roleFilter === "All" ||
-      user.role === roleFilter;
-
+    const matchesRole = appliedRole === "All" || user.role === appliedRole;
     return matchesSearch && matchesRole;
   });
 
-  return (
-    <div className="bg-white  p-6 shadow w-[99%] mt-3">
+  const handleSearch = () => {
+    setSearchQuery(searchInput);
+    setAppliedRole(roleFilter);
+  };
 
-      <h1 className="text-2xl font-semibold mb-6">
-        Users Management
-      </h1>
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") handleSearch();
+  };
+
+  const renderCell = (user: User, key: string) => {
+    switch (key) {
+      case "user":
+        return (
+          <div className="flex items-center gap-3">
+            <img
+              src={user.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.fullName)}&background=004900&color=fff`}
+              className="w-9 h-9 rounded-full object-cover"
+              alt=""
+            />
+            <div>
+              <p className="font-medium text-sm text-slate-900">{user.fullName}</p>
+              <p className="text-xs text-gray-500">{user.email}</p>
+            </div>
+          </div>
+        );
+      case "schoolName":
+        return <span className="text-sm text-slate-700">{user.school}</span>;
+      case "state":
+        return <span className="text-sm text-gray-600">{user.location}</span>;
+      case "role":
+        return <span className="inline-flex bg-gray-100 px-2.5 py-1 rounded-full text-xs text-gray-700">{user.role}</span>;
+      case "progress":
+        return (
+          <div className="flex items-center gap-2">
+            <div className="w-20 bg-gray-200 rounded-full h-1.5 overflow-hidden">
+              <div style={{ width: `${user.progress}%` }} className="bg-[#004900] h-1.5 rounded-full transition-all" />
+            </div>
+            <span className="text-xs font-medium text-slate-600 w-8">{user.progress}%</span>
+          </div>
+        );
+      case "status":
+        return (
+          <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${
+            user.status === "Active"? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"
+          }`}>
+            {user.status}
+          </span>
+        );
+      case "actions":
+        return (
+          <div className="flex gap-1">
+            <button className="p-1.5 hover:bg-gray-100 rounded transition" title="View">
+              <Eye size={16} className="text-gray-600" />
+            </button>
+            <button className="p-1.5 hover:bg-gray-100 rounded transition" title="Edit">
+              <Pencil size={16} className="text-gray-600" />
+            </button>
+            <button className="p-1.5 hover:bg-red-50 rounded transition" title="Delete">
+              <Trash2 size={16} className="text-red-500" />
+            </button>
+          </div>
+        );
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div className="bg-white p-6 shadow-sm rounded-xl w-full border border-gray-100">
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-semibold text-slate-900">Users Management</h1>
+        <span className="text-sm text-gray-500">{filteredUsers.length} of {users.length} users</span>
+      </div>
 
       {/* Search + Filter */}
-      <div className="flex gap-4 mb-6">
-
+      <div className="flex gap-3 mb-5">
         <div className="relative flex-1">
-          <Search
-            className="absolute left-3 top-4 text-gray-400"
-            size={18}
-          />
-
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
           <input
-            placeholder="Search by name, email, or school..."
-            value={search}
-            onChange={(e)=>setSearch(e.target.value)}
-            className="w-full pl-10 h-12 border rounded-lg"
+            placeholder="Search by name, email, school, or state..."
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            className="w-full pl-10 pr-4 h-11 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900]"
           />
         </div>
 
         <select
-          className="border px-4 rounded-lg"
+          className="border border-gray-300 px-4 h-11 rounded-lg bg-white text-sm min-w- focus:outline-none focus:ring-2 focus:ring-[#004900]/20"
           value={roleFilter}
-          onChange={(e)=>setRoleFilter(e.target.value)}
-          title="select"
+          onChange={(e) => setRoleFilter(e.target.value)}
+          aria-label="select"
         >
-          <option>All</option>
-          <option>Principal</option>
-          <option>Vice Principal</option>
-          <option>Mentor</option>
-          <option>Proprietor</option>
+          <option value="All">All Roles</option>
+          <option value="Principal">Principal</option>
+          <option value="Vice Principal">Vice Principal</option>
+          <option value="Head Teacher">Head Teacher</option>
+          <option value="Teacher">Teacher</option>
+          <option value="Aspiring Head">Aspiring Head</option>
+          <option value="Proprietor">Proprietor</option>
         </select>
 
-        <button className="bg-[#004900] text-white px-6 rounded-lg">
-          search
+        <button
+          onClick={handleSearch}
+          className="bg-[#004900] hover:bg-[#003600] text-white px-5 h-11 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 whitespace-nowrap"
+        >
+          <Search size={16} />
+          Search
         </button>
-
       </div>
 
-      {/* Table */}
+      {/* Active filters */}
+      {(searchQuery || appliedRole!== "All") && (
+        <div className="flex items-center gap-2 mb-4 text-xs">
+          <span className="text-gray-500">Filters:</span>
+          {searchQuery && (
+            <span className="inline-flex items-center gap-1 bg-[#004900]/10 text-[#004900] px-2.5 py-1 rounded-md">
+              "{searchQuery}"
+              <button onClick={() => { setSearchInput(""); setSearchQuery(""); }} className="hover:text-[#003600]">×</button>
+            </span>
+          )}
+          {appliedRole!== "All" && (
+            <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 px-2.5 py-1 rounded-md">
+              {appliedRole}
+              <button onClick={() => { setRoleFilter("All"); setAppliedRole("All"); }} className="hover:text-blue-900">×</button>
+            </span>
+          )}
+        </div>
+      )}
 
-      <table className="w-full">
-        <thead>
-          <tr className="border-b text-left ">
-
-            <th>User</th>
-            <th>School</th>
-            <th>Role</th>
-            <th>Progress</th>
-            <th>Status</th>
-            <th>Actions</th>
-
-          </tr>
-        </thead>
-
-        <tbody>
-          {filteredUsers.map((user)=>(
-            <tr
-              key={user.id}
-              className="border-b"
-            >
-              <td className="py-5">
-
-                <div className="flex items-center gap-3">
-                  <div>
-                    <p className="font-semibold">
-                      {user.fullName}
-                    </p>
-
-                    <p className="text-sm text-gray-500">
-                      {user.email}
-                    </p>
-                  </div>
-
-                </div>
-
-              </td>
-
-              <td>
-                <div>
-                  <p>{user.school}</p>
-                  <p className="text-sm text-gray-500">
-                    {user.location}
-                  </p>
-                </div>
-              </td>
-
-              <td>
-
-                <span className="bg-gray-100 px-3 py-1 rounded-full text-sm">
-                  {user.role}
-                </span>
-
-              </td>
-
-              <td>
-
-                <div className="flex items-center gap-3">
-
-                  <div className="w-24 bg-gray-200 rounded-full h-2">
-
-                    <div
-                      style={{
-                        width: `${user.progress}%`
-                      }}
-                      className="bg-green-700 h-2 rounded-full"
-                    />
-
-                  </div>
-
-                  <span>{user.progress}%</span>
-
-                </div>
-
-              </td>
-
-              <td>
-
-                <span
-                  className={`px-3 py-1 rounded-full text-sm ${
-                    user.status === "Active"
-                      ? "bg-green-100 text-green-700"
-                      : "bg-gray-100 text-gray-600"
-                  }`}
+      {/* TABLE - ALWAYS VISIBLE */}
+      <div className="overflow-x-auto border border-gray-200 rounded-lg">
+        <table className="w-full">
+          <thead className="bg-gray-50 border-b border-gray-200">
+            <tr>
+              {columns.map((col) => (
+                <th
+                  key={col.key}
+                  className="text-left py-3.5 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider"
                 >
-                  {user.status}
-                </span>
-
-              </td>
-
-              <td>
-
-                <div className="flex gap-4">
-
-                  <Eye
-                    size={18}
-                    className="cursor-pointer"
-                  />
-
-                  <Pencil
-                    size={18}
-                    className="cursor-pointer"
-                  />
-
-                  <Trash2
-                    size={18}
-                    className="cursor-pointer text-red-500"
-                  />
-
-                </div>
-
-              </td>
-
+                  {col.label}
+                </th>
+              ))}
             </tr>
-          ))}
-        </tbody>
-
-      </table>
-
+          </thead>
+          <tbody className="divide-y divide-gray-100 bg-white">
+            {loading? (
+              <tr>
+                <td colSpan={columns.length} className="py-16 text-center">
+                  <div className="inline-flex items-center gap-2 text-gray-500">
+                    <div className="w-4 h-4 border-2 border-gray-300 border-t-[#004900] rounded-full animate-spin"></div>
+                    <span className="text-sm">Loading users...</span>
+                  </div>
+                </td>
+              </tr>
+            ) : filteredUsers.length === 0? (
+              <tr>
+                <td colSpan={columns.length} className="py-16 text-center">
+                  <p className="text-sm text-gray-500">No users found</p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    {users.length === 0? "No data from API" : "Try adjusting your search"}
+                  </p>
+                </td>
+              </tr>
+            ) : (
+              filteredUsers.map((user) => (
+                <tr key={user.id} className="hover:bg-gray-50/50 transition-colors">
+                  {columns.map((col) => (
+                    <td key={col.key} className="py-3.5 px-4 align-middle">
+                      {renderCell(user, col.key)}
+                    </td>
+                  ))}
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
