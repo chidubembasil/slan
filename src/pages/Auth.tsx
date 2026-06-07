@@ -1,7 +1,7 @@
 // AdminLogin.tsx
 import { useState, useRef, useEffect } from "react";
 
-const BASE = import.meta.env.VITE_BASE_URL || "http://localhost:5000";
+const BASE = import.meta.env.VITE_BASE_URL;
 
 export default function AdminLogin() {
   const [step, setStep] = useState<"credentials" | "otp">("credentials");
@@ -41,7 +41,7 @@ export default function AdminLogin() {
 
     setLoading(true);
     try {
-      const endpoint = mode === "password" ? "/api/admin/login" : "/api/admin/send-otp";
+      const endpoint = mode === "password" ? "admin/auth/login" : "admin/auth/otp/send";
       const res = await fetch(`${BASE}${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -102,7 +102,7 @@ export default function AdminLogin() {
         throw new Error("Invalid code");
       }
 
-      const res = await fetch(`${BASE}/api/admin/verify-otp`, {
+      const res = await fetch(`${BASE}admin/auth/otp/verify`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -127,7 +127,7 @@ export default function AdminLogin() {
     if (resendTimer > 0) return;
     setLoading(true);
     try {
-      const res = await fetch(`${BASE}/api/admin/send-otp`, {
+      const res = await fetch(`${BASE}admin/auth/otp/resend`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
