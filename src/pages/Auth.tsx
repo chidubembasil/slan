@@ -21,9 +21,6 @@ export default function AdminLogin() {
   const [otpError, setOtpError] = useState("");
   const [resendTimer, setResendTimer] = useState(0);
 
-  // Store the OTP sent by backend for comparison
-  const [backendOtp, setBackendOtp] = useState<string>("");
-
   useEffect(() => {
     if (resendTimer > 0) {
       const t = setTimeout(() => setResendTimer(resendTimer - 1), 1000);
@@ -54,11 +51,6 @@ export default function AdminLogin() {
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed");
-
-      // Store the OTP sent by backend for comparison
-      if (data.otp) {
-        setBackendOtp(data.otp);
-      }
 
       // Go to OTP screen
       setStep("otp");
@@ -97,11 +89,6 @@ export default function AdminLogin() {
 
     setLoading(true);
     try {
-      // Compare with backend OTP first (for OTP-only mode)
-      if (backendOtp && otpCode !== backendOtp) {
-        throw new Error("Invalid code");
-      }
-
       const res = await fetch(`${BASE}admin/auth/otp/verify`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -135,11 +122,6 @@ export default function AdminLogin() {
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed to resend");
-
-      // Update stored OTP if backend returns it
-      if (data.otp) {
-        setBackendOtp(data.otp);
-      }
 
       setResendTimer(60);
       setOtp(Array(6).fill(""));
