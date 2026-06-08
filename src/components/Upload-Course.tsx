@@ -323,13 +323,14 @@ export default function Upload() {
           <div className="flex flex-col gap-2">
 
             <label htmlFor="bulk">
-              Bulk Upload*
+              Bulk Upload(zip)*
             </label>
 
             <input
               type="file"
               name="bulk"
               id="bulk"
+              accept=".zip,application/zip,application/x-zip-compressed"
               onChange={handleFile}
               className="border rounded-lg p-3"
             />
