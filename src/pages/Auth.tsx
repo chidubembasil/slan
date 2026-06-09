@@ -40,7 +40,7 @@ export default function AdminLogin() {
 
       setLoading(true);
       try {
-        const res = await fetch(`${BASE}/admin/auth/login`, {
+        const res = await fetch(`${BASE}admin/auth/login`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -69,7 +69,7 @@ export default function AdminLogin() {
 
       setLoading(true);
       try {
-        const res = await fetch(`${BASE}/admin/auth/otp/send`, {
+        const res = await fetch(`${BASE}admin/auth/otp/send`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -111,7 +111,7 @@ export default function AdminLogin() {
 
     setLoading(true);
     try {
-      const res = await fetch(`${BASE}/admin/auth/otp/verify`, {
+      const res = await fetch(`${BASE}admin/auth/otp/verify`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -138,7 +138,7 @@ export default function AdminLogin() {
     if (resendTimer > 0) return;
     setLoading(true);
     try {
-      const res = await fetch(`${BASE}/admin/auth/otp/resend`, {
+      const res = await fetch(`${BASE}admin/auth/otp/resend`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: otpEmail }),

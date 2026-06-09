@@ -29,7 +29,7 @@ export default function SideBar({ isOpen, onClose }: Props) {
   const handleLogout = async () => {
     const refreshToken = localStorage.getItem("adminRefreshToken");
     try {
-      await fetch(`${BASE}/admin/auth/logout`, {
+      await fetch(`${BASE}admin/auth/logout`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ refreshToken }),
