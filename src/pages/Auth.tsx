@@ -8,12 +8,13 @@ export default function AdminLogin() {
   const [mode, setMode] = useState<"password" | "otp">("password");
   const [loading, setLoading] = useState(false);
 
-  // STEP 1: Email + Password
-  const [email, setEmail] = useState("");
+  // SEPARATE EMAILS
+  const [loginEmail, setLoginEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [trustDevice, setTrustDevice] = useState(false);
+  const [otpEmail, setOtpEmail] = useState("");
+  const [trustWorkstation, setTrustWorkstation] = useState(false);
 
-  // STEP 2: OTP Code (6 digits)
+  // OTP
   const [otp, setOtp] = useState<string[]>(Array(6).fill(""));
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
 
@@ -33,51 +34,72 @@ export default function AdminLogin() {
     e.preventDefault();
     setCredErrors({});
 
-    if (!email.trim()) return setCredErrors({ email: "Email is required" });
-    if (mode === "password" && !password) return setCredErrors({ password: "Password is required" });
+    if (mode === "password") {
+      if (!loginEmail.trim()) return setCredErrors({ email: "Email is required" });
+      if (!password) return setCredErrors({ password: "Password is required" });
 
-    setLoading(true);
-    try {
-      const endpoint = mode === "password" ? "admin/auth/login" : "admin/auth/otp/send";
-      const res = await fetch(`${BASE}${endpoint}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email,
-          ...(mode === "password" && { password }),
-          trustDevice
-        }),
-      });
+      setLoading(true);
+      try {
+        const res = await fetch(`${BASE}/admin/auth/login`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: loginEmail,
+            password,
+            trustWorkstation
+          }),
+        });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Failed");
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || "Login failed");
 
-      // Go to OTP screen
-      setStep("otp");
-      setOtp(Array(6).fill(""));
-      setResendTimer(60);
-      setTimeout(() => otpRefs.current[0]?.focus(), 100);
-    } catch (err: any) {
-      setCredErrors({ submit: err.message });
-    } finally {
-      setLoading(false);
+        // Tokens returned immediately - NO OTP STEP
+        localStorage.setItem("adminAccessToken", data.accessToken);
+        localStorage.setItem("adminRefreshToken", data.refreshToken);
+        localStorage.setItem("adminUser", JSON.stringify(data.admin));
+        window.location.href = "/";
+      } catch (err: any) {
+        setCredErrors({ submit: err.message });
+      } finally {
+        setLoading(false);
+      }
+    } else {
+      // OTP MODE
+      if (!otpEmail.trim()) return setCredErrors({ email: "Email is required" });
+
+      setLoading(true);
+      try {
+        const res = await fetch(`${BASE}/admin/auth/otp/send`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: otpEmail,
+            trustWorkstation
+          }),
+        });
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || "Failed");
+
+        setStep("otp");
+        setOtp(Array(6).fill(""));
+        setResendTimer(60);
+        setTimeout(() => otpRefs.current[0]?.focus(), 100);
+      } catch (err: any) {
+        setCredErrors({ submit: err.message });
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
-  // STEP 2: OTP INPUT HANDLER - Numbers only
   const handleOtpChange = (index: number, value: string) => {
-    // Only allow numeric input
     if (!/^\d*$/.test(value)) return;
-
     const newOtp = [...otp];
     newOtp[index] = value.slice(-1);
     setOtp(newOtp);
     setOtpError("");
-
-    // Auto-focus next input
     if (value && index < 5) otpRefs.current[index + 1]?.focus();
-
-    // Auto-verify when all 6 digits are entered
     if (newOtp.every(d => d)) {
       handleVerifyOtp(newOtp.join(""));
     }
@@ -85,22 +107,24 @@ export default function AdminLogin() {
 
   const handleVerifyOtp = async (code?: string) => {
     const otpCode = code || otp.join("");
-    if (otpCode.length !== 6) return setOtpError("Enter 6 digits");
+    if (otpCode.length!== 6) return setOtpError("Enter 6 digits");
 
     setLoading(true);
     try {
-      const res = await fetch(`${BASE}admin/auth/otp/verify`, {
+      const res = await fetch(`${BASE}/admin/auth/otp/verify`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ email, otp: otpCode, trustDevice }),
+        body: JSON.stringify({ email: otpEmail, otp: otpCode, trustWorkstation }),
       });
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Invalid code");
 
-      localStorage.setItem("adminToken", data.token);
-      window.location.href = "/admin/dashboard";
+      localStorage.setItem("adminAccessToken", data.accessToken);
+      localStorage.setItem("adminRefreshToken", data.refreshToken);
+      localStorage.setItem("adminUser", JSON.stringify(data.admin));
+      window.location.href = "/";
     } catch (err: any) {
       setOtpError(err.message);
       setOtp(Array(6).fill(""));
@@ -114,15 +138,13 @@ export default function AdminLogin() {
     if (resendTimer > 0) return;
     setLoading(true);
     try {
-      const res = await fetch(`${BASE}admin/auth/otp/resend`, {
+      const res = await fetch(`${BASE}/admin/auth/otp/resend`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email: otpEmail }),
       });
-
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed to resend");
-
       setResendTimer(60);
       setOtp(Array(6).fill(""));
       setOtpError("");
@@ -136,7 +158,6 @@ export default function AdminLogin() {
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <div className="w-full max-w-6xl grid lg:grid-cols-2 bg-white rounded-2xl shadow-xl overflow-hidden">
-        {/* LEFT PANEL */}
         <div className="bg-[#004900] p-12 text-white flex flex-col justify-between">
           <div>
             <p className="font-bold mb-20">SLAN ADMIN</p>
@@ -151,9 +172,8 @@ export default function AdminLogin() {
           </div>
         </div>
 
-        {/* RIGHT PANEL */}
         <div className="p-12 flex flex-col justify-center">
-          {step === "credentials" ? (
+          {step === "credentials"? (
             <>
               <h2 className="text-2xl font-semibold mb-1">Authorize Access</h2>
               <p className="text-sm text-gray-600 mb-6">Enter your credentials to continue.</p>
@@ -162,7 +182,7 @@ export default function AdminLogin() {
                 <button
                   onClick={() => setMode("password")}
                   className={`flex-1 pb-2 text-sm font-medium border-b-2 ${
-                    mode === "password" ? "border-[#004900] text-[#004900]" : "border-transparent text-gray-500"
+                    mode === "password"? "border-[#004900] text-[#004900]" : "border-transparent text-gray-500"
                   }`}
                 >
                   Password Login
@@ -170,7 +190,7 @@ export default function AdminLogin() {
                 <button
                   onClick={() => setMode("otp")}
                   className={`flex-1 pb-2 text-sm font-medium border-b-2 ${
-                    mode === "otp" ? "border-[#004900] text-[#004900]" : "border-transparent text-gray-500"
+                    mode === "otp"? "border-[#004900] text-[#004900]" : "border-transparent text-gray-500"
                   }`}
                 >
                   OTP-Only Access
@@ -178,43 +198,56 @@ export default function AdminLogin() {
               </div>
 
               <form onSubmit={handleAuthorize} className="space-y-4">
-                {/* EMAIL INPUT - STEP 1 ONLY */}
-                <div>
-                  <label className="text-xs font-medium text-gray-700 block mb-1.5">
-                    Email Address or Administrator ID
-                  </label>
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="Enter your email"
-                    className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20"
-                  />
-                  {credErrors.email && <p className="text-xs text-red-600 mt-1">{credErrors.email}</p>}
-                </div>
-
-                {mode === "password" && (
-                  <div>
-                    <label className="text-xs font-medium text-gray-700 block mb-1.5">System Password</label>
-                    <input
-                      type="password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Enter password"
-                      className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20"
-                    />
-                    {credErrors.password && <p className="text-xs text-red-600 mt-1">{credErrors.password}</p>}
-                  </div>
-                )}
-
-                {mode === "otp" && (
-                  <div className="bg-green-50 p-3 rounded-lg border border-green-200">
-                    <p className="text-xs text-green-800">We'll send a 6-digit code to your email.</p>
-                  </div>
+                {mode === "password"? (
+                  <>
+                    <div>
+                      <label className="text-xs font-medium text-gray-700 block mb-1.5">
+                        Admin Email
+                      </label>
+                      <input
+                        type="email"
+                        value={loginEmail}
+                        onChange={(e) => setLoginEmail(e.target.value)}
+                        placeholder="admin@slan.ng"
+                        className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20"
+                      />
+                      {credErrors.email && <p className="text-xs text-red-600 mt-1">{credErrors.email}</p>}
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-gray-700 block mb-1.5">System Password</label>
+                      <input
+                        type="password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="Enter password"
+                        className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20"
+                      />
+                      {credErrors.password && <p className="text-xs text-red-600 mt-1">{credErrors.password}</p>}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <label className="text-xs font-medium text-gray-700 block mb-1.5">
+                        OTP Email Address
+                      </label>
+                      <input
+                        type="email"
+                        value={otpEmail}
+                        onChange={(e) => setOtpEmail(e.target.value)}
+                        placeholder="admin@slan.ng"
+                        className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20"
+                      />
+                      {credErrors.email && <p className="text-xs text-red-600 mt-1">{credErrors.email}</p>}
+                    </div>
+                    <div className="bg-green-50 p-3 rounded-lg border border-green-200">
+                      <p className="text-xs text-green-800">We'll send a 6-digit code to this email.</p>
+                    </div>
+                  </>
                 )}
 
                 <label className="flex items-center gap-2 text-xs">
-                  <input type="checkbox" checked={trustDevice} onChange={(e) => setTrustDevice(e.target.checked)} />
+                  <input type="checkbox" checked={trustWorkstation} onChange={(e) => setTrustWorkstation(e.target.checked)} />
                   Trust this workstation for 8 hours
                 </label>
 
@@ -225,7 +258,7 @@ export default function AdminLogin() {
                   disabled={loading}
                   className="w-full bg-[#004900] text-white py-2.5 rounded-lg font-medium disabled:opacity-60"
                 >
-                  {loading ? "Processing..." : mode === "password" ? "Authorize Access →" : "Send Access OTP →"}
+                  {loading? "Processing..." : mode === "password"? "Authorize Access →" : "Send Access OTP →"}
                 </button>
               </form>
             </>
@@ -233,9 +266,8 @@ export default function AdminLogin() {
             <>
               <button onClick={() => setStep("credentials")} className="text-xs mb-4 hover:underline w-fit">← Back</button>
               <h2 className="text-2xl font-semibold">Enter Verification Code</h2>
-              <p className="text-sm text-gray-600 mb-6">Code sent to <b>{email}</b></p>
+              <p className="text-sm text-gray-600 mb-6">Code sent to <b>{otpEmail}</b></p>
 
-              {/* OTP INPUTS - STEP 2 ONLY - 6 SEPARATE BOXES FOR NUMBERS ONLY */}
               <div className="flex gap-3 justify-center mb-6">
                 {otp.map((digit, i) => (
                   <input
@@ -245,34 +277,15 @@ export default function AdminLogin() {
                     inputMode="numeric"
                     pattern="[0-9]*"
                     maxLength={1}
-                    placeholder="Provide the OTP given to you"
                     value={digit}
+                    aria-label="input"
                     onChange={(e) => handleOtpChange(i, e.target.value)}
                     onKeyDown={(e) => {
-                      if (e.key === "Backspace" && !digit && i > 0) {
+                      if (e.key === "Backspace" &&!digit && i > 0) {
                         otpRefs.current[i - 1]?.focus();
                       }
                     }}
-                    onPaste={(e) => {
-                      e.preventDefault();
-                      const pastedData = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6);
-                      if (pastedData) {
-                        const newOtp = [...otp];
-                        pastedData.split("").forEach((char, idx) => {
-                          if (idx < 6) newOtp[idx] = char;
-                        });
-                        setOtp(newOtp);
-                        // Focus the next empty input or the last one
-                        const nextEmptyIndex = newOtp.findIndex(d => !d);
-                        if (nextEmptyIndex !== -1) {
-                          otpRefs.current[nextEmptyIndex]?.focus();
-                        } else {
-                          otpRefs.current[5]?.focus();
-                          handleVerifyOtp(newOtp.join(""));
-                        }
-                      }
-                    }}
-                    className="w-12 h-14 text-center text-2xl font-semibold border-2 border-gray-300 rounded-xl focus:border-[#004900] focus:outline-none focus:ring-2 focus:ring-[#004900]/20"
+                    className="w-12 h-14 text-center text-2xl font-semibold border-2 border-gray-300 rounded-xl focus:border-[#004900] focus:outline-none"
                   />
                 ))}
               </div>
@@ -281,20 +294,16 @@ export default function AdminLogin() {
 
               <button
                 onClick={() => handleVerifyOtp()}
-                disabled={otp.join("").length !== 6 || loading}
+                disabled={otp.join("").length!== 6 || loading}
                 className="w-full bg-[#004900] text-white py-3 rounded-lg font-medium disabled:opacity-50"
               >
-                {loading ? "Verifying..." : "Verify & Continue"}
+                {loading? "Verifying..." : "Verify & Continue"}
               </button>
 
               <p className="text-xs text-center mt-4 text-gray-500">
                 Didn't receive code?{" "}
-                <button
-                  onClick={handleResend}
-                  disabled={resendTimer > 0}
-                  className="text-[#004900] font-medium disabled:text-gray-400"
-                >
-                  {resendTimer > 0 ? `Resend in ${resendTimer}s` : "Resend code"}
+                <button onClick={handleResend} disabled={resendTimer > 0} className="text-[#004900] font-medium disabled:text-gray-400">
+                  {resendTimer > 0? `Resend in ${resendTimer}s` : "Resend code"}
                 </button>
               </p>
             </>

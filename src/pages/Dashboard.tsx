@@ -1,6 +1,7 @@
 // Dashboard.tsx
 import { useEffect, useState } from "react";
-import { Users, BookOpen, ClipboardCheck, CreditCard } from "lucide-react";
+import { Users, BookOpen, ClipboardCheck, CreditCard, LayoutGrid, CheckSquare,
+  ChartCandlestick, Headset, Flag } from "lucide-react";
 
 const BASE = import.meta.env.VITE_API_BASE_URL?? "";
 
@@ -28,6 +29,7 @@ interface Alert {
   id: string;
   message: string;
 }
+
 
 export default function Dashboard() {
   const [stats, setStats] = useState<Stats>({
@@ -102,7 +104,7 @@ export default function Dashboard() {
     <div className="min-h-screen bg-gray-50">
       <div className="max-w- mx-auto p-6">
         {/* Welcome Banner - no New Course button */}
-        <div className="relative overflow-hidden rounded-2xl bg-[#0f2a1f] text-white p-8 mb-6">
+        <div className="relative overflow-hidden rounded-2xl bg-[#0f2a1f] text-white p-8 mb-6 h-70">
           <div className="absolute inset-0 opacity-20">
             <img
               src="https://images.unsplash.com/photo-1523240795612-9a054b0db644?w=1600"
@@ -110,9 +112,9 @@ export default function Dashboard() {
               className="w-full h-full object-cover"
             />
           </div>
-          <div className="relative z-10">
-            <h1 className="text-2xl font-semibold">Welcome Back, Administrator</h1>
-            <p className="text-sm text-white/80 mt-1">Manage courses, learners, and track platform performance</p>
+          <div className="relative z-10 left-0 top-17">
+            <h1 className="text-4xl font-semibold">Welcome Back, Administrator</h1>
+            <p className="text-md text-white/80 mt-1">Manage courses, learners, and track platform performance</p>
           </div>
         </div>
 
@@ -180,19 +182,22 @@ export default function Dashboard() {
             <h2 className="font-semibold text-slate-900 mb-4">Quick Actions</h2>
             <div className="space-y-2.5">
               {[
-                { label: "Manage Courses", icon: "📘", href: "/course" },
-                { label: "Manage Users", icon: "👥", href: "/users" },
-                { label: "Review Assessments", icon: "✓", href: "/assessment" },
-                { label: "View Payments", icon: "💳", href: "/payment" },
-                { label: "View Reports", icon: "📊", href: "/report" },
+                { path: "/", name: "Dashboard", icon: LayoutGrid },
+                { path: "/course", name: "Course", icon: BookOpen },
+                { path: "/users", name: "Users", icon: Users },
+                { path: "/assessment", name: "Assessment", icon: CheckSquare },
+                { path: "/payment", name: "Payment", icon: CreditCard },
+                { path: "/report", name: "Report", icon: ChartCandlestick },
+                { path: "/support", name: "Support Queue", icon: Headset },
+                { path: "/community", name: "Community Mod", icon: Flag }
               ].map((action) => (
                 <a
-                  key={action.label}
-                  href={action.href}
+                  key={action.name}
+                  href={action.path}
                   className="flex items-center gap-2.5 w-full bg-white hover:bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 text-sm text-slate-700 transition"
                 >
-                  <span>{action.icon}</span>
-                  {action.label}
+                  <action.icon size={20} />
+                  {action.name}
                 </a>
               ))}
             </div>

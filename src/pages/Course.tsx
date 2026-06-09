@@ -18,7 +18,7 @@ export default function Course() {
             className={`w-fit h-15 px-3 transition
             ${
               activeTab === "manage"
-                ? "border-b-2 border-blue-600 text-blue-600 font-semibold"
+                ? "border-b-2 border-[#004900] text-[#004900] font-semibold"
                 : "text-gray-500"
             }`}
           >
@@ -33,7 +33,7 @@ export default function Course() {
             className={`w-fit h-15 px-3 transition
             ${
               activeTab === "upload"
-                ? "border-b-2 border-blue-600 text-blue-600 font-semibold"
+                ? "border-b-2 border-[#004900] text-[#004900] font-semibold"
                 : "text-gray-500"
             }`}
           >
