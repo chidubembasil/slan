@@ -1,5 +1,4 @@
-// SideBar.tsx
-import { NavLink, useNavigate } from "react-router-dom"
+import { NavLink } from "react-router-dom"
 import {
   LayoutGrid, BookOpen, Users, CheckSquare, CreditCard,
   ChartCandlestick, LogOut, Headset, Flag, X
@@ -10,13 +9,11 @@ type Props = {
   onClose: () => void
 }
 
-const BASE = import.meta.env.VITE_BASE_URL;
-
 export default function SideBar({ isOpen, onClose }: Props) {
-  const navigate = useNavigate()
+  const BASE = import.meta.env.VITE_BASE_URL;
 
   const navItems = [
-    { path: "/", name: "Dashboard", icon: LayoutGrid },
+    { path: "/dashboard", name: "Dashboard", icon: LayoutGrid },
     { path: "/course", name: "Course", icon: BookOpen },
     { path: "/users", name: "Users", icon: Users },
     { path: "/assessment", name: "Assessment", icon: CheckSquare },
@@ -37,10 +34,8 @@ export default function SideBar({ isOpen, onClose }: Props) {
     } catch (e) {
       console.error("Logout failed", e);
     } finally {
-      localStorage.removeItem("adminAccessToken");
-      localStorage.removeItem("adminRefreshToken");
-      localStorage.removeItem("adminUser");
-      navigate("/auth");
+      localStorage.clear();
+      window.location.href = "/";
     }
   };
 

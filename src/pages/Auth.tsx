@@ -1,4 +1,3 @@
-// AdminLogin.tsx
 import { useState, useRef, useEffect } from "react";
 
 const BASE = import.meta.env.VITE_BASE_URL;
@@ -8,19 +7,31 @@ export default function AdminLogin() {
   const [mode, setMode] = useState<"password" | "otp">("password");
   const [loading, setLoading] = useState(false);
 
-  // SEPARATE EMAILS
-  const [loginEmail, setLoginEmail] = useState("");
+  // PASSWORD MODE
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [otpEmail, setOtpEmail] = useState("");
-  const [trustWorkstation, setTrustWorkstation] = useState(false);
 
-  // OTP
+  // OTP MODE - SEPARATE EMAIL
+  const [otpEmail, setOtpEmail] = useState("");
+
+  const [trustDevice, setTrustDevice] = useState(false);
+
+  // OTP Code (6 digits)
   const [otp, setOtp] = useState<string[]>(Array(6).fill(""));
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   const [credErrors, setCredErrors] = useState<Record<string, string>>({});
   const [otpError, setOtpError] = useState("");
   const [resendTimer, setResendTimer] = useState(0);
+
+  useEffect(() => {
+    // Auto-redirect if already logged in
+    const token = localStorage.getItem("adminAccessToken");
+    const expiry = localStorage.getItem("adminTokenExpiry");
+    if (token && expiry && Date.now() < Number(expiry)) {
+      window.location.href = "/dashboard";
+    }
+  }, []);
 
   useEffect(() => {
     if (resendTimer > 0) {
@@ -35,7 +46,7 @@ export default function AdminLogin() {
     setCredErrors({});
 
     if (mode === "password") {
-      if (!loginEmail.trim()) return setCredErrors({ email: "Email is required" });
+      if (!email.trim()) return setCredErrors({ email: "Email is required" });
       if (!password) return setCredErrors({ password: "Password is required" });
 
       setLoading(true);
@@ -43,20 +54,26 @@ export default function AdminLogin() {
         const res = await fetch(`${BASE}admin/auth/login`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          credentials: "include",
           body: JSON.stringify({
-            email: loginEmail,
+            email,
             password,
-            trustWorkstation
+            trustWorkstation: trustDevice
           }),
         });
 
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || "Login failed");
 
-        // Tokens returned immediately - NO OTP STEP
-        localStorage.setItem("adminAccessToken", data.accessToken);
+        // Store tokens immediately - NO OTP
+        localStorage.setItem("adminAccessToken", data.accessToken || data.token);
         localStorage.setItem("adminRefreshToken", data.refreshToken);
-        localStorage.setItem("adminUser", JSON.stringify(data.admin));
+        localStorage.setItem("adminUser", JSON.stringify(data.admin || data.user));
+
+        // Set expiry: 8 hours if trusted, else 1 hour
+        const hours = trustDevice? 8 : 1;
+        localStorage.setItem("adminTokenExpiry", String(Date.now() + hours * 3600 * 1000));
+
         window.location.href = "/dashboard";
       } catch (err: any) {
         setCredErrors({ submit: err.message });
@@ -65,7 +82,7 @@ export default function AdminLogin() {
       }
     } else {
       // OTP MODE
-      if (!otpEmail.trim()) return setCredErrors({ email: "Email is required" });
+      if (!otpEmail.trim()) return setCredErrors({ otpEmail: "Email is required" });
 
       setLoading(true);
       try {
@@ -74,7 +91,7 @@ export default function AdminLogin() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             email: otpEmail,
-            trustWorkstation
+            trustWorkstation: trustDevice
           }),
         });
 
@@ -115,15 +132,19 @@ export default function AdminLogin() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ email: otpEmail, otp: otpCode, trustWorkstation }),
+        body: JSON.stringify({ email: otpEmail, otp: otpCode, trustWorkstation: trustDevice }),
       });
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Invalid code");
 
-      localStorage.setItem("adminAccessToken", data.accessToken);
+      localStorage.setItem("adminAccessToken", data.accessToken || data.token);
       localStorage.setItem("adminRefreshToken", data.refreshToken);
-      localStorage.setItem("adminUser", JSON.stringify(data.admin));
+      localStorage.setItem("adminUser", JSON.stringify(data.admin || data.user));
+
+      const hours = trustDevice? 8 : 1;
+      localStorage.setItem("adminTokenExpiry", String(Date.now() + hours * 3600 * 1000));
+
       window.location.href = "/dashboard";
     } catch (err: any) {
       setOtpError(err.message);
@@ -202,17 +223,18 @@ export default function AdminLogin() {
                   <>
                     <div>
                       <label className="text-xs font-medium text-gray-700 block mb-1.5">
-                        Admin Email
+                        Email Address or Administrator ID
                       </label>
                       <input
                         type="email"
-                        value={loginEmail}
-                        onChange={(e) => setLoginEmail(e.target.value)}
-                        placeholder="admin@slan.ng"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="Enter your email"
                         className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20"
                       />
                       {credErrors.email && <p className="text-xs text-red-600 mt-1">{credErrors.email}</p>}
                     </div>
+
                     <div>
                       <label className="text-xs font-medium text-gray-700 block mb-1.5">System Password</label>
                       <input
@@ -226,28 +248,26 @@ export default function AdminLogin() {
                     </div>
                   </>
                 ) : (
-                  <>
-                    <div>
-                      <label className="text-xs font-medium text-gray-700 block mb-1.5">
-                        OTP Email Address
-                      </label>
-                      <input
-                        type="email"
-                        value={otpEmail}
-                        onChange={(e) => setOtpEmail(e.target.value)}
-                        placeholder="admin@slan.ng"
-                        className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20"
-                      />
-                      {credErrors.email && <p className="text-xs text-red-600 mt-1">{credErrors.email}</p>}
-                    </div>
-                    <div className="bg-green-50 p-3 rounded-lg border border-green-200">
+                  <div>
+                    <label className="text-xs font-medium text-gray-700 block mb-1.5">
+                      OTP Email Address
+                    </label>
+                    <input
+                      type="email"
+                      value={otpEmail}
+                      onChange={(e) => setOtpEmail(e.target.value)}
+                      placeholder="Enter your admin email"
+                      className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20"
+                    />
+                    {credErrors.otpEmail && <p className="text-xs text-red-600 mt-1">{credErrors.otpEmail}</p>}
+                    <div className="bg-green-50 p-3 rounded-lg border border-green-200 mt-2">
                       <p className="text-xs text-green-800">We'll send a 6-digit code to this email.</p>
                     </div>
-                  </>
+                  </div>
                 )}
 
                 <label className="flex items-center gap-2 text-xs">
-                  <input type="checkbox" checked={trustWorkstation} onChange={(e) => setTrustWorkstation(e.target.checked)} />
+                  <input type="checkbox" checked={trustDevice} onChange={(e) => setTrustDevice(e.target.checked)} />
                   Trust this workstation for 8 hours
                 </label>
 
@@ -278,14 +298,31 @@ export default function AdminLogin() {
                     pattern="[0-9]*"
                     maxLength={1}
                     value={digit}
-                    aria-label="input"
                     onChange={(e) => handleOtpChange(i, e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === "Backspace" &&!digit && i > 0) {
                         otpRefs.current[i - 1]?.focus();
                       }
                     }}
-                    className="w-12 h-14 text-center text-2xl font-semibold border-2 border-gray-300 rounded-xl focus:border-[#004900] focus:outline-none"
+                    onPaste={(e) => {
+                      e.preventDefault();
+                      const pastedData = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6);
+                      if (pastedData) {
+                        const newOtp = [...otp];
+                        pastedData.split("").forEach((char, idx) => {
+                          if (idx < 6) newOtp[idx] = char;
+                        });
+                        setOtp(newOtp);
+                        const nextEmptyIndex = newOtp.findIndex(d =>!d);
+                        if (nextEmptyIndex!== -1) {
+                          otpRefs.current[nextEmptyIndex]?.focus();
+                        } else {
+                          otpRefs.current[5]?.focus();
+                          handleVerifyOtp(newOtp.join(""));
+                        }
+                      }
+                    }}
+                    className="w-12 h-14 text-center text-2xl font-semibold border-2 border-gray-300 rounded-xl focus:border-[#004900] focus:outline-none focus:ring-2 focus:ring-[#004900]/20"
                   />
                 ))}
               </div>
@@ -302,7 +339,11 @@ export default function AdminLogin() {
 
               <p className="text-xs text-center mt-4 text-gray-500">
                 Didn't receive code?{" "}
-                <button onClick={handleResend} disabled={resendTimer > 0} className="text-[#004900] font-medium disabled:text-gray-400">
+                <button
+                  onClick={handleResend}
+                  disabled={resendTimer > 0}
+                  className="text-[#004900] font-medium disabled:text-gray-400"
+                >
                   {resendTimer > 0? `Resend in ${resendTimer}s` : "Resend code"}
                 </button>
               </p>
