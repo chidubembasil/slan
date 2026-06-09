@@ -57,7 +57,7 @@ export default function AdminLogin() {
         localStorage.setItem("adminAccessToken", data.accessToken);
         localStorage.setItem("adminRefreshToken", data.refreshToken);
         localStorage.setItem("adminUser", JSON.stringify(data.admin));
-        window.location.href = "/";
+        window.location.href = "/dashboard";
       } catch (err: any) {
         setCredErrors({ submit: err.message });
       } finally {
@@ -124,7 +124,7 @@ export default function AdminLogin() {
       localStorage.setItem("adminAccessToken", data.accessToken);
       localStorage.setItem("adminRefreshToken", data.refreshToken);
       localStorage.setItem("adminUser", JSON.stringify(data.admin));
-      window.location.href = "/";
+      window.location.href = "/dashboard";
     } catch (err: any) {
       setOtpError(err.message);
       setOtp(Array(6).fill(""));
