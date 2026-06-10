@@ -5,7 +5,7 @@ const BASE = import.meta.env.VITE_BASE_URL;
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function authHeaders() {
-  const token = localStorage.getItem("adminToken");
+  const token = localStorage.getItem("adminAccessToken");
   return {
     "Content-Type": "application/json",
     ...(token ? { Authorization: `Bearer ${token}` } : {}),

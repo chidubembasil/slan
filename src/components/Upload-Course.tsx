@@ -2,7 +2,6 @@ import { useState } from "react";
 
 const BASE = import.meta.env.VITE_BASE_URL;
 
-
 type TrackForm = {
   title: string;
   description: string;
@@ -121,6 +120,40 @@ function Toast({ message, onClose }: { message: string; onClose: () => void }) {
   );
 }
 
+// Cloudinary Upload Helper
+const uploadToCloudinary = async (file: File, folder: string = "curriculum"): Promise<string> => {
+  const API_KEY = import.meta.env.VITE_API_KEY;
+  const API_SECRET = import.meta.env.VITE_API_SECRET_KEY;
+  const CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME; // Add this to your .env if needed
+
+  if (!API_KEY || !API_SECRET || !CLOUD_NAME) {
+    throw new Error("Cloudinary credentials missing in env");
+  }
+
+  const timestamp = Math.round(new Date().getTime() / 1000);
+  const signatureString = `folder=${folder}&timestamp=${timestamp}${API_SECRET}`;
+  const signature = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(signatureString));
+  const signatureHex = Array.from(new Uint8Array(signature))
+    .map(b => b.toString(16).padStart(2, "0"))
+    .join("");
+
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("api_key", API_KEY);
+  formData.append("timestamp", timestamp.toString());
+  formData.append("signature", signatureHex);
+  formData.append("folder", folder);
+
+  const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/upload`, {
+    method: "POST",
+    body: formData,
+  });
+
+  const data = await res.json();
+  if (!res.ok || data.error) throw new Error(data.error?.message || "Upload failed");
+  return data.secure_url;
+};
+
 // ══════════════════════════════════════════════════════════════════════════
 // TRACK FORM
 // ══════════════════════════════════════════════════════════════════════════
@@ -130,6 +163,7 @@ function TrackFormSection({ onSuccess }: { onSuccess: (msg: string) => void }) {
     title: "", description: "", shortDescription: "", thumbnail: "",
     orderIndex: "0", isFree: false, price: "0", status: "draft",
   });
+  const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
   const [errors, setErrors] = useState<FormErrors<TrackForm>>({});
   const [loading, setLoading] = useState(false);
   const [submitError, setSubmitError] = useState("");
@@ -156,19 +190,26 @@ function TrackFormSection({ onSuccess }: { onSuccess: (msg: string) => void }) {
     if (!validate()) return;
 
     setLoading(true);
+    let finalThumbnail = form.thumbnail;
+
     try {
-      const token = localStorage.getItem("adminToken");
+      if (thumbnailFile) {
+        finalThumbnail = await uploadToCloudinary(thumbnailFile, "thumbnails");
+      }
+
+      const token = localStorage.getItem("adminAccessToken");
       const res = await fetch(`${BASE}admin/tracks`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
+        credentials: "include",
         body: JSON.stringify({
           title: form.title,
           description: form.description,
           shortDescription: form.shortDescription,
-          thumbnail: form.thumbnail || undefined,
+          thumbnail: finalThumbnail || undefined,
           orderIndex: Number(form.orderIndex),
           isFree: form.isFree,
           price: Number(form.price),
@@ -181,6 +222,7 @@ function TrackFormSection({ onSuccess }: { onSuccess: (msg: string) => void }) {
 
       onSuccess(`Track "${form.title}" created successfully`);
       setForm({ title: "", description: "", shortDescription: "", thumbnail: "", orderIndex: "0", isFree: false, price: "0", status: "draft" });
+      setThumbnailFile(null);
       setErrors({});
     } catch (err: any) {
       setSubmitError(err.message);
@@ -234,14 +276,19 @@ function TrackFormSection({ onSuccess }: { onSuccess: (msg: string) => void }) {
           />
         </Field>
 
-        <Field label="Thumbnail URL" error={errors.thumbnail}>
+        <Field label="Thumbnail" error={errors.thumbnail}>
           <input
-            type="url"
-            value={form.thumbnail}
-            onChange={(e) => set("thumbnail", e.target.value)}
-            placeholder="https://..."
+            type="file"
+            accept="image/*"
+            aria-label="input"
+            onChange={(e) => {
+              const file = e.target.files?.[0] || null;
+              setThumbnailFile(file);
+              set("thumbnail", file ? file.name : "");
+            }}
             className={inputCls}
           />
+          {thumbnailFile && <p className="text-xs text-gray-500 mt-1">Selected: {thumbnailFile.name}</p>}
         </Field>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -340,13 +387,14 @@ function ModuleFormSection({ onSuccess }: { onSuccess: (msg: string) => void }) 
 
     setLoading(true);
     try {
-      const token = localStorage.getItem("adminToken");
+      const token = localStorage.getItem("adminAccessToken");
       const res = await fetch(`${BASE}admin/tracks/${form.trackId}/modules`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
+        credentials: "include",
         body: JSON.stringify({
           title: form.title,
           description: form.description,
@@ -507,6 +555,8 @@ function UnitFormSection({ onSuccess }: { onSuccess: (msg: string) => void }) {
     orderIndex: "0", estimatedReadMinutes: "0",
     passMarkPercent: "60", maxAttempts: "3", status: "draft",
   });
+  const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [errors, setErrors] = useState<FormErrors<UnitForm>>({});
   const [loading, setLoading] = useState(false);
   const [submitError, setSubmitError] = useState("");
@@ -525,8 +575,6 @@ function UnitFormSection({ onSuccess }: { onSuccess: (msg: string) => void }) {
     if (isNaN(pmp) || pmp < 0 || pmp > 100) e.passMarkPercent = "Must be 0–100";
     const ma = Number(form.maxAttempts);
     if (isNaN(ma) || ma < 1) e.maxAttempts = "Must be at least 1";
-    if (form.videoUrl && !form.videoUrl.startsWith("http")) e.videoUrl = "Must be a valid URL";
-    if (form.pdfUrl && !form.pdfUrl.startsWith("http")) e.pdfUrl = "Must be a valid URL";
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -537,14 +585,25 @@ function UnitFormSection({ onSuccess }: { onSuccess: (msg: string) => void }) {
     if (!validate()) return;
 
     setLoading(true);
+    let finalVideoUrl = form.videoUrl;
+    let finalPdfUrl = form.pdfUrl;
+
     try {
-      const token = localStorage.getItem("adminToken");
+      if (videoFile) {
+        finalVideoUrl = await uploadToCloudinary(videoFile, "videos");
+      }
+      if (pdfFile) {
+        finalPdfUrl = await uploadToCloudinary(pdfFile, "pdfs");
+      }
+
+      const token = localStorage.getItem("adminAccessToken");
       const res = await fetch(`${BASE}admin/modules/${form.moduleId}/units`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
+        credentials: "include",
         body: JSON.stringify({
           title: form.title,
           description: form.description,
@@ -552,8 +611,8 @@ function UnitFormSection({ onSuccess }: { onSuccess: (msg: string) => void }) {
           summary: form.summary || undefined,
           caseStudy: form.caseStudy || undefined,
           discussionPrompt: form.discussionPrompt || undefined,
-          videoUrl: form.videoUrl || undefined,
-          pdfUrl: form.pdfUrl || undefined,
+          videoUrl: finalVideoUrl || undefined,
+          pdfUrl: finalPdfUrl || undefined,
           orderIndex: Number(form.orderIndex),
           estimatedReadMinutes: Number(form.estimatedReadMinutes),
           passMarkPercent: Number(form.passMarkPercent),
@@ -573,6 +632,8 @@ function UnitFormSection({ onSuccess }: { onSuccess: (msg: string) => void }) {
         orderIndex: "0", estimatedReadMinutes: "0",
         passMarkPercent: "60", maxAttempts: "3", status: "draft",
       });
+      setVideoFile(null);
+      setPdfFile(null);
       setErrors({});
     } catch (err: any) {
       setSubmitError(err.message);
@@ -669,23 +730,33 @@ function UnitFormSection({ onSuccess }: { onSuccess: (msg: string) => void }) {
         </Field>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          <Field label="Video URL" error={errors.videoUrl}>
+          <Field label="Video" error={errors.videoUrl}>
             <input
-              type="url"
-              value={form.videoUrl}
-              onChange={(e) => set("videoUrl", e.target.value)}
-              placeholder="https://..."
+              type="file"
+              accept="video/*"
+              aria-label="input"
+              onChange={(e) => {
+                const file = e.target.files?.[0] || null;
+                setVideoFile(file);
+                set("videoUrl", file ? file.name : "");
+              }}
               className={inputCls}
             />
+            {videoFile && <p className="text-xs text-gray-500 mt-1">Selected: {videoFile.name}</p>}
           </Field>
-          <Field label="PDF URL" error={errors.pdfUrl}>
+          <Field label="PDF" error={errors.pdfUrl}>
             <input
-              type="url"
-              value={form.pdfUrl}
-              onChange={(e) => set("pdfUrl", e.target.value)}
-              placeholder="https://..."
+              type="file"
+              accept=".pdf"
+              aria-label="input"
+              onChange={(e) => {
+                const file = e.target.files?.[0] || null;
+                setPdfFile(file);
+                set("pdfUrl", file ? file.name : "");
+              }}
               className={inputCls}
             />
+            {pdfFile && <p className="text-xs text-gray-500 mt-1">Selected: {pdfFile.name}</p>}
           </Field>
         </div>
 
