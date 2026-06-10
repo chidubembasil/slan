@@ -7,16 +7,11 @@ export default function AdminLogin() {
   const [mode, setMode] = useState<"password" | "otp">("password");
   const [loading, setLoading] = useState(false);
 
-  // PASSWORD MODE
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-
-  // OTP MODE - SEPARATE EMAIL
   const [otpEmail, setOtpEmail] = useState("");
-
   const [trustDevice, setTrustDevice] = useState(false);
 
-  // OTP Code (6 digits)
   const [otp, setOtp] = useState<string[]>(Array(6).fill(""));
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
 
@@ -25,7 +20,6 @@ export default function AdminLogin() {
   const [resendTimer, setResendTimer] = useState(0);
 
   useEffect(() => {
-    // Auto-redirect if already logged in
     const token = localStorage.getItem("adminAccessToken");
     const expiry = localStorage.getItem("adminTokenExpiry");
     if (token && expiry && Date.now() < Number(expiry)) {
@@ -40,7 +34,6 @@ export default function AdminLogin() {
     }
   }, [resendTimer]);
 
-  // STEP 1 SUBMIT
   const handleAuthorize = async (e: React.FormEvent) => {
     e.preventDefault();
     setCredErrors({});
@@ -55,23 +48,17 @@ export default function AdminLogin() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({
-            email,
-            password,
-            trustWorkstation: trustDevice
-          }),
+          body: JSON.stringify({ email, password, trustWorkstation: trustDevice }),
         });
 
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || "Login failed");
 
-        // Store tokens immediately - NO OTP
-        localStorage.setItem("adminAccessToken", data.accessToken || data.token);
-        localStorage.setItem("adminRefreshToken", data.refreshToken);
-        localStorage.setItem("adminUser", JSON.stringify(data.admin || data.user));
+        localStorage.setItem("adminAccessToken", data.data?.accessToken || data.data?.token || data.accessToken || data.token);
+        localStorage.setItem("adminRefreshToken", data.data?.refreshToken || data.refreshToken);
+        localStorage.setItem("adminUser", JSON.stringify(data.data?.admin || data.data?.user || data.admin || data.user));
 
-        // Set expiry: 8 hours if trusted, else 1 hour
-        const hours = trustDevice? 8 : 1;
+        const hours = trustDevice ? 8 : 1;
         localStorage.setItem("adminTokenExpiry", String(Date.now() + hours * 3600 * 1000));
 
         window.location.href = "/dashboard";
@@ -81,7 +68,6 @@ export default function AdminLogin() {
         setLoading(false);
       }
     } else {
-      // OTP MODE
       if (!otpEmail.trim()) return setCredErrors({ otpEmail: "Email is required" });
 
       setLoading(true);
@@ -89,10 +75,7 @@ export default function AdminLogin() {
         const res = await fetch(`${BASE}admin/auth/otp/send`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            email: otpEmail,
-            trustWorkstation: trustDevice
-          }),
+          body: JSON.stringify({ email: otpEmail, trustWorkstation: trustDevice }),
         });
 
         const data = await res.json();
@@ -124,7 +107,7 @@ export default function AdminLogin() {
 
   const handleVerifyOtp = async (code?: string) => {
     const otpCode = code || otp.join("");
-    if (otpCode.length!== 6) return setOtpError("Enter 6 digits");
+    if (otpCode.length !== 6) return setOtpError("Enter 6 digits");
 
     setLoading(true);
     try {
@@ -138,11 +121,11 @@ export default function AdminLogin() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Invalid code");
 
-      localStorage.setItem("adminAccessToken", data.accessToken || data.token);
-      localStorage.setItem("adminRefreshToken", data.refreshToken);
-      localStorage.setItem("adminUser", JSON.stringify(data.admin || data.user));
+      localStorage.setItem("adminAccessToken", data.data?.accessToken || data.data?.token || data.accessToken || data.token);
+      localStorage.setItem("adminRefreshToken", data.data?.refreshToken || data.refreshToken);
+      localStorage.setItem("adminUser", JSON.stringify(data.data?.admin || data.data?.user || data.admin || data.user));
 
-      const hours = trustDevice? 8 : 1;
+      const hours = trustDevice ? 8 : 1;
       localStorage.setItem("adminTokenExpiry", String(Date.now() + hours * 3600 * 1000));
 
       window.location.href = "/dashboard";
@@ -182,19 +165,19 @@ export default function AdminLogin() {
         <div className="bg-[#004900] p-12 text-white flex flex-col justify-between">
           <div>
             <p className="font-bold mb-20">SLAN ADMIN</p>
-            <h1 className="text-5xl font-bold leading-tight">Secure Administrator<br/>Access</h1>
+            <h1 className="text-5xl font-bold leading-tight">Secure Administrator<br />Access</h1>
             <p className="text-white/70 mt-4">Institutional gateway for state TSCs and Academy facilitators.</p>
           </div>
           <div className="bg-white/10 rounded-xl p-4 border border-white/20 flex flex-row gap-2 items-center">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
             </svg>
             Enterprise Grade Security Enabled
           </div>
         </div>
 
         <div className="p-12 flex flex-col justify-center">
-          {step === "credentials"? (
+          {step === "credentials" ? (
             <>
               <h2 className="text-2xl font-semibold mb-1">Authorize Access</h2>
               <p className="text-sm text-gray-600 mb-6">Enter your credentials to continue.</p>
@@ -203,7 +186,7 @@ export default function AdminLogin() {
                 <button
                   onClick={() => setMode("password")}
                   className={`flex-1 pb-2 text-sm font-medium border-b-2 ${
-                    mode === "password"? "border-[#004900] text-[#004900]" : "border-transparent text-gray-500"
+                    mode === "password" ? "border-[#004900] text-[#004900]" : "border-transparent text-gray-500"
                   }`}
                 >
                   Password Login
@@ -211,7 +194,7 @@ export default function AdminLogin() {
                 <button
                   onClick={() => setMode("otp")}
                   className={`flex-1 pb-2 text-sm font-medium border-b-2 ${
-                    mode === "otp"? "border-[#004900] text-[#004900]" : "border-transparent text-gray-500"
+                    mode === "otp" ? "border-[#004900] text-[#004900]" : "border-transparent text-gray-500"
                   }`}
                 >
                   OTP-Only Access
@@ -219,7 +202,7 @@ export default function AdminLogin() {
               </div>
 
               <form onSubmit={handleAuthorize} className="space-y-4">
-                {mode === "password"? (
+                {mode === "password" ? (
                   <>
                     <div>
                       <label className="text-xs font-medium text-gray-700 block mb-1.5">
@@ -234,7 +217,6 @@ export default function AdminLogin() {
                       />
                       {credErrors.email && <p className="text-xs text-red-600 mt-1">{credErrors.email}</p>}
                     </div>
-
                     <div>
                       <label className="text-xs font-medium text-gray-700 block mb-1.5">System Password</label>
                       <input
@@ -249,9 +231,7 @@ export default function AdminLogin() {
                   </>
                 ) : (
                   <div>
-                    <label className="text-xs font-medium text-gray-700 block mb-1.5">
-                      OTP Email Address
-                    </label>
+                    <label className="text-xs font-medium text-gray-700 block mb-1.5">OTP Email Address</label>
                     <input
                       type="email"
                       value={otpEmail}
@@ -278,7 +258,7 @@ export default function AdminLogin() {
                   disabled={loading}
                   className="w-full bg-[#004900] text-white py-2.5 rounded-lg font-medium disabled:opacity-60"
                 >
-                  {loading? "Processing..." : mode === "password"? "Authorize Access →" : "Send Access OTP →"}
+                  {loading ? "Processing..." : mode === "password" ? "Authorize Access →" : "Send Access OTP →"}
                 </button>
               </form>
             </>
@@ -300,7 +280,7 @@ export default function AdminLogin() {
                     value={digit}
                     onChange={(e) => handleOtpChange(i, e.target.value)}
                     onKeyDown={(e) => {
-                      if (e.key === "Backspace" &&!digit && i > 0) {
+                      if (e.key === "Backspace" && !digit && i > 0) {
                         otpRefs.current[i - 1]?.focus();
                       }
                     }}
@@ -313,8 +293,8 @@ export default function AdminLogin() {
                           if (idx < 6) newOtp[idx] = char;
                         });
                         setOtp(newOtp);
-                        const nextEmptyIndex = newOtp.findIndex(d =>!d);
-                        if (nextEmptyIndex!== -1) {
+                        const nextEmptyIndex = newOtp.findIndex(d => !d);
+                        if (nextEmptyIndex !== -1) {
                           otpRefs.current[nextEmptyIndex]?.focus();
                         } else {
                           otpRefs.current[5]?.focus();
@@ -331,10 +311,10 @@ export default function AdminLogin() {
 
               <button
                 onClick={() => handleVerifyOtp()}
-                disabled={otp.join("").length!== 6 || loading}
+                disabled={otp.join("").length !== 6 || loading}
                 className="w-full bg-[#004900] text-white py-3 rounded-lg font-medium disabled:opacity-50"
               >
-                {loading? "Verifying..." : "Verify & Continue"}
+                {loading ? "Verifying..." : "Verify & Continue"}
               </button>
 
               <p className="text-xs text-center mt-4 text-gray-500">
@@ -344,7 +324,7 @@ export default function AdminLogin() {
                   disabled={resendTimer > 0}
                   className="text-[#004900] font-medium disabled:text-gray-400"
                 >
-                  {resendTimer > 0? `Resend in ${resendTimer}s` : "Resend code"}
+                  {resendTimer > 0 ? `Resend in ${resendTimer}s` : "Resend code"}
                 </button>
               </p>
             </>
