@@ -100,9 +100,7 @@ function EditModal({ title, fields, data, onSave, onClose, loading }: {
   loading: boolean;
 }) {
   const [form, setForm] = useState<Record<string, any>>({ ...data });
-
   const set = (key: string, value: any) => setForm(f => ({ ...f, [key]: value }));
-
   const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900]";
 
   return (
@@ -119,11 +117,9 @@ function EditModal({ title, fields, data, onSave, onClose, loading }: {
                 {f.label}{f.required && <span className="text-red-500 ml-0.5">*</span>}
               </label>
               {f.type === "textarea" ? (
-                <textarea rows={3} value={form[f.key] ?? ""} onChange={e => set(f.key, e.target.value)} className={inputCls + " resize-none"} aria-label="textarea"/>
+                <textarea rows={3} value={form[f.key] ?? ""} onChange={e => set(f.key, e.target.value)} className={inputCls + " resize-none"} aria-label="textarea" />
               ) : f.type === "select" ? (
-                <select value={form[f.key] ?? ""} onChange={e => set(f.key, e.target.value)} className={inputCls} aria-label="this.selectComponent('', comp => {
-                  console.log(comp);
-                });">
+                <select value={form[f.key] ?? ""} onChange={e => set(f.key, e.target.value)} className={inputCls} aria-label="select">
                   {f.options?.map(o => <option key={o} value={o}>{o.charAt(0).toUpperCase() + o.slice(1)}</option>)}
                 </select>
               ) : f.type === "checkbox" ? (
@@ -132,7 +128,13 @@ function EditModal({ title, fields, data, onSave, onClose, loading }: {
                   <span className="text-gray-700">Yes</span>
                 </label>
               ) : (
-                <input type={f.type === "url" ? "url" : f.type === "number" ? "number" : "text"} value={form[f.key] ?? ""} onChange={e => set(f.key, f.type === "number" ? Number(e.target.value) : e.target.value)} className={inputCls} aria-label="input"/>
+                <input
+                  type={f.type === "url" ? "url" : f.type === "number" ? "number" : "text"}
+                  value={form[f.key] ?? ""}
+                  onChange={e => set(f.key, f.type === "number" ? Number(e.target.value) : e.target.value)}
+                  className={inputCls}
+                  aria-label="input"
+                />
               )}
             </div>
           ))}
@@ -146,6 +148,16 @@ function EditModal({ title, fields, data, onSave, onClose, loading }: {
       </div>
     </div>
   );
+}
+
+// ── Response shape normalizer ──────────────────────────────────────────────
+
+function extractList(data: any, key: string): any[] {
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data.data)) return data.data;
+  if (Array.isArray(data[key])) return data[key];
+  if (data.data && Array.isArray(data.data[key])) return data.data[key];
+  return [];
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -168,8 +180,8 @@ function TracksTab({ toast }: { toast: (msg: string, type?: "success" | "error")
     try {
       const res = await fetch(`${BASE}admin/tracks`, { headers: authHeaders() });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message);
-      setTracks(Array.isArray(data) ? data : data.tracks ?? []);
+      if (!res.ok) throw new Error(data.message || "Failed to fetch tracks");
+      setTracks(extractList(data, "tracks"));
     } catch (e: any) { toast(e.message, "error"); }
     finally { setLoading(false); }
   }, []);
@@ -182,7 +194,8 @@ function TracksTab({ toast }: { toast: (msg: string, type?: "success" | "error")
       const res = await fetch(`${BASE}admin/tracks/${id}`, { headers: authHeaders() });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
-      setDetailData(d => ({ ...d, [id]: data }));
+      const detail = data.data ?? data;
+      setDetailData(d => ({ ...d, [id]: detail }));
       setExpandedId(id);
     } catch (e: any) { toast(e.message, "error"); }
   };
@@ -267,7 +280,6 @@ function TracksTab({ toast }: { toast: (msg: string, type?: "success" | "error")
         <div className="space-y-3">
           {filtered.map(track => (
             <div key={track.id} className="border border-gray-200 rounded-xl overflow-hidden bg-white">
-              {/* Row */}
               <div className="flex items-center gap-4 px-5 py-4">
                 <div className="w-8 h-8 bg-[#004900]/10 rounded-lg flex items-center justify-center shrink-0">
                   <span className="text-[#004900] text-xs font-bold">{track.id}</span>
@@ -282,7 +294,6 @@ function TracksTab({ toast }: { toast: (msg: string, type?: "success" | "error")
                   </span>
                   <span className="text-xs text-gray-400">{track.isFree ? "Free" : `₦${track.price}`}</span>
                 </div>
-                {/* Actions */}
                 <div className="flex items-center gap-1 shrink-0">
                   <button onClick={() => fetchDetail(track.id)} title="View" className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
@@ -290,7 +301,6 @@ function TracksTab({ toast }: { toast: (msg: string, type?: "success" | "error")
                   <button onClick={() => setEditItem(track)} title="Edit" className="p-1.5 rounded-lg hover:bg-blue-50 text-gray-400 hover:text-blue-600">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                   </button>
-                  {/* Quick status */}
                   <select
                     value={track.status}
                     onChange={e => handleStatusPatch(track, e.target.value)}
@@ -306,7 +316,6 @@ function TracksTab({ toast }: { toast: (msg: string, type?: "success" | "error")
                 </div>
               </div>
 
-              {/* Expanded detail */}
               {expandedId === track.id && detailData[track.id] && (
                 <div className="border-t border-gray-100 bg-gray-50 px-5 py-4">
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
@@ -370,8 +379,8 @@ function ModulesTab({ toast }: { toast: (msg: string, type?: "success" | "error"
     try {
       const res = await fetch(`${BASE}admin/tracks/${trackId}/modules`, { headers: authHeaders() });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message);
-      setModules(Array.isArray(data) ? data : data.modules ?? []);
+      if (!res.ok) throw new Error(data.message || "Failed to fetch modules");
+      setModules(extractList(data, "modules"));
     } catch (e: any) { toast(e.message, "error"); }
     finally { setLoading(false); }
   };
@@ -382,7 +391,8 @@ function ModulesTab({ toast }: { toast: (msg: string, type?: "success" | "error"
       const res = await fetch(`${BASE}admin/modules/${id}`, { headers: authHeaders() });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
-      setDetailData(d => ({ ...d, [id]: data }));
+      const detail = data.data ?? data;
+      setDetailData(d => ({ ...d, [id]: detail }));
       setExpandedId(id);
     } catch (e: any) { toast(e.message, "error"); }
   };
@@ -561,8 +571,8 @@ function UnitsTab({ toast }: { toast: (msg: string, type?: "success" | "error") 
     try {
       const res = await fetch(`${BASE}admin/modules/${moduleId}/units`, { headers: authHeaders() });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message);
-      setUnits(Array.isArray(data) ? data : data.units ?? []);
+      if (!res.ok) throw new Error(data.message || "Failed to fetch units");
+      setUnits(extractList(data, "units"));
     } catch (e: any) { toast(e.message, "error"); }
     finally { setLoading(false); }
   };
@@ -573,7 +583,8 @@ function UnitsTab({ toast }: { toast: (msg: string, type?: "success" | "error") 
       const res = await fetch(`${BASE}admin/units/${id}`, { headers: authHeaders() });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
-      setDetailData(d => ({ ...d, [id]: data }));
+      const detail = data.data ?? data;
+      setDetailData(d => ({ ...d, [id]: detail }));
       setExpandedId(id);
     } catch (e: any) { toast(e.message, "error"); }
   };
@@ -763,7 +774,6 @@ export default function CurriculumManage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Tab Nav */}
       <div className="max-w-5xl mx-auto px-8 pt-6">
         <div className="flex border-b border-gray-200 bg-white rounded-t-xl overflow-hidden shadow-sm">
           {tabs.map(tab => (
@@ -783,7 +793,6 @@ export default function CurriculumManage() {
         </div>
       </div>
 
-      {/* Content */}
       <div className="max-w-5xl mx-auto px-8 py-6">
         <div className="bg-white rounded-b-xl rounded-tr-xl border border-gray-200 border-t-0 p-6 shadow-sm">
           {activeTab === "tracks" && <TracksTab toast={showToast} />}
