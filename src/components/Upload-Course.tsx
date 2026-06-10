@@ -124,7 +124,7 @@ function Toast({ message, onClose }: { message: string; onClose: () => void }) {
 const uploadToCloudinary = async (file: File, folder: string = "curriculum"): Promise<string> => {
   const API_KEY = import.meta.env.VITE_API_KEY;
   const API_SECRET = import.meta.env.VITE_API_SECRET_KEY;
-  const CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME; // Add this to your .env if needed
+  const CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
 
   if (!API_KEY || !API_SECRET || !CLOUD_NAME) {
     throw new Error("Cloudinary credentials missing in env");
@@ -189,6 +189,12 @@ function TrackFormSection({ onSuccess }: { onSuccess: (msg: string) => void }) {
     setSubmitError("");
     if (!validate()) return;
 
+    const token = localStorage.getItem("adminAccessToken");
+    if (!token) {
+      setSubmitError("No authentication token found. Please log in again.");
+      return;
+    }
+
     setLoading(true);
     let finalThumbnail = form.thumbnail;
 
@@ -197,12 +203,11 @@ function TrackFormSection({ onSuccess }: { onSuccess: (msg: string) => void }) {
         finalThumbnail = await uploadToCloudinary(thumbnailFile, "thumbnails");
       }
 
-      const token = localStorage.getItem("adminAccessToken");
       const res = await fetch(`${BASE}admin/tracks`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          Authorization: `Bearer ${token}`,
         },
         credentials: "include",
         body: JSON.stringify({
@@ -218,7 +223,15 @@ function TrackFormSection({ onSuccess }: { onSuccess: (msg: string) => void }) {
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Failed to create track");
+      if (!res.ok) {
+        if (res.status === 401 || data.message?.toLowerCase().includes("token")) {
+          setSubmitError("Session expired. Please log in again.");
+          localStorage.removeItem("adminAccessToken");
+        } else {
+          throw new Error(data.message || "Failed to create track");
+        }
+        return;
+      }
 
       onSuccess(`Track "${form.title}" created successfully`);
       setForm({ title: "", description: "", shortDescription: "", thumbnail: "", orderIndex: "0", isFree: false, price: "0", status: "draft" });
@@ -385,14 +398,20 @@ function ModuleFormSection({ onSuccess }: { onSuccess: (msg: string) => void }) 
     setSubmitError("");
     if (!validate()) return;
 
+    const token = localStorage.getItem("adminAccessToken");
+    if (!token) {
+      setSubmitError("No authentication token found. Please log in again.");
+      return;
+    }
+
     setLoading(true);
+
     try {
-      const token = localStorage.getItem("adminAccessToken");
       const res = await fetch(`${BASE}admin/tracks/${form.trackId}/modules`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          Authorization: `Bearer ${token}`,
         },
         credentials: "include",
         body: JSON.stringify({
@@ -408,10 +427,24 @@ function ModuleFormSection({ onSuccess }: { onSuccess: (msg: string) => void }) 
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Failed to create module");
+
+      if (!res.ok) {
+        if (res.status === 401 || data.message?.toLowerCase().includes("token")) {
+          setSubmitError("Session expired. Please log in again.");
+          localStorage.removeItem("adminAccessToken");
+        } else {
+          throw new Error(data.message || "Failed to create module");
+        }
+        return;
+      }
 
       onSuccess(`Module "${form.title}" created successfully`);
-      setForm({ trackId: form.trackId, title: "", description: "", content: "", orderIndex: "0", estimatedReadMinutes: "0", passMarkPercent: "65", maxAttempts: "2", status: "draft" });
+      setForm({ 
+        trackId: form.trackId, 
+        title: "", description: "", content: "", 
+        orderIndex: "0", estimatedReadMinutes: "0", 
+        passMarkPercent: "65", maxAttempts: "2", status: "draft" 
+      });
       setErrors({});
     } catch (err: any) {
       setSubmitError(err.message);
@@ -584,6 +617,12 @@ function UnitFormSection({ onSuccess }: { onSuccess: (msg: string) => void }) {
     setSubmitError("");
     if (!validate()) return;
 
+    const token = localStorage.getItem("adminAccessToken");
+    if (!token) {
+      setSubmitError("No authentication token found. Please log in again.");
+      return;
+    }
+
     setLoading(true);
     let finalVideoUrl = form.videoUrl;
     let finalPdfUrl = form.pdfUrl;
@@ -596,12 +635,11 @@ function UnitFormSection({ onSuccess }: { onSuccess: (msg: string) => void }) {
         finalPdfUrl = await uploadToCloudinary(pdfFile, "pdfs");
       }
 
-      const token = localStorage.getItem("adminAccessToken");
       const res = await fetch(`${BASE}admin/modules/${form.moduleId}/units`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          Authorization: `Bearer ${token}`,
         },
         credentials: "include",
         body: JSON.stringify({
@@ -622,7 +660,16 @@ function UnitFormSection({ onSuccess }: { onSuccess: (msg: string) => void }) {
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Failed to create unit");
+
+      if (!res.ok) {
+        if (res.status === 401 || data.message?.toLowerCase().includes("token")) {
+          setSubmitError("Session expired. Please log in again.");
+          localStorage.removeItem("adminAccessToken");
+        } else {
+          throw new Error(data.message || "Failed to create unit");
+        }
+        return;
+      }
 
       onSuccess(`Unit "${form.title}" created successfully`);
       setForm({
@@ -852,8 +899,6 @@ export default function CurriculumCreate() {
 
       {/* Tab Nav */}
       <div className="max-w-4xl mx-auto px-8 pt-6">
-
-        
 
         {/* Tab buttons */}
         <div className="flex border-b border-gray-200 bg-white rounded-t-xl overflow-hidden shadow-sm">
