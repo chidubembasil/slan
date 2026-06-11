@@ -318,7 +318,7 @@ export default function ManageTracks() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed to load tracks");
-      setTracks(Array.isArray(data) ? data : data.tracks ?? []);
+      setTracks(Array.isArray(data) ? data : data.data ?? data.tracks ?? []);
     } catch (err: any) {
       setFetchError(err.message);
     } finally {
