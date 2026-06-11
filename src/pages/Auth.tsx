@@ -219,7 +219,7 @@ export default function AdminLogin() {
                   </div>
                   <div className="flex gap-2">
                     {otp.map((digit, i) => (
-                      <input key={i} ref={(el) => { otpRefs.current[i] = el; }} type="text" inputMode="numeric" pattern="[0-9]*" maxLength={1} value={digit} onChange={(e) => handleOtpChange(i, e.target.value)} onKeyDown={(e) => { if (e.key === "Backspace" &&!digit && i > 0) otpRefs.current[i - 1]?.focus(); }} onPaste={(e) => { e.preventDefault(); const pasted = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6); if (!pasted) return; const newOtp = [...otp]; pasted.split("").forEach((ch, idx) => { if (idx < 6) newOtp[idx] = ch; }); setOtp(newOtp); }} className={`flex-1 min-w-0 h-12 text-center text-xl font-semibold border-2 rounded-lg focus:outline-none focus:ring-2 transition-colors ${digit? "border-[#004900] focus:ring-[#004900]/20" : "border-gray-300 focus:border-[#004900] focus:ring-[#004900]/20"}`} />
+                      <input key={i} ref={(el) => { otpRefs.current[i] = el; }} type="text" inputMode="numeric" pattern="[0-9]*" maxLength={1} value={digit} onChange={(e) => handleOtpChange(i, e.target.value)} onKeyDown={(e) => { if (e.key === "Backspace" &&!digit && i > 0) otpRefs.current[i - 1]?.focus(); }} onPaste={(e) => { e.preventDefault(); const pasted = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6); if (!pasted) return; const newOtp = [...otp]; pasted.split("").forEach((ch, idx) => { if (idx < 6) newOtp[idx] = ch; }); setOtp(newOtp); }} className={`flex-1 min-w-0 h-12 text-center text-xl font-semibold border-2 rounded-lg focus:outline-none focus:ring-2 transition-colors ${digit? "border-[#004900] focus:ring-[#004900]/20" : "border-gray-300 focus:border-[#004900] focus:ring-[#004900]/20"}`} aria-label="input"/>
                     ))}
                   </div>
                   {(errors.otp || otpError) && <p className="text-xs text-red-600 mt-1">{errors.otp || otpError}</p>}
@@ -228,7 +228,7 @@ export default function AdminLogin() {
                 {errors.submit && <div className="bg-red-50 border border-red-200 rounded-lg px-3.5 py-2.5"><p className="text-xs text-red-700">{errors.submit}</p></div>}
 
                 <button type="button" onClick={() => handleSubmit()} disabled={loading || otp.join("").length!== 6} className="w-full bg-[#004900] text-white py-2.5 rounded-lg font-medium text-sm disabled:opacity-60 hover:bg-[#005c00] transition-colors mt-2">
-                  {loading? "Authorizing…" : "Authorize Access →"}
+                  {loading? "Authorizing…" : "Submit →"}
                 </button>
                 <button type="button" onClick={() => setStep('credentials')} className="w-full text-xs text-gray-500 mt-1 hover:text-gray-700">Back to login</button>
               </>
