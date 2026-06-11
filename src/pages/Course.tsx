@@ -1,21 +1,39 @@
 import { useState } from "react";
 import Manage from "../components/Manage-Course";
 import Upload from "../components/Upload-Course";
+import ManageTracks from "../components/Manage-Tracks";
+import ManageModules from "../components/Manage-Module";
+import ManageUnits from "../components/Manage-Unit";
 
 export default function Course() {
   const [activeTab, setActiveTab] = useState("manage");
 
   return (
     <div className="w-[95%] flex flex-col gap-3">
-      <ul className="w-full flex flex-row gap-5 border-b pt-2 pl-2">
+      <ul className="w-full flex flex-row gap-5 border-b pt-2 pl-2 overflow-x-auto">
+        <li>
+          <button
+            type="button"
+            onClick={() => setActiveTab("upload")}
+            className={`w-fit h-15 px-3 transition whitespace-nowrap
+            ${
+              activeTab === "upload"
+                ? "border-b-2 border-[#004900] text-[#004900] font-semibold"
+                : "text-gray-500"
+            }`}
+          >
+            Create Courses
+          </button>
+        </li>
+
         <li>
           <button
             type="button"
             onClick={() => setActiveTab("manage")}
-            className={`w-fit h-15 px-3 transition
+            className={`w-fit h-15 px-3 transition whitespace-nowrap
             ${
               activeTab === "manage"
-               ? "border-b-2 border-[#004900] text-[#004900] font-semibold"
+                ? "border-b-2 border-[#004900] text-[#004900] font-semibold"
                 : "text-gray-500"
             }`}
           >
@@ -26,15 +44,45 @@ export default function Course() {
         <li>
           <button
             type="button"
-            onClick={() => setActiveTab("upload")}
-            className={`w-fit h-15 px-3 transition
+            onClick={() => setActiveTab("tracks")}
+            className={`w-fit h-15 px-3 transition whitespace-nowrap
             ${
-              activeTab === "upload"
-               ? "border-b-2 border-[#004900] text-[#004900] font-semibold"
+              activeTab === "tracks"
+                ? "border-b-2 border-[#004900] text-[#004900] font-semibold"
                 : "text-gray-500"
             }`}
           >
-            Upload New
+            Manage Tracks
+          </button>
+        </li>
+
+        <li>
+          <button
+            type="button"
+            onClick={() => setActiveTab("modules")}
+            className={`w-fit h-15 px-3 transition whitespace-nowrap
+            ${
+              activeTab === "modules"
+                ? "border-b-2 border-[#004900] text-[#004900] font-semibold"
+                : "text-gray-500"
+            }`}
+          >
+            Manage Modules
+          </button>
+        </li>
+
+        <li>
+          <button
+            type="button"
+            onClick={() => setActiveTab("units")}
+            className={`w-fit h-15 px-3 transition whitespace-nowrap
+            ${
+              activeTab === "units"
+                ? "border-b-2 border-[#004900] text-[#004900] font-semibold"
+                : "text-gray-500"
+            }`}
+          >
+            Manage Units
           </button>
         </li>
       </ul>
@@ -49,6 +97,24 @@ export default function Course() {
         {activeTab === "upload" && (
           <div>
             <Upload onComplete={() => setActiveTab("manage")} />
+          </div>
+        )}
+
+        {activeTab === "tracks" && (
+          <div>
+            <ManageTracks />
+          </div>
+        )}
+
+        {activeTab === "modules" && (
+          <div>
+            <ManageModules />
+          </div>
+        )}
+
+        {activeTab === "units" && (
+          <div>
+            <ManageUnits />
           </div>
         )}
       </div>
