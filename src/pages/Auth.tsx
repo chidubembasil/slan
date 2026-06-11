@@ -1,24 +1,24 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 
 const BASE = import.meta.env.VITE_BASE_URL;
 
 export default function AdminLogin() {
-  const [step, setStep] = useState<"credentials" | "otp">("credentials");
-  const [mode, setMode] = useState<"password" | "otp">("password");
   const [loading, setLoading] = useState(false);
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpSending, setOtpSending] = useState(false);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [otpEmail, setOtpEmail] = useState("");
   const [trustDevice, setTrustDevice] = useState(false);
 
   const [otp, setOtp] = useState<string[]>(Array(6).fill(""));
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  const [credErrors, setCredErrors] = useState<Record<string, string>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [otpError, setOtpError] = useState("");
   const [resendTimer, setResendTimer] = useState(0);
 
+  // Redirect if already authenticated
   useEffect(() => {
     const token = localStorage.getItem("adminAccessToken");
     const expiry = localStorage.getItem("adminTokenExpiry");
@@ -27,69 +27,97 @@ export default function AdminLogin() {
     }
   }, []);
 
+  // Resend countdown
   useEffect(() => {
     if (resendTimer > 0) {
-      const t = setTimeout(() => setResendTimer(resendTimer - 1), 1000);
+      const t = setTimeout(() => setResendTimer((prev) => prev - 1), 1000);
       return () => clearTimeout(t);
     }
   }, [resendTimer]);
 
-  const handleAuthorize = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setCredErrors({});
+  const sendOtp = useCallback(
+    async (targetEmail: string) => {
+      if (!targetEmail.trim() || !/\S+@\S+\.\S+/.test(targetEmail)) return;
+      if (otpSent || otpSending) return;
 
-    if (mode === "password") {
-      if (!email.trim()) return setCredErrors({ email: "Email is required" });
-      if (!password) return setCredErrors({ password: "Password is required" });
-
-      setLoading(true);
-      try {
-        const res = await fetch(`${BASE}admin/auth/login`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ email, password, trustWorkstation: trustDevice }),
-        });
-
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.message || "Login failed");
-
-        localStorage.setItem("adminAccessToken", data.data?.accessToken || data.data?.token || data.accessToken || data.token);
-        localStorage.setItem("adminRefreshToken", data.data?.refreshToken || data.refreshToken);
-        localStorage.setItem("adminUser", JSON.stringify(data.data?.admin || data.data?.user || data.admin || data.user));
-
-        const hours = trustDevice ? 8 : 1;
-        localStorage.setItem("adminTokenExpiry", String(Date.now() + hours * 3600 * 1000));
-
-        window.location.href = "/dashboard";
-      } catch (err: any) {
-        setCredErrors({ submit: err.message });
-      } finally {
-        setLoading(false);
-      }
-    } else {
-      if (!otpEmail.trim()) return setCredErrors({ otpEmail: "Email is required" });
-
-      setLoading(true);
+      setOtpSending(true);
+      setErrors((prev) => ({ ...prev, otp: "" }));
       try {
         const res = await fetch(`${BASE}admin/auth/otp/send`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: otpEmail, trustWorkstation: trustDevice }),
+          body: JSON.stringify({ email: targetEmail }),
         });
-
         const data = await res.json();
-        if (!res.ok) throw new Error(data.message || "Failed");
-
-        setStep("otp");
-        setOtp(Array(6).fill(""));
+        if (!res.ok) throw new Error(data.message || "Failed to send OTP");
+        setOtpSent(true);
         setResendTimer(60);
-        setTimeout(() => otpRefs.current[0]?.focus(), 100);
+        setTimeout(() => otpRefs.current[0]?.focus(), 150);
       } catch (err: any) {
-        setCredErrors({ submit: err.message });
+        setErrors((prev) => ({ ...prev, email: err.message }));
       } finally {
-        setLoading(false);
+        setOtpSending(false);
       }
+    },
+    [otpSent, otpSending]
+  );
+
+  const handleEmailBlur = () => {
+    if (email.trim() && /\S+@\S+\.\S+/.test(email)) {
+      sendOtp(email);
+    }
+  };
+
+  const saveSession = (data: any) => {
+    const token =
+      data.data?.accessToken ||
+      data.data?.token ||
+      data.accessToken ||
+      data.token;
+    const refresh =
+      data.data?.refreshToken || data.refreshToken;
+    const user =
+      data.data?.admin || data.data?.user || data.admin || data.user;
+
+    localStorage.setItem("adminAccessToken", token);
+    localStorage.setItem("adminRefreshToken", refresh);
+    localStorage.setItem("adminUser", JSON.stringify(user));
+    const hours = trustDevice ? 8 : 1;
+    localStorage.setItem(
+      "adminTokenExpiry",
+      String(Date.now() + hours * 3600 * 1000)
+    );
+  };
+
+  const handleSubmit = async () => {
+    const newErrors: Record<string, string> = {};
+    if (!email.trim()) newErrors.email = "Email is required";
+    if (!password) newErrors.password = "Password is required";
+    if (otp.join("").length !== 6) newErrors.otp = "Enter the 6-digit OTP";
+    if (Object.keys(newErrors).length) return setErrors(newErrors);
+
+    setLoading(true);
+    setErrors({});
+    try {
+      const res = await fetch(`${BASE}admin/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          email,
+          password,
+          otp: otp.join(""),
+          trustWorkstation: trustDevice,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Login failed");
+      saveSession(data);
+      window.location.href = "/dashboard";
+    } catch (err: any) {
+      setErrors({ submit: err.message });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -99,185 +127,208 @@ export default function AdminLogin() {
     newOtp[index] = value.slice(-1);
     setOtp(newOtp);
     setOtpError("");
+    setErrors((prev) => ({ ...prev, otp: "" }));
     if (value && index < 5) otpRefs.current[index + 1]?.focus();
-    if (newOtp.every(d => d)) {
-      handleVerifyOtp(newOtp.join(""));
-    }
-  };
 
-  const handleVerifyOtp = async (code?: string) => {
-    const otpCode = code || otp.join("");
-    if (otpCode.length !== 6) return setOtpError("Enter 6 digits");
+    // Auto-submit when OTP is complete and all fields are filled
+    if (newOtp.every((d) => d) && email && password) {
+      // Small delay to allow state to settle
+      setTimeout(() => {
+        const newErrors: Record<string, string> = {};
+        if (!email.trim()) newErrors.email = "Email is required";
+        if (!password) newErrors.password = "Password is required";
+        if (Object.keys(newErrors).length) return setErrors(newErrors);
 
-    setLoading(true);
-    try {
-      const res = await fetch(`${BASE}admin/auth/otp/verify`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ email: otpEmail, otp: otpCode, trustWorkstation: trustDevice }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Invalid code");
-
-      localStorage.setItem("adminAccessToken", data.data?.accessToken || data.data?.token || data.accessToken || data.token);
-      localStorage.setItem("adminRefreshToken", data.data?.refreshToken || data.refreshToken);
-      localStorage.setItem("adminUser", JSON.stringify(data.data?.admin || data.data?.user || data.admin || data.user));
-
-      const hours = trustDevice ? 8 : 1;
-      localStorage.setItem("adminTokenExpiry", String(Date.now() + hours * 3600 * 1000));
-
-      window.location.href = "/dashboard";
-    } catch (err: any) {
-      setOtpError(err.message);
-      setOtp(Array(6).fill(""));
-      otpRefs.current[0]?.focus();
-    } finally {
-      setLoading(false);
+        setLoading(true);
+        fetch(`${BASE}admin/auth/login`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            email,
+            password,
+            otp: newOtp.join(""),
+            trustWorkstation: trustDevice,
+          }),
+        })
+          .then((r) => r.json())
+          .then((data) => {
+            if (!data.ok && data.message) throw new Error(data.message);
+            saveSession(data);
+            window.location.href = "/dashboard";
+          })
+          .catch((err) => setErrors({ submit: err.message }))
+          .finally(() => setLoading(false));
+      }, 80);
     }
   };
 
   const handleResend = async () => {
-    if (resendTimer > 0) return;
-    setLoading(true);
+    if (resendTimer > 0 || !email) return;
+    setOtpSending(true);
+    setOtp(Array(6).fill(""));
+    setOtpError("");
     try {
-      const res = await fetch(`${BASE}admin/auth/otp/resend`, {
+      const res = await fetch(`${BASE}admin/auth/otp/send`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: otpEmail }),
+        body: JSON.stringify({ email }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed to resend");
       setResendTimer(60);
-      setOtp(Array(6).fill(""));
-      setOtpError("");
+      setTimeout(() => otpRefs.current[0]?.focus(), 100);
     } catch (err: any) {
-      setOtpError(err.message || "Failed to resend");
+      setOtpError(err.message);
     } finally {
-      setLoading(false);
+      setOtpSending(false);
     }
   };
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-6xl grid lg:grid-cols-2 bg-white rounded-2xl shadow-xl overflow-hidden">
-        <div className="bg-[#004900] p-12 text-white flex flex-col justify-between">
+      <div className="w-full max-w-5xl grid lg:grid-cols-2 bg-white rounded-2xl shadow-xl overflow-hidden">
+
+        {/* Left panel */}
+        <div className="bg-[#004900] p-10 lg:p-12 text-white flex flex-col justify-between min-h-[220px] lg:min-h-0">
           <div>
-            <p className="font-bold mb-20">SLAN ADMIN</p>
-            <h1 className="text-5xl font-bold leading-tight">Secure Administrator<br />Access</h1>
-            <p className="text-white/70 mt-4">Institutional gateway for state TSCs and Academy facilitators.</p>
-          </div>
-          <div className="bg-white/10 rounded-xl p-4 border border-white/20 flex flex-row gap-2 items-center">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-            </svg>
-            Enterprise Grade Security Enabled
+            <p className="font-bold text-sm tracking-widest uppercase mb-10 lg:mb-20 opacity-80">
+              SLAN ADMIN
+            </p>
+            <h1 className="text-3xl lg:text-5xl font-bold leading-tight">
+              Secure Administrator
+              <br />
+              Access
+            </h1>
+            <p className="text-white/70 mt-3 text-sm lg:text-base">
+              Institutional gateway for state TSCs and Academy facilitators.
+            </p>
           </div>
         </div>
 
-        <div className="p-12 flex flex-col justify-center">
-          {step === "credentials" ? (
-            <>
-              <h2 className="text-2xl font-semibold mb-1">Authorize Access</h2>
-              <p className="text-sm text-gray-600 mb-6">Enter your credentials to continue.</p>
+        {/* Right panel */}
+        <div className="p-8 lg:p-12 flex flex-col justify-center">
+          <h2 className="text-2xl font-semibold mb-1">Authorize Access</h2>
+          <p className="text-sm text-gray-500 mb-7">
+            Enter your credentials and the OTP sent to your email.
+          </p>
 
-              <div className="flex border-b mb-6">
+          <div className="space-y-4">
+            {/* Email */}
+            <div>
+              <label className="text-xs font-medium text-gray-700 block mb-1.5">
+                Email Address
+              </label>
+              <div className="relative">
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    // Reset OTP state if email changes
+                    if (otpSent) {
+                      setOtpSent(false);
+                      setOtp(Array(6).fill(""));
+                    }
+                  }}
+                  onBlur={handleEmailBlur}
+                  placeholder="admin@example.com"
+                  className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] pr-10"
+                />
+                {otpSending && (
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2">
+                    <svg
+                      className="animate-spin h-4 w-4 text-[#004900]"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+                      />
+                    </svg>
+                  </span>
+                )}
+                {otpSent && !otpSending && (
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[#004900]">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  </span>
+                )}
+              </div>
+              {errors.email && (
+                <p className="text-xs text-red-600 mt-1">{errors.email}</p>
+              )}
+              {otpSent && (
+                <p className="text-xs text-[#004900] mt-1">
+                  OTP sent — check your inbox.
+                </p>
+              )}
+            </div>
+
+            {/* Password */}
+            <div>
+              <label className="text-xs font-medium text-gray-700 block mb-1.5">
+                System Password
+              </label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter password"
+                className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900]"
+              />
+              {errors.password && (
+                <p className="text-xs text-red-600 mt-1">{errors.password}</p>
+              )}
+            </div>
+
+            {/* OTP */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-medium text-gray-700">
+                  OTP Code
+                </label>
                 <button
-                  onClick={() => setMode("password")}
-                  className={`flex-1 pb-2 text-sm font-medium border-b-2 ${
-                    mode === "password" ? "border-[#004900] text-[#004900]" : "border-transparent text-gray-500"
-                  }`}
+                  type="button"
+                  onClick={handleResend}
+                  disabled={resendTimer > 0 || otpSending || !email}
+                  className="text-xs text-[#004900] font-medium disabled:text-gray-400 disabled:cursor-not-allowed"
                 >
-                  Password Login
-                </button>
-                <button
-                  onClick={() => setMode("otp")}
-                  className={`flex-1 pb-2 text-sm font-medium border-b-2 ${
-                    mode === "otp" ? "border-[#004900] text-[#004900]" : "border-transparent text-gray-500"
-                  }`}
-                >
-                  OTP-Only Access
+                  {otpSending
+                    ? "Sending…"
+                    : resendTimer > 0
+                    ? `Resend in ${resendTimer}s`
+                    : otpSent
+                    ? "Resend OTP"
+                    : "Send OTP"}
                 </button>
               </div>
 
-              <form onSubmit={handleAuthorize} className="space-y-4">
-                {mode === "password" ? (
-                  <>
-                    <div>
-                      <label className="text-xs font-medium text-gray-700 block mb-1.5">
-                        Email Address or Administrator ID
-                      </label>
-                      <input
-                        type="email"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        placeholder="Enter your email"
-                        className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20"
-                      />
-                      {credErrors.email && <p className="text-xs text-red-600 mt-1">{credErrors.email}</p>}
-                    </div>
-                    <div>
-                      <label className="text-xs font-medium text-gray-700 block mb-1.5">System Password</label>
-                      <input
-                        type="password"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        placeholder="Enter password"
-                        className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20"
-                      />
-                      {credErrors.password && <p className="text-xs text-red-600 mt-1">{credErrors.password}</p>}
-                    </div>
-                  </>
-                ) : (
-                  <div>
-                    <label className="text-xs font-medium text-gray-700 block mb-1.5">OTP Email Address</label>
-                    <input
-                      type="email"
-                      value={otpEmail}
-                      onChange={(e) => setOtpEmail(e.target.value)}
-                      placeholder="Enter your admin email"
-                      className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20"
-                    />
-                    {credErrors.otpEmail && <p className="text-xs text-red-600 mt-1">{credErrors.otpEmail}</p>}
-                    <div className="bg-green-50 p-3 rounded-lg border border-green-200 mt-2">
-                      <p className="text-xs text-green-800">We'll send a 6-digit code to this email.</p>
-                    </div>
-                  </div>
-                )}
-
-                <label className="flex items-center gap-2 text-xs">
-                  <input type="checkbox" checked={trustDevice} onChange={(e) => setTrustDevice(e.target.checked)} />
-                  Trust this workstation for 8 hours
-                </label>
-
-                {credErrors.submit && <p className="text-xs text-red-600">{credErrors.submit}</p>}
-
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full bg-[#004900] text-white py-2.5 rounded-lg font-medium disabled:opacity-60"
-                >
-                  {loading ? "Processing..." : mode === "password" ? "Authorize Access →" : "Send Access OTP →"}
-                </button>
-              </form>
-            </>
-          ) : (
-            <>
-              <button onClick={() => setStep("credentials")} className="text-xs mb-4 hover:underline w-fit">← Back</button>
-              <h2 className="text-2xl font-semibold">Enter Verification Code</h2>
-              <p className="text-sm text-gray-600 mb-6">Code sent to <b>{otpEmail}</b></p>
-
-              <div className="flex gap-3 justify-center mb-6">
+              <div className="flex gap-2">
                 {otp.map((digit, i) => (
                   <input
                     key={i}
-                    ref={(el) => { otpRefs.current[i] = el; }}
+                    ref={(el) => {
+                      otpRefs.current[i] = el;
+                    }}
                     type="text"
                     inputMode="numeric"
                     pattern="[0-9]*"
                     maxLength={1}
                     value={digit}
+                    aria-label="input"
                     onChange={(e) => handleOtpChange(i, e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === "Backspace" && !digit && i > 0) {
@@ -286,49 +337,67 @@ export default function AdminLogin() {
                     }}
                     onPaste={(e) => {
                       e.preventDefault();
-                      const pastedData = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6);
-                      if (pastedData) {
-                        const newOtp = [...otp];
-                        pastedData.split("").forEach((char, idx) => {
-                          if (idx < 6) newOtp[idx] = char;
-                        });
-                        setOtp(newOtp);
-                        const nextEmptyIndex = newOtp.findIndex(d => !d);
-                        if (nextEmptyIndex !== -1) {
-                          otpRefs.current[nextEmptyIndex]?.focus();
-                        } else {
-                          otpRefs.current[5]?.focus();
-                          handleVerifyOtp(newOtp.join(""));
-                        }
+                      const pasted = e.clipboardData
+                        .getData("text")
+                        .replace(/\D/g, "")
+                        .slice(0, 6);
+                      if (!pasted) return;
+                      const newOtp = [...otp];
+                      pasted.split("").forEach((ch, idx) => {
+                        if (idx < 6) newOtp[idx] = ch;
+                      });
+                      setOtp(newOtp);
+                      const next = newOtp.findIndex((d) => !d);
+                      if (next !== -1) otpRefs.current[next]?.focus();
+                      else {
+                        otpRefs.current[5]?.focus();
+                        handleOtpChange(5, newOtp[5]);
                       }
                     }}
-                    className="w-12 h-14 text-center text-2xl font-semibold border-2 border-gray-300 rounded-xl focus:border-[#004900] focus:outline-none focus:ring-2 focus:ring-[#004900]/20"
+                    className={`flex-1 min-w-0 h-12 text-center text-xl font-semibold border-2 rounded-lg focus:outline-none focus:ring-2 transition-colors ${
+                      digit
+                        ? "border-[#004900] focus:ring-[#004900]/20"
+                        : "border-gray-300 focus:border-[#004900] focus:ring-[#004900]/20"
+                    }`}
                   />
                 ))}
               </div>
 
-              {otpError && <p className="text-xs text-red-600 text-center mb-3">{otpError}</p>}
+              {(errors.otp || otpError) && (
+                <p className="text-xs text-red-600 mt-1">
+                  {errors.otp || otpError}
+                </p>
+              )}
+            </div>
 
-              <button
-                onClick={() => handleVerifyOtp()}
-                disabled={otp.join("").length !== 6 || loading}
-                className="w-full bg-[#004900] text-white py-3 rounded-lg font-medium disabled:opacity-50"
-              >
-                {loading ? "Verifying..." : "Verify & Continue"}
-              </button>
+            {/* Trust device */}
+            <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={trustDevice}
+                onChange={(e) => setTrustDevice(e.target.checked)}
+                className="rounded"
+              />
+              Trust this workstation for 8 hours
+            </label>
 
-              <p className="text-xs text-center mt-4 text-gray-500">
-                Didn't receive code?{" "}
-                <button
-                  onClick={handleResend}
-                  disabled={resendTimer > 0}
-                  className="text-[#004900] font-medium disabled:text-gray-400"
-                >
-                  {resendTimer > 0 ? `Resend in ${resendTimer}s` : "Resend code"}
-                </button>
-              </p>
-            </>
-          )}
+            {/* Submit error */}
+            {errors.submit && (
+              <div className="bg-red-50 border border-red-200 rounded-lg px-3.5 py-2.5">
+                <p className="text-xs text-red-700">{errors.submit}</p>
+              </div>
+            )}
+
+            {/* Submit button */}
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={loading}
+              className="w-full bg-[#004900] text-white py-2.5 rounded-lg font-medium text-sm disabled:opacity-60 hover:bg-[#005c00] transition-colors mt-2"
+            >
+              {loading ? "Authorizing…" : "Authorize Access →"}
+            </button>
+          </div>
         </div>
       </div>
     </div>
