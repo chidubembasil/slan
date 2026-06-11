@@ -1,11 +1,11 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 
 const BASE = import.meta.env.VITE_BASE_URL;
 
 export default function AdminLogin() {
   const [loading, setLoading] = useState(false);
-  const [otpSent, setOtpSent] = useState(false);
   const [otpSending, setOtpSending] = useState(false);
+  const [step, setStep] = useState<'credentials' | 'otp'>('credentials');
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -35,65 +35,54 @@ export default function AdminLogin() {
     }
   }, [resendTimer]);
 
-  const sendOtp = useCallback(
-    async (targetEmail: string) => {
-      if (!targetEmail.trim() || !/\S+@\S+\.\S+/.test(targetEmail)) return;
-      if (otpSent || otpSending) return;
-
-      setOtpSending(true);
-      setErrors((prev) => ({ ...prev, otp: "" }));
-      try {
-        const res = await fetch(`${BASE}admin/auth/otp/send`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: targetEmail }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.message || "Failed to send OTP");
-        setOtpSent(true);
-        setResendTimer(60);
-        setTimeout(() => otpRefs.current[0]?.focus(), 150);
-      } catch (err: any) {
-        setErrors((prev) => ({ ...prev, email: err.message }));
-      } finally {
-        setOtpSending(false);
-      }
-    },
-    [otpSent, otpSending]
-  );
-
-  const handleEmailBlur = () => {
-    if (email.trim() && /\S+@\S+\.\S+/.test(email)) {
-      sendOtp(email);
-    }
-  };
-
   const saveSession = (data: any) => {
-    const token =
-      data.data?.accessToken ||
-      data.data?.token ||
-      data.accessToken ||
-      data.token;
-    const refresh =
-      data.data?.refreshToken || data.refreshToken;
-    const user =
-      data.data?.admin || data.data?.user || data.admin || data.user;
+    const token = data.data?.accessToken || data.data?.token || data.accessToken || data.token;
+    const refresh = data.data?.refreshToken || data.refreshToken;
+    const user = data.data?.admin || data.data?.user || data.admin || data.user;
 
     localStorage.setItem("adminAccessToken", token);
     localStorage.setItem("adminRefreshToken", refresh);
     localStorage.setItem("adminUser", JSON.stringify(user));
-    const hours = trustDevice ? 8 : 1;
-    localStorage.setItem(
-      "adminTokenExpiry",
-      String(Date.now() + hours * 3600 * 1000)
-    );
+    const hours = trustDevice? 8 : 1;
+    localStorage.setItem("adminTokenExpiry", String(Date.now() + hours * 3600 * 1000));
   };
 
-  const handleSubmit = async () => {
+  // STEP 1: send OTP
+  const handleCredentialsNext = async () => {
+    const newErrors: Record<string, string> = {};
+    if (!email.trim()) newErrors.email = "Email is required";
+    else if (!/\S+@\S+\.\S+/.test(email)) newErrors.email = "Enter a valid email";
+    if (!password) newErrors.password = "Password is required";
+    if (Object.keys(newErrors).length) return setErrors(newErrors);
+
+    setOtpSending(true);
+    setErrors({});
+    try {
+      const res = await fetch(`${BASE}admin/auth/otp/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to send OTP");
+      setStep("otp");
+      setResendTimer(60);
+      setOtp(Array(6).fill(""));
+      setTimeout(() => otpRefs.current[0]?.focus(), 150);
+    } catch (err: any) {
+      setErrors({ email: err.message });
+    } finally {
+      setOtpSending(false);
+    }
+  };
+
+  // STEP 2: verify OTP + login
+  const handleSubmit = async (otpOverride?: string) => {
+    const currentOtp = otpOverride?? otp.join("");
     const newErrors: Record<string, string> = {};
     if (!email.trim()) newErrors.email = "Email is required";
     if (!password) newErrors.password = "Password is required";
-    if (otp.join("").length !== 6) newErrors.otp = "Enter the 6-digit OTP";
+    if (currentOtp.length!== 6) newErrors.otp = "Enter the 6-digit OTP";
     if (Object.keys(newErrors).length) return setErrors(newErrors);
 
     setLoading(true);
@@ -106,7 +95,7 @@ export default function AdminLogin() {
         body: JSON.stringify({
           email,
           password,
-          otp: otp.join(""),
+          otp: currentOtp,
           trustWorkstation: trustDevice,
         }),
       });
@@ -127,44 +116,16 @@ export default function AdminLogin() {
     newOtp[index] = value.slice(-1);
     setOtp(newOtp);
     setOtpError("");
-    setErrors((prev) => ({ ...prev, otp: "" }));
+    setErrors((prev) => ({...prev, otp: "" }));
     if (value && index < 5) otpRefs.current[index + 1]?.focus();
 
-    // Auto-submit when OTP is complete and all fields are filled
     if (newOtp.every((d) => d) && email && password) {
-      // Small delay to allow state to settle
-      setTimeout(() => {
-        const newErrors: Record<string, string> = {};
-        if (!email.trim()) newErrors.email = "Email is required";
-        if (!password) newErrors.password = "Password is required";
-        if (Object.keys(newErrors).length) return setErrors(newErrors);
-
-        setLoading(true);
-        fetch(`${BASE}admin/auth/login`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({
-            email,
-            password,
-            otp: newOtp.join(""),
-            trustWorkstation: trustDevice,
-          }),
-        })
-          .then((r) => r.json())
-          .then((data) => {
-            if (!data.ok && data.message) throw new Error(data.message);
-            saveSession(data);
-            window.location.href = "/dashboard";
-          })
-          .catch((err) => setErrors({ submit: err.message }))
-          .finally(() => setLoading(false));
-      }, 80);
+      setTimeout(() => handleSubmit(newOtp.join("")), 80);
     }
   };
 
   const handleResend = async () => {
-    if (resendTimer > 0 || !email) return;
+    if (resendTimer > 0 ||!email) return;
     setOtpSending(true);
     setOtp(Array(6).fill(""));
     setOtpError("");
@@ -188,21 +149,12 @@ export default function AdminLogin() {
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <div className="w-full max-w-5xl grid lg:grid-cols-2 bg-white rounded-2xl shadow-xl overflow-hidden">
-
         {/* Left panel */}
-        <div className="bg-[#004900] p-10 lg:p-12 text-white flex flex-col justify-between min-h-55 lg:min-h-0">
+        <div className="bg-[#004900] p-10 lg:p-12 text-white flex flex-col justify-between">
           <div>
-            <p className="font-bold text-sm tracking-widest uppercase mb-10 lg:mb-20 opacity-80">
-              SLAN ADMIN
-            </p>
-            <h1 className="text-3xl lg:text-5xl font-bold leading-tight">
-              Secure Administrator
-              <br />
-              Access
-            </h1>
-            <p className="text-white/70 mt-3 text-sm lg:text-base">
-              Institutional gateway for state TSCs and Academy facilitators.
-            </p>
+            <p className="font-bold text-sm tracking-widest uppercase mb-10 lg:mb-20 opacity-80">SLAN ADMIN</p>
+            <h1 className="text-3xl lg:text-5xl font-bold leading-tight">Secure<br/>Administrator<br/>Access</h1>
+            <p className="text-white/70 mt-3 text-sm lg:text-base">Institutional gateway for state TSCs and Academy facilitators.</p>
           </div>
         </div>
 
@@ -210,193 +162,77 @@ export default function AdminLogin() {
         <div className="p-8 lg:p-12 flex flex-col justify-center">
           <h2 className="text-2xl font-semibold mb-1">Authorize Access</h2>
           <p className="text-sm text-gray-500 mb-7">
-            Enter your credentials and the OTP sent to your email.
+            {step === 'credentials'? 'Enter your credentials to continue.' : 'Enter the 6-digit code sent to your email.'}
           </p>
 
           <div className="space-y-4">
-            {/* Email */}
-            <div>
-              <label className="text-xs font-medium text-gray-700 block mb-1.5">
-                Email Address
-              </label>
-              <div className="relative">
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => {
-                    setEmail(e.target.value);
-                    // Reset OTP state if email changes
-                    if (otpSent) {
-                      setOtpSent(false);
-                      setOtp(Array(6).fill(""));
-                    }
-                  }}
-                  onBlur={handleEmailBlur}
-                  placeholder="admin@example.com"
-                  className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] pr-10"
-                />
-                {otpSending && (
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2">
-                    <svg
-                      className="animate-spin h-4 w-4 text-[#004900]"
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                    >
-                      <circle
-                        className="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                      />
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
-                      />
-                    </svg>
-                  </span>
-                )}
-                {otpSent && !otpSending && (
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[#004900]">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
-                  </span>
-                )}
-              </div>
-              {errors.email && (
-                <p className="text-xs text-red-600 mt-1">{errors.email}</p>
-              )}
-              {otpSent && (
-                <p className="text-xs text-[#004900] mt-1">
-                  OTP sent — check your inbox.
-                </p>
-              )}
-            </div>
+            {step === 'credentials'? (
+              <>
+                {/* Email */}
+                <div>
+                  <label className="text-xs font-medium text-gray-700 block mb-1.5">Email Address</label>
+                  <div className="relative">
+                    <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="admin@example.com" className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] pr-10" />
+                    {otpSending && (
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2">
+                        <svg className="animate-spin h-4 w-4 text-[#004900]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+                      </span>
+                    )}
+                  </div>
+                  {errors.email && <p className="text-xs text-red-600 mt-1">{errors.email}</p>}
+                </div>
 
-            {/* Password */}
-            <div>
-              <label className="text-xs font-medium text-gray-700 block mb-1.5">
-                Password
-              </label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter password"
-                className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900]"
-              />
-              {errors.password && (
-                <p className="text-xs text-red-600 mt-1">{errors.password}</p>
-              )}
-            </div>
+                {/* Password */}
+                <div>
+                  <label className="text-xs font-medium text-gray-700 block mb-1.5">Password</label>
+                  <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter password" className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900]" />
+                  {errors.password && <p className="text-xs text-red-600 mt-1">{errors.password}</p>}
+                </div>
 
-            {/* OTP */}
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="text-xs font-medium text-gray-700">
-                  OTP Code
+                <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer select-none">
+                  <input type="checkbox" checked={trustDevice} onChange={(e) => setTrustDevice(e.target.checked)} className="rounded" />
+                  Trust this workstation for 8 hours
                 </label>
-                <button
-                  type="button"
-                  onClick={handleResend}
-                  disabled={resendTimer > 0 || otpSending || !email}
-                  className="text-xs text-[#004900] font-medium disabled:text-gray-400 disabled:cursor-not-allowed"
-                >
-                  {otpSending
-                    ? "Sending…"
-                    : resendTimer > 0
-                    ? `Resend in ${resendTimer}s`
-                    : otpSent
-                    ? "Resend OTP"
-                    : "Send OTP"}
+
+                {errors.submit && <div className="bg-red-50 border border-red-200 rounded-lg px-3.5 py-2.5"><p className="text-xs text-red-700">{errors.submit}</p></div>}
+
+                <button type="button" onClick={handleCredentialsNext} disabled={otpSending} className="w-full bg-[#004900] text-white py-2.5 rounded-lg font-medium text-sm disabled:opacity-60 hover:bg-[#005c00] transition-colors mt-2">
+                  {otpSending? "Sending OTP…" : "Login →"}
                 </button>
-              </div>
+              </>
+            ) : (
+              <>
+                <div className="bg-gray-50 border border-gray-200 rounded-lg px-3.5 py-2.5 flex items-center justify-between">
+                  <div>
+                    <p className="text-[11px] text-gray-500">OTP sent to</p>
+                    <p className="text-sm font-medium text-gray-900">{email}</p>
+                  </div>
+                  <button type="button" onClick={() => setStep('credentials')} className="text-xs text-[#004900] font-medium">Change</button>
+                </div>
 
-              <div className="flex gap-2">
-                {otp.map((digit, i) => (
-                  <input
-                    key={i}
-                    ref={(el) => {
-                      otpRefs.current[i] = el;
-                    }}
-                    type="text"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    maxLength={1}
-                    value={digit}
-                    aria-label="input"
-                    onChange={(e) => handleOtpChange(i, e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Backspace" && !digit && i > 0) {
-                        otpRefs.current[i - 1]?.focus();
-                      }
-                    }}
-                    onPaste={(e) => {
-                      e.preventDefault();
-                      const pasted = e.clipboardData
-                        .getData("text")
-                        .replace(/\D/g, "")
-                        .slice(0, 6);
-                      if (!pasted) return;
-                      const newOtp = [...otp];
-                      pasted.split("").forEach((ch, idx) => {
-                        if (idx < 6) newOtp[idx] = ch;
-                      });
-                      setOtp(newOtp);
-                      const next = newOtp.findIndex((d) => !d);
-                      if (next !== -1) otpRefs.current[next]?.focus();
-                      else {
-                        otpRefs.current[5]?.focus();
-                        handleOtpChange(5, newOtp[5]);
-                      }
-                    }}
-                    className={`flex-1 min-w-0 h-12 text-center text-xl font-semibold border-2 rounded-lg focus:outline-none focus:ring-2 transition-colors ${
-                      digit
-                        ? "border-[#004900] focus:ring-[#004900]/20"
-                        : "border-gray-300 focus:border-[#004900] focus:ring-[#004900]/20"
-                    }`}
-                  />
-                ))}
-              </div>
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-xs font-medium text-gray-700">OTP Code</label>
+                    <button type="button" onClick={handleResend} disabled={resendTimer > 0 || otpSending} className="text-xs text-[#004900] font-medium disabled:text-gray-400 disabled:cursor-not-allowed">
+                      {otpSending? "Sending…" : resendTimer > 0? `Resend in ${resendTimer}s` : "Resend OTP"}
+                    </button>
+                  </div>
+                  <div className="flex gap-2">
+                    {otp.map((digit, i) => (
+                      <input key={i} ref={(el) => { otpRefs.current[i] = el; }} type="text" inputMode="numeric" pattern="[0-9]*" maxLength={1} value={digit} onChange={(e) => handleOtpChange(i, e.target.value)} onKeyDown={(e) => { if (e.key === "Backspace" &&!digit && i > 0) otpRefs.current[i - 1]?.focus(); }} onPaste={(e) => { e.preventDefault(); const pasted = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6); if (!pasted) return; const newOtp = [...otp]; pasted.split("").forEach((ch, idx) => { if (idx < 6) newOtp[idx] = ch; }); setOtp(newOtp); }} className={`flex-1 min-w-0 h-12 text-center text-xl font-semibold border-2 rounded-lg focus:outline-none focus:ring-2 transition-colors ${digit? "border-[#004900] focus:ring-[#004900]/20" : "border-gray-300 focus:border-[#004900] focus:ring-[#004900]/20"}`} />
+                    ))}
+                  </div>
+                  {(errors.otp || otpError) && <p className="text-xs text-red-600 mt-1">{errors.otp || otpError}</p>}
+                </div>
 
-              {(errors.otp || otpError) && (
-                <p className="text-xs text-red-600 mt-1">
-                  {errors.otp || otpError}
-                </p>
-              )}
-            </div>
+                {errors.submit && <div className="bg-red-50 border border-red-200 rounded-lg px-3.5 py-2.5"><p className="text-xs text-red-700">{errors.submit}</p></div>}
 
-            {/* Trust device */}
-            <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={trustDevice}
-                onChange={(e) => setTrustDevice(e.target.checked)}
-                className="rounded"
-              />
-              Trust this workstation for 8 hours
-            </label>
-
-            {/* Submit error */}
-            {errors.submit && (
-              <div className="bg-red-50 border border-red-200 rounded-lg px-3.5 py-2.5">
-                <p className="text-xs text-red-700">{errors.submit}</p>
-              </div>
+                <button type="button" onClick={() => handleSubmit()} disabled={loading || otp.join("").length!== 6} className="w-full bg-[#004900] text-white py-2.5 rounded-lg font-medium text-sm disabled:opacity-60 hover:bg-[#005c00] transition-colors mt-2">
+                  {loading? "Authorizing…" : "Authorize Access →"}
+                </button>
+                <button type="button" onClick={() => setStep('credentials')} className="w-full text-xs text-gray-500 mt-1 hover:text-gray-700">Back to login</button>
+              </>
             )}
-
-            {/* Submit button */}
-            <button
-              type="button"
-              onClick={handleSubmit}
-              disabled={loading}
-              className="w-full bg-[#004900] text-white py-2.5 rounded-lg font-medium text-sm disabled:opacity-60 hover:bg-[#005c00] transition-colors mt-2"
-            >
-              {loading ? "Authorizing…" : "Authorize Access →"}
-            </button>
           </div>
         </div>
       </div>
