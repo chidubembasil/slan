@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 const BASE = import.meta.env.VITE_BASE_URL;
 
@@ -107,7 +107,7 @@ const uploadToCloudinary = async (file: File, folder: string = "curriculum"): Pr
   const API_SECRET = import.meta.env.VITE_API_SECRET_KEY;
   const CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
 
-  if (!API_KEY || !API_SECRET || !CLOUD_NAME) {
+  if (!API_KEY ||!API_SECRET ||!CLOUD_NAME) {
     throw new Error("Cloudinary credentials missing in env");
   }
 
@@ -115,8 +115,8 @@ const uploadToCloudinary = async (file: File, folder: string = "curriculum"): Pr
   const signatureString = `folder=${folder}&timestamp=${timestamp}${API_SECRET}`;
   const signature = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(signatureString));
   const signatureHex = Array.from(new Uint8Array(signature))
-    .map(b => b.toString(16).padStart(2, "0"))
-    .join("");
+   .map(b => b.toString(16).padStart(2, "0"))
+   .join("");
 
   const formData = new FormData();
   formData.append("file", file);
@@ -137,7 +137,7 @@ const uploadToCloudinary = async (file: File, folder: string = "curriculum"): Pr
 
 // ── TRACK FORM ─────────────────────────────────────────────────────────────
 
-function TrackFormSection({ onSuccess }: { onSuccess: (msg: string) => void }) {
+function TrackFormSection({ onSuccess }: { onSuccess: (msg: string, id?: number) => void }) {
   const [form, setForm] = useState<TrackForm>({
     title: "", description: "", shortDescription: "", thumbnail: "",
     orderIndex: "0", isFree: false, price: "0", status: "draft",
@@ -148,7 +148,7 @@ function TrackFormSection({ onSuccess }: { onSuccess: (msg: string) => void }) {
   const [submitError, setSubmitError] = useState("");
 
   const set = (key: keyof TrackForm, value: string | boolean) =>
-    setForm((f) => ({ ...f, [key]: value }));
+    setForm((f) => ({...f, [key]: value }));
 
   const validate = (): boolean => {
     const e: FormErrors<TrackForm> = {};
@@ -211,7 +211,7 @@ function TrackFormSection({ onSuccess }: { onSuccess: (msg: string) => void }) {
         return;
       }
 
-      onSuccess(`Track "${form.title}" created successfully`);
+      onSuccess(`Track "${form.title}" created successfully`, data.id || data.track?.id);
       setForm({ title: "", description: "", shortDescription: "", thumbnail: "", orderIndex: "0", isFree: false, price: "0", status: "draft" });
       setThumbnailFile(null);
       setErrors({});
@@ -231,33 +231,31 @@ function TrackFormSection({ onSuccess }: { onSuccess: (msg: string) => void }) {
               placeholder="e.g. School Leadership Fundamentals" className={inputCls} />
           </Field>
           <Field label="Order Index" required error={errors.orderIndex}>
-            <input type="number" min="0" value={form.orderIndex}
-              onChange={(e) => set("orderIndex", e.target.value)} className={inputCls} aria-label="input" />
+            <input type="number" min="0" value={form.orderIndex} aria-label="input"
+              onChange={(e) => set("orderIndex", e.target.value)} className={inputCls} />
           </Field>
         </div>
-
         <Field label="Short Description" required error={errors.shortDescription}>
           <input type="text" value={form.shortDescription} onChange={(e) => set("shortDescription", e.target.value)}
             placeholder="One-line summary shown in listings" className={inputCls} />
         </Field>
-
         <Field label="Description" required error={errors.description}>
           <textarea rows={3} value={form.description} onChange={(e) => set("description", e.target.value)}
             placeholder="Full description of this track" className={textareaCls} />
         </Field>
-
-        <Field label="Thumbnail" error={errors.thumbnail}>
-          <input type="file" accept="image/*" aria-label="input"
+        <Field label="Thumbnail Image" error={errors.thumbnail}>
+          <input type="file" accept="image/*"
+            aria-label="input"
             onChange={(e) => {
               const file = e.target.files?.[0] || null;
               setThumbnailFile(file);
-              set("thumbnail", file ? file.name : "");
+              set("thumbnail", file? file.name : "");
+
             }}
             className={inputCls}
           />
           {thumbnailFile && <p className="text-xs text-gray-500 mt-1">Selected: {thumbnailFile.name}</p>}
         </Field>
-
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           <Field label="Status" required>
             <select value={form.status} onChange={(e) => set("status", e.target.value)}
@@ -271,26 +269,23 @@ function TrackFormSection({ onSuccess }: { onSuccess: (msg: string) => void }) {
             <input type="number" min="0" value={form.price}
               onChange={(e) => set("price", e.target.value)}
               disabled={form.isFree}
-              className={inputCls + (form.isFree ? " opacity-40 cursor-not-allowed" : "")}
-              aria-label="input" />
+              aria-label="input"
+              className={inputCls + (form.isFree? " opacity-40 cursor-not-allowed" : "")} />
           </Field>
         </div>
-
         <label className="flex items-center gap-2.5 text-sm cursor-pointer w-fit">
           <input type="checkbox" checked={form.isFree}
             onChange={(e) => { set("isFree", e.target.checked); if (e.target.checked) set("price", "0"); }}
             className="w-4 h-4 accent-[#004900]" />
           <span className="text-gray-700">This track is free</span>
         </label>
-
         {submitError && (
           <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">{submitError}</div>
         )}
-
         <div className="pt-2">
           <button type="submit" disabled={loading}
             className="bg-[#004900] text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-[#003700] disabled:opacity-60 transition-colors">
-            {loading ? "Creating track..." : "Create Track →"}
+            {loading? "Creating track..." : "Create Track →"}
           </button>
         </div>
       </form>
@@ -300,9 +295,9 @@ function TrackFormSection({ onSuccess }: { onSuccess: (msg: string) => void }) {
 
 // ── MODULE FORM ────────────────────────────────────────────────────────────
 
-function ModuleFormSection({ onSuccess }: { onSuccess: (msg: string) => void }) {
+function ModuleFormSection({ onSuccess, initialTrackId }: { onSuccess: (msg: string, id?: number) => void; initialTrackId?: string }) {
   const [form, setForm] = useState<ModuleForm>({
-    trackId: "", title: "", description: "", content: "",
+    trackId: initialTrackId || "", title: "", description: "", content: "",
     orderIndex: "0", estimatedReadMinutes: "0",
     passMarkPercent: "65", maxAttempts: "2", status: "draft",
   });
@@ -310,8 +305,12 @@ function ModuleFormSection({ onSuccess }: { onSuccess: (msg: string) => void }) 
   const [loading, setLoading] = useState(false);
   const [submitError, setSubmitError] = useState("");
 
+  useEffect(() => {
+    if (initialTrackId) setForm(f => ({...f, trackId: initialTrackId }));
+  }, [initialTrackId]);
+
   const set = (key: keyof ModuleForm, value: string) =>
-    setForm((f) => ({ ...f, [key]: value }));
+    setForm((f) => ({...f, [key]: value }));
 
   const validate = (): boolean => {
     const e: FormErrors<ModuleForm> = {};
@@ -371,7 +370,7 @@ function ModuleFormSection({ onSuccess }: { onSuccess: (msg: string) => void }) 
         return;
       }
 
-      onSuccess(`Module "${form.title}" created successfully`);
+      onSuccess(`Module "${form.title}" created successfully`, data.id || data.module?.id);
       setForm({
         trackId: form.trackId, title: "", description: "", content: "",
         orderIndex: "0", estimatedReadMinutes: "0",
@@ -393,60 +392,53 @@ function ModuleFormSection({ onSuccess }: { onSuccess: (msg: string) => void }) 
             onChange={(e) => set("trackId", e.target.value)}
             placeholder="Enter the ID of the parent track" className={inputCls} />
         </Field>
-
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           <Field label="Title" required error={errors.title}>
             <input type="text" value={form.title} onChange={(e) => set("title", e.target.value)}
               placeholder="e.g. Introduction to Leadership" className={inputCls} />
           </Field>
           <Field label="Order Index" required error={errors.orderIndex}>
-            <input type="number" min="0" value={form.orderIndex}
-              onChange={(e) => set("orderIndex", e.target.value)} className={inputCls} aria-label="input" />
+            <input type="number" min="0" value={form.orderIndex} aria-label="input"
+              onChange={(e) => set("orderIndex", e.target.value)} className={inputCls} />
           </Field>
         </div>
-
         <Field label="Description" required error={errors.description}>
           <textarea rows={3} value={form.description} onChange={(e) => set("description", e.target.value)}
             placeholder="What this module covers" className={textareaCls} />
         </Field>
-
         <Field label="Content" error={errors.content}>
           <textarea rows={4} value={form.content} onChange={(e) => set("content", e.target.value)}
             placeholder="Extended content or overview (optional)" className={textareaCls} />
         </Field>
-
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           <Field label="Estimated Read (mins)" error={errors.estimatedReadMinutes}>
-            <input type="number" min="0" value={form.estimatedReadMinutes}
-              onChange={(e) => set("estimatedReadMinutes", e.target.value)} className={inputCls} aria-label="input" />
+            <input type="number" min="0" value={form.estimatedReadMinutes} aria-label="input"
+              onChange={(e) => set("estimatedReadMinutes", e.target.value)} className={inputCls} />
           </Field>
           <Field label="Pass Mark (%)" error={errors.passMarkPercent}>
-            <input type="number" min="0" max="100" value={form.passMarkPercent}
-              onChange={(e) => set("passMarkPercent", e.target.value)} className={inputCls} aria-label="input" />
+            <input type="number" min="0" max="100" value={form.passMarkPercent} aria-label="input"
+              onChange={(e) => set("passMarkPercent", e.target.value)} className={inputCls} />
           </Field>
           <Field label="Max Attempts" error={errors.maxAttempts}>
-            <input type="number" min="1" value={form.maxAttempts}
-              onChange={(e) => set("maxAttempts", e.target.value)} className={inputCls} aria-label="input" />
+            <input type="number" min="1" value={form.maxAttempts} aria-label="input"
+              onChange={(e) => set("maxAttempts", e.target.value)} className={inputCls} />
           </Field>
         </div>
-
         <Field label="Status" required>
-          <select value={form.status} onChange={(e) => set("status", e.target.value)}
-            className={inputCls + " w-auto"} aria-label="select">
+          <select value={form.status} onChange={(e) => set("status", e.target.value)} aria-label="input"
+            className={inputCls + " w-auto"}>
             {statusOptions.map((s) => (
               <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
             ))}
           </select>
         </Field>
-
         {submitError && (
           <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">{submitError}</div>
         )}
-
         <div className="pt-2">
           <button type="submit" disabled={loading}
             className="bg-[#004900] text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-[#003700] disabled:opacity-60 transition-colors">
-            {loading ? "Creating module..." : "Create Module →"}
+            {loading? "Creating module..." : "Create Module →"}
           </button>
         </div>
       </form>
@@ -456,9 +448,9 @@ function ModuleFormSection({ onSuccess }: { onSuccess: (msg: string) => void }) 
 
 // ── UNIT FORM ──────────────────────────────────────────────────────────────
 
-function UnitFormSection({ onSuccess }: { onSuccess: (msg: string) => void }) {
+function UnitFormSection({ onSuccess, initialModuleId }: { onSuccess: (msg: string) => void; initialModuleId?: string }) {
   const [form, setForm] = useState<UnitForm>({
-    moduleId: "", title: "", description: "", content: "",
+    moduleId: initialModuleId || "", title: "", description: "", content: "",
     summary: "", caseStudy: "", discussionPrompt: "",
     videoUrl: "", pdfUrl: "",
     orderIndex: "0", estimatedReadMinutes: "0",
@@ -470,8 +462,12 @@ function UnitFormSection({ onSuccess }: { onSuccess: (msg: string) => void }) {
   const [loading, setLoading] = useState(false);
   const [submitError, setSubmitError] = useState("");
 
+  useEffect(() => {
+    if (initialModuleId) setForm(f => ({...f, moduleId: initialModuleId }));
+  }, [initialModuleId]);
+
   const set = (key: keyof UnitForm, value: string) =>
-    setForm((f) => ({ ...f, [key]: value }));
+    setForm((f) => ({...f, [key]: value }));
 
   const validate = (): boolean => {
     const e: FormErrors<UnitForm> = {};
@@ -568,28 +564,24 @@ function UnitFormSection({ onSuccess }: { onSuccess: (msg: string) => void }) {
             onChange={(e) => set("moduleId", e.target.value)}
             placeholder="Enter the ID of the parent module" className={inputCls} />
         </Field>
-
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           <Field label="Title" required error={errors.title}>
             <input type="text" value={form.title} onChange={(e) => set("title", e.target.value)}
               placeholder="e.g. What is Instructional Leadership?" className={inputCls} />
           </Field>
           <Field label="Order Index" required error={errors.orderIndex}>
-            <input type="number" min="0" value={form.orderIndex}
-              onChange={(e) => set("orderIndex", e.target.value)} className={inputCls} aria-label="input" />
+            <input type="number" min="0" value={form.orderIndex} aria-label="input"
+              onChange={(e) => set("orderIndex", e.target.value)} className={inputCls} />
           </Field>
         </div>
-
         <Field label="Description" required error={errors.description}>
           <textarea rows={2} value={form.description} onChange={(e) => set("description", e.target.value)}
             placeholder="Brief description of this unit" className={textareaCls} />
         </Field>
-
         <Field label="Content" error={errors.content}>
           <textarea rows={5} value={form.content} onChange={(e) => set("content", e.target.value)}
             placeholder="Main learning content for this unit" className={textareaCls} />
         </Field>
-
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           <Field label="Summary" error={errors.summary}>
             <textarea rows={3} value={form.summary} onChange={(e) => set("summary", e.target.value)}
@@ -600,66 +592,63 @@ function UnitFormSection({ onSuccess }: { onSuccess: (msg: string) => void }) {
               placeholder="Real-world case study (optional)" className={textareaCls} />
           </Field>
         </div>
-
         <Field label="Discussion Prompt" error={errors.discussionPrompt}>
           <textarea rows={2} value={form.discussionPrompt} onChange={(e) => set("discussionPrompt", e.target.value)}
             placeholder="Reflection or discussion question for learners (optional)" className={textareaCls} />
         </Field>
-
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           <Field label="Video" error={errors.videoUrl}>
-            <input type="file" accept="video/*" aria-label="input"
+            <input type="file" accept="video/*"
+              aria-label="input"
               onChange={(e) => {
                 const file = e.target.files?.[0] || null;
                 setVideoFile(file);
-                set("videoUrl", file ? file.name : "");
+                set("videoUrl", file? file.name : "");
               }}
               className={inputCls} />
             {videoFile && <p className="text-xs text-gray-500 mt-1">Selected: {videoFile.name}</p>}
           </Field>
           <Field label="PDF" error={errors.pdfUrl}>
-            <input type="file" accept=".pdf" aria-label="input"
+            <input type="file" accept=".pdf"
+              aria-label="input"
               onChange={(e) => {
                 const file = e.target.files?.[0] || null;
                 setPdfFile(file);
-                set("pdfUrl", file ? file.name : "");
+                set("pdfUrl", file? file.name : "");
               }}
               className={inputCls} />
             {pdfFile && <p className="text-xs text-gray-500 mt-1">Selected: {pdfFile.name}</p>}
           </Field>
         </div>
-
         <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
           <Field label="Estimated Read (mins)" error={errors.estimatedReadMinutes}>
-            <input type="number" min="0" value={form.estimatedReadMinutes}
-              onChange={(e) => set("estimatedReadMinutes", e.target.value)} className={inputCls} aria-label="input" />
+            <input type="number" min="0" value={form.estimatedReadMinutes} aria-label="input"
+              onChange={(e) => set("estimatedReadMinutes", e.target.value)} className={inputCls} />
           </Field>
           <Field label="Pass Mark (%)" error={errors.passMarkPercent}>
-            <input type="number" min="0" max="100" value={form.passMarkPercent}
-              onChange={(e) => set("passMarkPercent", e.target.value)} className={inputCls} aria-label="input" />
+            <input type="number" min="0" max="100" value={form.passMarkPercent} aria-label="input"
+              onChange={(e) => set("passMarkPercent", e.target.value)} className={inputCls} />
           </Field>
           <Field label="Max Attempts" error={errors.maxAttempts}>
-            <input type="number" min="1" value={form.maxAttempts}
-              onChange={(e) => set("maxAttempts", e.target.value)} className={inputCls} aria-label="input" />
+            <input type="number" min="1" value={form.maxAttempts} aria-label="input"
+              onChange={(e) => set("maxAttempts", e.target.value)} className={inputCls} />
           </Field>
           <Field label="Status" required>
-            <select value={form.status} onChange={(e) => set("status", e.target.value)}
-              className={inputCls} aria-label="select">
+            <select value={form.status} onChange={(e) => set("status", e.target.value)} aria-label="select"
+              className={inputCls}>
               {statusOptions.map((s) => (
                 <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
               ))}
             </select>
           </Field>
         </div>
-
         {submitError && (
           <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">{submitError}</div>
         )}
-
         <div className="pt-2">
           <button type="submit" disabled={loading}
             className="bg-[#004900] text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-[#003700] disabled:opacity-60 transition-colors">
-            {loading ? "Creating unit..." : "Create Unit →"}
+            {loading? "Creating unit..." : "Create Unit →"}
           </button>
         </div>
       </form>
@@ -677,13 +666,30 @@ const formTabs: { id: FormTab; label: string; num: string; description: string }
   { id: "unit", label: "Unit", num: "3", description: "Belongs to a module" },
 ];
 
-export default function CurriculumCreate() {
+export default function CurriculumCreate({ onComplete }: { onComplete?: () => void }) {
   const [toast, setToast] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<FormTab>("track");
+  const [createdTrackId, setCreatedTrackId] = useState("");
+  const [createdModuleId, setCreatedModuleId] = useState("");
 
-  const handleSuccess = (msg: string) => {
+  const handleTrackSuccess = (msg: string, id?: number) => {
+    setToast(msg);
+    if (id) setCreatedTrackId(String(id));
+    setTimeout(() => setToast(null), 4000);
+    setActiveTab("module"); // auto-advance
+  };
+
+  const handleModuleSuccess = (msg: string, id?: number) => {
+    setToast(msg);
+    if (id) setCreatedModuleId(String(id));
+    setTimeout(() => setToast(null), 4000);
+    setActiveTab("unit"); // auto-advance
+  };
+
+  const handleUnitSuccess = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 4000);
+    if (onComplete) onComplete(); // go to Manage Courses
   };
 
   return (
@@ -696,17 +702,17 @@ export default function CurriculumCreate() {
               onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-2.5 px-7 py-3.5 text-sm font-medium border-b-2 transition-all flex-1 justify-center -mb-px ${
                 activeTab === tab.id
-                  ? "border-[#004900] text-[#004900] bg-white"
+                 ? "border-[#004900] text-[#004900] bg-white"
                   : "border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50"
               }`}
             >
               <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
-                activeTab === tab.id ? "bg-[#004900] text-white" : "bg-gray-200 text-gray-500"
+                activeTab === tab.id? "bg-[#004900] text-white" : "bg-gray-200 text-gray-500"
               }`}>
                 {tab.num}
               </span>
               {tab.label}
-              <span className={`text-xs hidden md:inline ${activeTab === tab.id ? "text-[#004900]/60" : "text-gray-400"}`}>
+              <span className={`text-xs hidden md:inline ${activeTab === tab.id? "text-[#004900]/60" : "text-gray-400"}`}>
                 — {tab.description}
               </span>
             </button>
@@ -715,9 +721,9 @@ export default function CurriculumCreate() {
       </div>
 
       <div className="max-w-4xl mx-auto px-8 py-6">
-        {activeTab === "track" && <TrackFormSection onSuccess={handleSuccess} />}
-        {activeTab === "module" && <ModuleFormSection onSuccess={handleSuccess} />}
-        {activeTab === "unit" && <UnitFormSection onSuccess={handleSuccess} />}
+        {activeTab === "track" && <TrackFormSection onSuccess={handleTrackSuccess} />}
+        {activeTab === "module" && <ModuleFormSection onSuccess={handleModuleSuccess} initialTrackId={createdTrackId} />}
+        {activeTab === "unit" && <UnitFormSection onSuccess={handleUnitSuccess} initialModuleId={createdModuleId} />}
       </div>
 
       {toast && <Toast message={toast} onClose={() => setToast(null)} />}

@@ -3,14 +3,11 @@ import Manage from "../components/Manage-Course";
 import Upload from "../components/Upload-Course";
 
 export default function Course() {
-
   const [activeTab, setActiveTab] = useState("manage");
 
   return (
     <div className="w-[95%] flex flex-col gap-3">
-
       <ul className="w-full flex flex-row gap-5 border-b pt-2 pl-2">
-
         <li>
           <button
             type="button"
@@ -18,7 +15,7 @@ export default function Course() {
             className={`w-fit h-15 px-3 transition
             ${
               activeTab === "manage"
-                ? "border-b-2 border-[#004900] text-[#004900] font-semibold"
+               ? "border-b-2 border-[#004900] text-[#004900] font-semibold"
                 : "text-gray-500"
             }`}
           >
@@ -33,18 +30,16 @@ export default function Course() {
             className={`w-fit h-15 px-3 transition
             ${
               activeTab === "upload"
-                ? "border-b-2 border-[#004900] text-[#004900] font-semibold"
+               ? "border-b-2 border-[#004900] text-[#004900] font-semibold"
                 : "text-gray-500"
             }`}
           >
             Upload New
           </button>
         </li>
-
       </ul>
 
       <div>
-
         {activeTab === "manage" && (
           <div>
             <Manage />
@@ -53,12 +48,10 @@ export default function Course() {
 
         {activeTab === "upload" && (
           <div>
-            <Upload />
+            <Upload onComplete={() => setActiveTab("manage")} />
           </div>
         )}
-
       </div>
-
     </div>
   );
 }

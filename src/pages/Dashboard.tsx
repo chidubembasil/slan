@@ -1,7 +1,6 @@
 // Dashboard.tsx
 import { useEffect, useState } from "react";
-import { Users, BookOpen, ClipboardCheck, CreditCard, LayoutGrid, CheckSquare,
-  ChartCandlestick, Headset, Flag } from "lucide-react";
+import { Users, BookOpen, ClipboardCheck, CreditCard } from "lucide-react";
 
 const BASE = import.meta.env.VITE_API_BASE_URL?? "";
 
@@ -178,7 +177,7 @@ export default function Dashboard() {
           </div>
 
           {/* Quick Actions */}
-          <div className="bg-[#f3f5f4] rounded-xl border border-gray-200 p-5">
+         {/*  <div className="bg-[#f3f5f4] rounded-xl border border-gray-200 p-5">
             <h2 className="font-semibold text-slate-900 mb-4">Quick Actions</h2>
             <div className="space-y-2.5">
               {[
@@ -201,7 +200,7 @@ export default function Dashboard() {
                 </a>
               ))}
             </div>
-          </div>
+          </div> */}
         </div>
 
         {/* System Alerts */}

@@ -190,7 +190,7 @@ export default function AdminLogin() {
       <div className="w-full max-w-5xl grid lg:grid-cols-2 bg-white rounded-2xl shadow-xl overflow-hidden">
 
         {/* Left panel */}
-        <div className="bg-[#004900] p-10 lg:p-12 text-white flex flex-col justify-between min-h-[220px] lg:min-h-0">
+        <div className="bg-[#004900] p-10 lg:p-12 text-white flex flex-col justify-between min-h-55 lg:min-h-0">
           <div>
             <p className="font-bold text-sm tracking-widest uppercase mb-10 lg:mb-20 opacity-80">
               SLAN ADMIN
@@ -280,7 +280,7 @@ export default function AdminLogin() {
             {/* Password */}
             <div>
               <label className="text-xs font-medium text-gray-700 block mb-1.5">
-                System Password
+                Password
               </label>
               <input
                 type="password"
