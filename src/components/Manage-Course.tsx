@@ -1,148 +1,68 @@
 import { useState, useEffect, useCallback } from "react";
+import TrackCreate from "./TrackCreate";
 
 const BASE = import.meta.env.VITE_BASE_URL;
 
-// ── Helpers ────────────────────────────────────────────────────────────────
+type CourseStatus = "draft" | "published" | "archived";
 
-function authHeaders() {
-  const token = localStorage.getItem("adminAccessToken");
-  return {
-    "Content-Type": "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
-}
+type Course = {
+  id: number;
+  title: string;
+  shortDescription: string;
+  status: CourseStatus;
+  thumbnail?: string;
+  trackCount?: number;
+};
 
-const statusColors: Record<string, string> = {
+// ── helpers ──────────────────────────────────────────────────────────────────
+
+const statusBadge: Record<CourseStatus, string> = {
   published: "bg-green-100 text-green-700",
   draft: "bg-yellow-100 text-yellow-700",
   archived: "bg-gray-100 text-gray-500",
 };
 
-const statusOptions = ["draft", "published", "archived"];
-
-type ManageTab = "tracks" | "modules" | "units";
-
-// ── Types ──────────────────────────────────────────────────────────────────
-
-type Track = {
-  id: number; title: string; slug: string; description: string;
-  shortDescription: string; thumbnail: string; orderIndex: number;
-  isFree: boolean; price: number; status: string;
-  createdAt: string; updatedAt: string;
-};
-
-type Module = {
-  id: number; title: string; description: string; content: string;
-  orderIndex: number; estimatedReadMinutes: number;
-  passMarkPercent: number; maxAttempts: number; status: string;
-  createdAt: string; updatedAt: string;
-};
-
-type Unit = {
-  id: number; title: string; description: string; content: string;
-  summary: string; caseStudy: string; discussionPrompt: string;
-  videoUrl: string; pdfUrl: string; orderIndex: number;
-  estimatedReadMinutes: number; passMarkPercent: number;
-  maxAttempts: number; status: string;
-  createdAt: string; updatedAt: string;
-};
-
-// ── Toast ──────────────────────────────────────────────────────────────────
-
-function Toast({ message, type, onClose }: { message: string; type: "success" | "error"; onClose: () => void }) {
+function Badge({ status }: { status: CourseStatus }) {
   return (
-    <div className={`fixed bottom-6 right-6 px-5 py-3 rounded-xl shadow-lg flex items-center gap-3 z-50 ${type === "success" ? "bg-[#004900] text-white" : "bg-red-600 text-white"}`}>
-      {type === "success"
-        ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><polyline points="20 6 9 17 4 12" /></svg>
-        : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" /></svg>
-      }
-      <span className="text-sm font-medium">{message}</span>
-      <button onClick={onClose} className="ml-2 text-white/70 hover:text-white text-xs">✕</button>
-    </div>
+    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${statusBadge[status]}`}>
+      {status}
+    </span>
   );
 }
 
-// ── Confirm Dialog ─────────────────────────────────────────────────────────
-
-function ConfirmDialog({ message, onConfirm, onCancel }: { message: string; onConfirm: () => void; onCancel: () => void }) {
+function Modal({ title, onClose, children }: {
+  title: string; onClose: () => void; children: React.ReactNode;
+}) {
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-      <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full mx-4">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center shrink-0">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2">
-              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-              <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
-            </svg>
-          </div>
-          <div>
-            <p className="font-semibold text-gray-900 text-sm">Confirm Delete</p>
-            <p className="text-xs text-gray-500 mt-0.5">{message}</p>
-          </div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <div className="bg-[#004900] px-6 py-4 flex items-center justify-between rounded-t-2xl">
+          <h2 className="text-white font-semibold text-base">{title}</h2>
+          <button onClick={onClose} className="text-white/70 hover:text-white text-xl leading-none">✕</button>
         </div>
-        <div className="flex gap-3 justify-end">
-          <button onClick={onCancel} className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
-          <button onClick={onConfirm} className="px-4 py-2 text-sm text-white bg-red-600 rounded-lg hover:bg-red-700">Delete</button>
-        </div>
+        <div className="p-6">{children}</div>
       </div>
     </div>
   );
 }
 
-// ── Edit Modal ─────────────────────────────────────────────────────────────
-
-function EditModal({ title, fields, data, onSave, onClose, loading }: {
-  title: string;
-  fields: { key: string; label: string; type: "text" | "textarea" | "number" | "select" | "checkbox" | "url"; options?: string[]; required?: boolean }[];
-  data: Record<string, any>;
-  onSave: (updated: Record<string, any>) => void;
-  onClose: () => void;
-  loading: boolean;
+function ConfirmModal({ message, onConfirm, onCancel, loading }: {
+  message: string; onConfirm: () => void; onCancel: () => void; loading: boolean;
 }) {
-  const [form, setForm] = useState<Record<string, any>>({ ...data });
-  const set = (key: string, value: any) => setForm(f => ({ ...f, [key]: value }));
-  const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900]";
-
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
-        <div className="bg-[#004900] px-6 py-4 flex items-center justify-between rounded-t-2xl">
-          <h3 className="text-white font-semibold">{title}</h3>
-          <button onClick={onClose} className="text-white/70 hover:text-white text-lg leading-none">✕</button>
-        </div>
-        <div className="overflow-y-auto p-6 space-y-4 flex-1">
-          {fields.map(f => (
-            <div key={f.key}>
-              <label className="block text-xs font-medium text-gray-700 mb-1.5">
-                {f.label}{f.required && <span className="text-red-500 ml-0.5">*</span>}
-              </label>
-              {f.type === "textarea" ? (
-                <textarea rows={3} value={form[f.key] ?? ""} onChange={e => set(f.key, e.target.value)} className={inputCls + " resize-none"} aria-label="textarea" />
-              ) : f.type === "select" ? (
-                <select value={form[f.key] ?? ""} onChange={e => set(f.key, e.target.value)} className={inputCls} aria-label="select">
-                  {f.options?.map(o => <option key={o} value={o}>{o.charAt(0).toUpperCase() + o.slice(1)}</option>)}
-                </select>
-              ) : f.type === "checkbox" ? (
-                <label className="flex items-center gap-2 text-sm cursor-pointer">
-                  <input type="checkbox" checked={!!form[f.key]} onChange={e => set(f.key, e.target.checked)} className="w-4 h-4 accent-[#004900]" />
-                  <span className="text-gray-700">Yes</span>
-                </label>
-              ) : (
-                <input
-                  type={f.type === "url" ? "url" : f.type === "number" ? "number" : "text"}
-                  value={form[f.key] ?? ""}
-                  onChange={e => set(f.key, f.type === "number" ? Number(e.target.value) : e.target.value)}
-                  className={inputCls}
-                  aria-label="input"
-                />
-              )}
-            </div>
-          ))}
-        </div>
-        <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
-          <button onClick={() => onSave(form)} disabled={loading} className="px-5 py-2 text-sm text-white bg-[#004900] rounded-lg hover:bg-[#003700] disabled:opacity-60">
-            {loading ? "Saving..." : "Save Changes"}
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onCancel} />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+        <p className="text-sm text-gray-700 mb-6">{message}</p>
+        <div className="flex gap-3 justify-end">
+          <button onClick={onCancel}
+            className="px-4 py-2 rounded-lg text-sm border border-gray-300 text-gray-600 hover:bg-gray-50">
+            Cancel
+          </button>
+          <button onClick={onConfirm} disabled={loading}
+            className="px-4 py-2 rounded-lg text-sm bg-red-600 text-white hover:bg-red-700 disabled:opacity-60">
+            {loading ? "Deleting..." : "Delete"}
           </button>
         </div>
       </div>
@@ -150,658 +70,369 @@ function EditModal({ title, fields, data, onSave, onClose, loading }: {
   );
 }
 
-// ── Response shape normalizer ──────────────────────────────────────────────
+// ── edit form ─────────────────────────────────────────────────────────────────
 
-function extractList(data: any, key: string): any[] {
-  if (Array.isArray(data)) return data;
-  if (Array.isArray(data.data)) return data.data;
-  if (Array.isArray(data[key])) return data[key];
-  if (data.data && Array.isArray(data.data[key])) return data.data[key];
-  return [];
-}
+const inputCls = "w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900]";
+const textareaCls = inputCls + " resize-none";
+const statusOptions = ["draft", "published", "archived"] as const;
 
-// ══════════════════════════════════════════════════════════════════════════
-// TRACKS TAB
-// ══════════════════════════════════════════════════════════════════════════
-
-function TracksTab({ toast }: { toast: (msg: string, type?: "success" | "error") => void }) {
-  const [tracks, setTracks] = useState<Track[]>([]);
+function EditCourseForm({ course, onDone }: { course: Course; onDone: () => void }) {
+  const [form, setForm] = useState({
+    title: course.title,
+    shortDescription: course.shortDescription,
+    description: "",
+    status: course.status,
+  });
   const [loading, setLoading] = useState(false);
-  const [search, setSearch] = useState("");
-  const [editItem, setEditItem] = useState<Track | null>(null);
-  const [editLoading, setEditLoading] = useState(false);
-  const [deleteItem, setDeleteItem] = useState<Track | null>(null);
-  const [statusLoading, setStatusLoading] = useState<number | null>(null);
-  const [expandedId, setExpandedId] = useState<number | null>(null);
-  const [detailData, setDetailData] = useState<Record<number, any>>({});
+  const [error, setError] = useState("");
 
-  const fetchTracks = useCallback(async () => {
+  const set = (k: keyof typeof form, v: string) => setForm(f => ({ ...f, [k]: v }));
+
+  const handleSave = async () => {
+    setError("");
+    const token = localStorage.getItem("adminAccessToken");
+    if (!token) { setError("Not authenticated"); return; }
     setLoading(true);
     try {
-      const res = await fetch(`${BASE}admin/tracks`, { headers: authHeaders() });
+      const res = await fetch(`${BASE}admin/courses/${course.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        credentials: "include",
+        body: JSON.stringify({
+          title: form.title,
+          shortDescription: form.shortDescription,
+          description: form.description || undefined,
+          status: form.status,
+        }),
+      });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Failed to fetch tracks");
-      setTracks(extractList(data, "tracks"));
-    } catch (e: any) { toast(e.message, "error"); }
-    finally { setLoading(false); }
+      if (!res.ok) throw new Error(data.message || "Update failed");
+      onDone();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-1.5">Title <span className="text-red-500">*</span></label>
+        <input value={form.title} onChange={e => set("title", e.target.value)} className={inputCls} />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-1.5">Short Description</label>
+        <input value={form.shortDescription} onChange={e => set("shortDescription", e.target.value)} className={inputCls} />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-1.5">Description</label>
+        <textarea rows={3} value={form.description} onChange={e => set("description", e.target.value)} className={textareaCls} />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-1.5">Status</label>
+        <select value={form.status} onChange={e => set("status", e.target.value)} className={inputCls} aria-label="select">
+          {statusOptions.map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
+        </select>
+      </div>
+      {error && <p className="text-xs text-red-600">{error}</p>}
+      <div className="flex gap-3 pt-1">
+        <button onClick={handleSave} disabled={loading}
+          className="bg-[#004900] text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-[#003700] disabled:opacity-60">
+          {loading ? "Saving..." : "Save Changes"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── main page ─────────────────────────────────────────────────────────────────
+
+type ModalState =
+  | { type: "none" }
+  | { type: "addTrack"; course: Course }
+  | { type: "edit"; course: Course }
+  | { type: "view"; course: Course }
+  | { type: "delete"; course: Course };
+
+export default function ManageCourses() {
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState("");
+  const [modal, setModal] = useState<ModalState>({ type: "none" });
+  const [deleting, setDeleting] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const fetchCourses = useCallback(async () => {
+    setLoading(true);
+    setFetchError("");
+    const token = localStorage.getItem("adminAccessToken");
+    try {
+      const res = await fetch(`${BASE}admin/courses`, {
+        headers: { Authorization: `Bearer ${token}` },
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to load courses");
+      // handle both { courses: [] } and [] shapes
+      setCourses(Array.isArray(data) ? data : data.courses ?? []);
+    } catch (err: any) {
+      setFetchError(err.message);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  useEffect(() => { fetchTracks(); }, [fetchTracks]);
-
-  const fetchDetail = async (id: number) => {
-    if (detailData[id]) { setExpandedId(expandedId === id ? null : id); return; }
-    try {
-      const res = await fetch(`${BASE}admin/tracks/${id}`, { headers: authHeaders() });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message);
-      const detail = data.data ?? data;
-      setDetailData(d => ({ ...d, [id]: detail }));
-      setExpandedId(id);
-    } catch (e: any) { toast(e.message, "error"); }
-  };
+  useEffect(() => { fetchCourses(); }, [fetchCourses]);
 
   const handleDelete = async () => {
-    if (!deleteItem) return;
+    if (modal.type !== "delete") return;
+    const token = localStorage.getItem("adminAccessToken");
+    setDeleting(true);
     try {
-      const res = await fetch(`${BASE}admin/tracks/${deleteItem.id}`, { method: "DELETE", headers: authHeaders() });
-      if (!res.ok) { const d = await res.json(); throw new Error(d.message); }
-      toast(`Track "${deleteItem.title}" deleted`);
-      setDeleteItem(null);
-      fetchTracks();
-    } catch (e: any) { toast(e.message, "error"); setDeleteItem(null); }
-  };
-
-  const handleEdit = async (updated: Record<string, any>) => {
-    if (!editItem) return;
-    setEditLoading(true);
-    try {
-      const res = await fetch(`${BASE}admin/tracks/${editItem.id}`, {
-        method: "PUT", headers: authHeaders(),
-        body: JSON.stringify(updated),
+      const res = await fetch(`${BASE}admin/courses/${modal.course.id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+        credentials: "include",
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message);
-      toast(`Track "${updated.title}" updated`);
-      setEditItem(null);
-      setDetailData({});
-      fetchTracks();
-    } catch (e: any) { toast(e.message, "error"); }
-    finally { setEditLoading(false); }
-  };
-
-  const handleStatusPatch = async (track: Track, status: string) => {
-    setStatusLoading(track.id);
-    try {
-      const res = await fetch(`${BASE}admin/tracks/${track.id}/status`, {
-        method: "PATCH", headers: authHeaders(),
-        body: JSON.stringify({ status }),
-      });
-      if (!res.ok) { const d = await res.json(); throw new Error(d.message); }
-      toast(`Status updated to "${status}"`);
-      fetchTracks();
-    } catch (e: any) { toast(e.message, "error"); }
-    finally { setStatusLoading(null); }
-  };
-
-  const filtered = tracks.filter(t =>
-    t.title?.toLowerCase().includes(search.toLowerCase()) ||
-    t.status?.toLowerCase().includes(search.toLowerCase())
-  );
-
-  const trackEditFields = [
-    { key: "title", label: "Title", type: "text" as const, required: true },
-    { key: "shortDescription", label: "Short Description", type: "text" as const, required: true },
-    { key: "description", label: "Description", type: "textarea" as const, required: true },
-    { key: "thumbnail", label: "Thumbnail URL", type: "url" as const },
-    { key: "orderIndex", label: "Order Index", type: "number" as const },
-    { key: "isFree", label: "Is Free", type: "checkbox" as const },
-    { key: "price", label: "Price (₦)", type: "number" as const },
-    { key: "status", label: "Status", type: "select" as const, options: statusOptions },
-  ];
-
-  return (
-    <div>
-      <div className="flex items-center gap-3 mb-5">
-        <div className="relative flex-1">
-          <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search tracks..." className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20" />
-        </div>
-        <button onClick={fetchTracks} className="px-4 py-2 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 flex items-center gap-2">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-          Refresh
-        </button>
-      </div>
-
-      {loading ? (
-        <div className="text-center py-16 text-gray-400 text-sm">Loading tracks...</div>
-      ) : filtered.length === 0 ? (
-        <div className="text-center py-16 text-gray-400 text-sm">No tracks found</div>
-      ) : (
-        <div className="space-y-3">
-          {filtered.map(track => (
-            <div key={track.id} className="border border-gray-200 rounded-xl overflow-hidden bg-white">
-              <div className="flex items-center gap-4 px-5 py-4">
-                <div className="w-8 h-8 bg-[#004900]/10 rounded-lg flex items-center justify-center shrink-0">
-                  <span className="text-[#004900] text-xs font-bold">{track.id}</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium text-sm text-gray-900 truncate">{track.title}</p>
-                  <p className="text-xs text-gray-500 truncate mt-0.5">{track.shortDescription}</p>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColors[track.status] || "bg-gray-100 text-gray-500"}`}>
-                    {track.status}
-                  </span>
-                  <span className="text-xs text-gray-400">{track.isFree ? "Free" : `₦${track.price}`}</span>
-                </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  <button onClick={() => fetchDetail(track.id)} title="View" className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                  </button>
-                  <button onClick={() => setEditItem(track)} title="Edit" className="p-1.5 rounded-lg hover:bg-blue-50 text-gray-400 hover:text-blue-600">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                  </button>
-                  <select
-                    value={track.status}
-                    onChange={e => handleStatusPatch(track, e.target.value)}
-                    disabled={statusLoading === track.id}
-                    title="Quick status change"
-                    className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#004900]/20 cursor-pointer"
-                  >
-                    {statusOptions.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                  <button onClick={() => setDeleteItem(track)} title="Delete" className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-600">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
-                  </button>
-                </div>
-              </div>
-
-              {expandedId === track.id && detailData[track.id] && (
-                <div className="border-t border-gray-100 bg-gray-50 px-5 py-4">
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
-                    <div><p className="text-gray-400 mb-0.5">Order Index</p><p className="font-medium">{detailData[track.id].orderIndex}</p></div>
-                    <div><p className="text-gray-400 mb-0.5">Modules</p><p className="font-medium">{detailData[track.id].modules?.length ?? 0}</p></div>
-                    <div><p className="text-gray-400 mb-0.5">Created</p><p className="font-medium">{new Date(detailData[track.id].createdAt).toLocaleDateString()}</p></div>
-                    <div><p className="text-gray-400 mb-0.5">Updated</p><p className="font-medium">{new Date(detailData[track.id].updatedAt).toLocaleDateString()}</p></div>
-                  </div>
-                  {detailData[track.id].description && (
-                    <p className="text-xs text-gray-600 mt-3 leading-relaxed">{detailData[track.id].description}</p>
-                  )}
-                  {detailData[track.id].modules?.length > 0 && (
-                    <div className="mt-3">
-                      <p className="text-xs font-medium text-gray-500 mb-2">Modules</p>
-                      <div className="flex flex-wrap gap-2">
-                        {detailData[track.id].modules.map((m: any) => (
-                          <span key={m.id} className="bg-white border border-gray-200 text-xs px-2 py-1 rounded-lg text-gray-700">
-                            #{m.id} {m.title}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {editItem && (
-        <EditModal title={`Edit Track #${editItem.id}`} fields={trackEditFields} data={editItem} onSave={handleEdit} onClose={() => setEditItem(null)} loading={editLoading} />
-      )}
-      {deleteItem && (
-        <ConfirmDialog message={`Delete "${deleteItem.title}"? This will also delete all its modules and units.`} onConfirm={handleDelete} onCancel={() => setDeleteItem(null)} />
-      )}
-    </div>
-  );
-}
-
-// ══════════════════════════════════════════════════════════════════════════
-// MODULES TAB
-// ══════════════════════════════════════════════════════════════════════════
-
-function ModulesTab({ toast }: { toast: (msg: string, type?: "success" | "error") => void }) {
-  const [trackId, setTrackId] = useState("");
-  const [modules, setModules] = useState<Module[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [search, setSearch] = useState("");
-  const [editItem, setEditItem] = useState<Module | null>(null);
-  const [editLoading, setEditLoading] = useState(false);
-  const [deleteItem, setDeleteItem] = useState<Module | null>(null);
-  const [statusLoading, setStatusLoading] = useState<number | null>(null);
-  const [expandedId, setExpandedId] = useState<number | null>(null);
-  const [detailData, setDetailData] = useState<Record<number, any>>({});
-  const [fetched, setFetched] = useState(false);
-
-  const fetchModules = async () => {
-    if (!trackId.trim()) { toast("Enter a Track ID first", "error"); return; }
-    setLoading(true); setFetched(true);
-    try {
-      const res = await fetch(`${BASE}admin/tracks/${trackId}/modules`, { headers: authHeaders() });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Failed to fetch modules");
-      setModules(extractList(data, "modules"));
-    } catch (e: any) { toast(e.message, "error"); }
-    finally { setLoading(false); }
-  };
-
-  const fetchDetail = async (id: number) => {
-    if (detailData[id]) { setExpandedId(expandedId === id ? null : id); return; }
-    try {
-      const res = await fetch(`${BASE}admin/modules/${id}`, { headers: authHeaders() });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message);
-      const detail = data.data ?? data;
-      setDetailData(d => ({ ...d, [id]: detail }));
-      setExpandedId(id);
-    } catch (e: any) { toast(e.message, "error"); }
-  };
-
-  const handleDelete = async () => {
-    if (!deleteItem) return;
-    try {
-      const res = await fetch(`${BASE}admin/modules/${deleteItem.id}`, { method: "DELETE", headers: authHeaders() });
-      if (!res.ok) { const d = await res.json(); throw new Error(d.message); }
-      toast(`Module "${deleteItem.title}" deleted`);
-      setDeleteItem(null);
-      fetchModules();
-    } catch (e: any) { toast(e.message, "error"); setDeleteItem(null); }
-  };
-
-  const handleEdit = async (updated: Record<string, any>) => {
-    if (!editItem) return;
-    setEditLoading(true);
-    try {
-      const res = await fetch(`${BASE}admin/modules/${editItem.id}`, {
-        method: "PUT", headers: authHeaders(),
-        body: JSON.stringify(updated),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message);
-      toast(`Module "${updated.title}" updated`);
-      setEditItem(null); setDetailData({});
-      fetchModules();
-    } catch (e: any) { toast(e.message, "error"); }
-    finally { setEditLoading(false); }
-  };
-
-  const handleStatusPatch = async (mod: Module, status: string) => {
-    setStatusLoading(mod.id);
-    try {
-      const res = await fetch(`${BASE}admin/modules/${mod.id}/status`, {
-        method: "PATCH", headers: authHeaders(),
-        body: JSON.stringify({ status }),
-      });
-      if (!res.ok) { const d = await res.json(); throw new Error(d.message); }
-      toast(`Status updated to "${status}"`);
-      fetchModules();
-    } catch (e: any) { toast(e.message, "error"); }
-    finally { setStatusLoading(null); }
-  };
-
-  const filtered = modules.filter(m =>
-    m.title?.toLowerCase().includes(search.toLowerCase()) ||
-    m.status?.toLowerCase().includes(search.toLowerCase())
-  );
-
-  const moduleEditFields = [
-    { key: "title", label: "Title", type: "text" as const, required: true },
-    { key: "description", label: "Description", type: "textarea" as const, required: true },
-    { key: "content", label: "Content", type: "textarea" as const },
-    { key: "orderIndex", label: "Order Index", type: "number" as const },
-    { key: "estimatedReadMinutes", label: "Estimated Read (mins)", type: "number" as const },
-    { key: "passMarkPercent", label: "Pass Mark (%)", type: "number" as const },
-    { key: "maxAttempts", label: "Max Attempts", type: "number" as const },
-    { key: "status", label: "Status", type: "select" as const, options: statusOptions },
-  ];
-
-  return (
-    <div>
-      <div className="flex items-center gap-3 mb-5">
-        <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-2">
-          <span className="text-xs text-gray-500 whitespace-nowrap">Track ID:</span>
-          <input
-            type="number" min="1" value={trackId}
-            onChange={e => setTrackId(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && fetchModules()}
-            placeholder="e.g. 1"
-            className="w-20 text-sm focus:outline-none"
-          />
-        </div>
-        <button onClick={fetchModules} className="px-4 py-2 bg-[#004900] text-white text-sm rounded-lg hover:bg-[#003700]">
-          Load Modules
-        </button>
-        {fetched && (
-          <div className="relative flex-1">
-            <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search modules..." className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20" />
-          </div>
-        )}
-      </div>
-
-      {!fetched ? (
-        <div className="text-center py-16 text-gray-400 text-sm">Enter a Track ID and click Load Modules</div>
-      ) : loading ? (
-        <div className="text-center py-16 text-gray-400 text-sm">Loading modules...</div>
-      ) : filtered.length === 0 ? (
-        <div className="text-center py-16 text-gray-400 text-sm">No modules found for Track #{trackId}</div>
-      ) : (
-        <div className="space-y-3">
-          {filtered.map(mod => (
-            <div key={mod.id} className="border border-gray-200 rounded-xl overflow-hidden bg-white">
-              <div className="flex items-center gap-4 px-5 py-4">
-                <div className="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center shrink-0">
-                  <span className="text-blue-600 text-xs font-bold">{mod.id}</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium text-sm text-gray-900 truncate">{mod.title}</p>
-                  <p className="text-xs text-gray-500 truncate mt-0.5">{mod.description}</p>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColors[mod.status] || "bg-gray-100 text-gray-500"}`}>{mod.status}</span>
-                  <span className="text-xs text-gray-400">{mod.estimatedReadMinutes}min</span>
-                </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  <button onClick={() => fetchDetail(mod.id)} title="View" className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                  </button>
-                  <button onClick={() => setEditItem(mod)} title="Edit" className="p-1.5 rounded-lg hover:bg-blue-50 text-gray-400 hover:text-blue-600">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                  </button>
-                  <select value={mod.status} onChange={e => handleStatusPatch(mod, e.target.value)} disabled={statusLoading === mod.id} className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none cursor-pointer" aria-label="select">
-                    {statusOptions.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                  <button onClick={() => setDeleteItem(mod)} title="Delete" className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-600">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
-                  </button>
-                </div>
-              </div>
-
-              {expandedId === mod.id && detailData[mod.id] && (
-                <div className="border-t border-gray-100 bg-gray-50 px-5 py-4">
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
-                    <div><p className="text-gray-400 mb-0.5">Pass Mark</p><p className="font-medium">{detailData[mod.id].passMarkPercent}%</p></div>
-                    <div><p className="text-gray-400 mb-0.5">Max Attempts</p><p className="font-medium">{detailData[mod.id].maxAttempts}</p></div>
-                    <div><p className="text-gray-400 mb-0.5">Units</p><p className="font-medium">{detailData[mod.id].units?.length ?? 0}</p></div>
-                    <div><p className="text-gray-400 mb-0.5">Order</p><p className="font-medium">{detailData[mod.id].orderIndex}</p></div>
-                  </div>
-                  {detailData[mod.id].units?.length > 0 && (
-                    <div className="mt-3">
-                      <p className="text-xs font-medium text-gray-500 mb-2">Units</p>
-                      <div className="flex flex-wrap gap-2">
-                        {detailData[mod.id].units.map((u: any) => (
-                          <span key={u.id} className="bg-white border border-gray-200 text-xs px-2 py-1 rounded-lg text-gray-700">#{u.id} {u.title}</span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {editItem && <EditModal title={`Edit Module #${editItem.id}`} fields={moduleEditFields} data={editItem} onSave={handleEdit} onClose={() => setEditItem(null)} loading={editLoading} />}
-      {deleteItem && <ConfirmDialog message={`Delete "${deleteItem.title}"? This will also delete all its units.`} onConfirm={handleDelete} onCancel={() => setDeleteItem(null)} />}
-    </div>
-  );
-}
-
-// ══════════════════════════════════════════════════════════════════════════
-// UNITS TAB
-// ══════════════════════════════════════════════════════════════════════════
-
-function UnitsTab({ toast }: { toast: (msg: string, type?: "success" | "error") => void }) {
-  const [moduleId, setModuleId] = useState("");
-  const [units, setUnits] = useState<Unit[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [search, setSearch] = useState("");
-  const [editItem, setEditItem] = useState<Unit | null>(null);
-  const [editLoading, setEditLoading] = useState(false);
-  const [deleteItem, setDeleteItem] = useState<Unit | null>(null);
-  const [statusLoading, setStatusLoading] = useState<number | null>(null);
-  const [expandedId, setExpandedId] = useState<number | null>(null);
-  const [detailData, setDetailData] = useState<Record<number, any>>({});
-  const [fetched, setFetched] = useState(false);
-
-  const fetchUnits = async () => {
-    if (!moduleId.trim()) { toast("Enter a Module ID first", "error"); return; }
-    setLoading(true); setFetched(true);
-    try {
-      const res = await fetch(`${BASE}admin/modules/${moduleId}/units`, { headers: authHeaders() });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Failed to fetch units");
-      setUnits(extractList(data, "units"));
-    } catch (e: any) { toast(e.message, "error"); }
-    finally { setLoading(false); }
-  };
-
-  const fetchDetail = async (id: number) => {
-    if (detailData[id]) { setExpandedId(expandedId === id ? null : id); return; }
-    try {
-      const res = await fetch(`${BASE}admin/units/${id}`, { headers: authHeaders() });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message);
-      const detail = data.data ?? data;
-      setDetailData(d => ({ ...d, [id]: detail }));
-      setExpandedId(id);
-    } catch (e: any) { toast(e.message, "error"); }
-  };
-
-  const handleDelete = async () => {
-    if (!deleteItem) return;
-    try {
-      const res = await fetch(`${BASE}admin/units/${deleteItem.id}`, { method: "DELETE", headers: authHeaders() });
-      if (!res.ok) { const d = await res.json(); throw new Error(d.message); }
-      toast(`Unit "${deleteItem.title}" deleted`);
-      setDeleteItem(null); fetchUnits();
-    } catch (e: any) { toast(e.message, "error"); setDeleteItem(null); }
-  };
-
-  const handleEdit = async (updated: Record<string, any>) => {
-    if (!editItem) return;
-    setEditLoading(true);
-    try {
-      const res = await fetch(`${BASE}admin/units/${editItem.id}`, {
-        method: "PUT", headers: authHeaders(),
-        body: JSON.stringify(updated),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message);
-      toast(`Unit "${updated.title}" updated`);
-      setEditItem(null); setDetailData({});
-      fetchUnits();
-    } catch (e: any) { toast(e.message, "error"); }
-    finally { setEditLoading(false); }
-  };
-
-  const handleStatusPatch = async (unit: Unit, status: string) => {
-    setStatusLoading(unit.id);
-    try {
-      const res = await fetch(`${BASE}admin/units/${unit.id}/status`, {
-        method: "PATCH", headers: authHeaders(),
-        body: JSON.stringify({ status }),
-      });
-      if (!res.ok) { const d = await res.json(); throw new Error(d.message); }
-      toast(`Status updated to "${status}"`);
-      fetchUnits();
-    } catch (e: any) { toast(e.message, "error"); }
-    finally { setStatusLoading(null); }
-  };
-
-  const filtered = units.filter(u =>
-    u.title?.toLowerCase().includes(search.toLowerCase()) ||
-    u.status?.toLowerCase().includes(search.toLowerCase())
-  );
-
-  const unitEditFields = [
-    { key: "title", label: "Title", type: "text" as const, required: true },
-    { key: "description", label: "Description", type: "textarea" as const, required: true },
-    { key: "content", label: "Content", type: "textarea" as const },
-    { key: "summary", label: "Summary", type: "textarea" as const },
-    { key: "caseStudy", label: "Case Study", type: "textarea" as const },
-    { key: "discussionPrompt", label: "Discussion Prompt", type: "textarea" as const },
-    { key: "videoUrl", label: "Video URL", type: "url" as const },
-    { key: "pdfUrl", label: "PDF URL", type: "url" as const },
-    { key: "orderIndex", label: "Order Index", type: "number" as const },
-    { key: "estimatedReadMinutes", label: "Estimated Read (mins)", type: "number" as const },
-    { key: "passMarkPercent", label: "Pass Mark (%)", type: "number" as const },
-    { key: "maxAttempts", label: "Max Attempts", type: "number" as const },
-    { key: "status", label: "Status", type: "select" as const, options: statusOptions },
-  ];
-
-  return (
-    <div>
-      <div className="flex items-center gap-3 mb-5">
-        <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-2">
-          <span className="text-xs text-gray-500 whitespace-nowrap">Module ID:</span>
-          <input
-            type="number" min="1" value={moduleId}
-            onChange={e => setModuleId(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && fetchUnits()}
-            placeholder="e.g. 1"
-            className="w-20 text-sm focus:outline-none"
-          />
-        </div>
-        <button onClick={fetchUnits} className="px-4 py-2 bg-[#004900] text-white text-sm rounded-lg hover:bg-[#003700]">
-          Load Units
-        </button>
-        {fetched && (
-          <div className="relative flex-1">
-            <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search units..." className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20" />
-          </div>
-        )}
-      </div>
-
-      {!fetched ? (
-        <div className="text-center py-16 text-gray-400 text-sm">Enter a Module ID and click Load Units</div>
-      ) : loading ? (
-        <div className="text-center py-16 text-gray-400 text-sm">Loading units...</div>
-      ) : filtered.length === 0 ? (
-        <div className="text-center py-16 text-gray-400 text-sm">No units found for Module #{moduleId}</div>
-      ) : (
-        <div className="space-y-3">
-          {filtered.map(unit => (
-            <div key={unit.id} className="border border-gray-200 rounded-xl overflow-hidden bg-white">
-              <div className="flex items-center gap-4 px-5 py-4">
-                <div className="w-8 h-8 bg-purple-50 rounded-lg flex items-center justify-center shrink-0">
-                  <span className="text-purple-600 text-xs font-bold">{unit.id}</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium text-sm text-gray-900 truncate">{unit.title}</p>
-                  <p className="text-xs text-gray-500 truncate mt-0.5">{unit.description}</p>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColors[unit.status] || "bg-gray-100 text-gray-500"}`}>{unit.status}</span>
-                  <span className="text-xs text-gray-400">{unit.estimatedReadMinutes}min</span>
-                  {unit.videoUrl && <span className="text-xs bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-medium">VID</span>}
-                  {unit.pdfUrl && <span className="text-xs bg-orange-50 text-orange-600 px-1.5 py-0.5 rounded font-medium">PDF</span>}
-                </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  <button onClick={() => fetchDetail(unit.id)} title="View" className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                  </button>
-                  <button onClick={() => setEditItem(unit)} title="Edit" className="p-1.5 rounded-lg hover:bg-blue-50 text-gray-400 hover:text-blue-600">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                  </button>
-                  <select value={unit.status} onChange={e => handleStatusPatch(unit, e.target.value)} disabled={statusLoading === unit.id} className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none cursor-pointer" aria-label="select">
-                    {statusOptions.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                  <button onClick={() => setDeleteItem(unit)} title="Delete" className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-600">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
-                  </button>
-                </div>
-              </div>
-
-              {expandedId === unit.id && detailData[unit.id] && (
-                <div className="border-t border-gray-100 bg-gray-50 px-5 py-4 space-y-3">
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
-                    <div><p className="text-gray-400 mb-0.5">Pass Mark</p><p className="font-medium">{detailData[unit.id].passMarkPercent}%</p></div>
-                    <div><p className="text-gray-400 mb-0.5">Max Attempts</p><p className="font-medium">{detailData[unit.id].maxAttempts}</p></div>
-                    <div><p className="text-gray-400 mb-0.5">Order</p><p className="font-medium">{detailData[unit.id].orderIndex}</p></div>
-                    <div><p className="text-gray-400 mb-0.5">Read Time</p><p className="font-medium">{detailData[unit.id].estimatedReadMinutes}min</p></div>
-                  </div>
-                  {detailData[unit.id].summary && <div><p className="text-xs font-medium text-gray-500 mb-1">Summary</p><p className="text-xs text-gray-600">{detailData[unit.id].summary}</p></div>}
-                  {detailData[unit.id].discussionPrompt && <div><p className="text-xs font-medium text-gray-500 mb-1">Discussion Prompt</p><p className="text-xs text-gray-600">{detailData[unit.id].discussionPrompt}</p></div>}
-                  {(detailData[unit.id].videoUrl || detailData[unit.id].pdfUrl) && (
-                    <div className="flex gap-3">
-                      {detailData[unit.id].videoUrl && <a href={detailData[unit.id].videoUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:underline">▶ Video</a>}
-                      {detailData[unit.id].pdfUrl && <a href={detailData[unit.id].pdfUrl} target="_blank" rel="noreferrer" className="text-xs text-orange-600 hover:underline">📄 PDF</a>}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {editItem && <EditModal title={`Edit Unit #${editItem.id}`} fields={unitEditFields} data={editItem} onSave={handleEdit} onClose={() => setEditItem(null)} loading={editLoading} />}
-      {deleteItem && <ConfirmDialog message={`Delete unit "${deleteItem.title}"?`} onConfirm={handleDelete} onCancel={() => setDeleteItem(null)} />}
-    </div>
-  );
-}
-
-// ══════════════════════════════════════════════════════════════════════════
-// PAGE
-// ══════════════════════════════════════════════════════════════════════════
-
-const tabs: { id: ManageTab; label: string; icon: React.ReactNode }[] = [
-  {
-    id: "tracks", label: "Tracks",
-    icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-  },
-  {
-    id: "modules", label: "Modules",
-    icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-  },
-  {
-    id: "units", label: "Units",
-    icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-  },
-];
-
-export default function CurriculumManage() {
-  const [activeTab, setActiveTab] = useState<ManageTab>("tracks");
-  const [toastMsg, setToastMsg] = useState<{ text: string; type: "success" | "error" } | null>(null);
-
-  const showToast = (text: string, type: "success" | "error" = "success") => {
-    setToastMsg({ text, type });
-    setTimeout(() => setToastMsg(null), 4000);
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.message || "Delete failed");
+      }
+      setModal({ type: "none" });
+      showToast(`Course "${modal.course.title}" deleted`);
+      fetchCourses();
+    } catch (err: any) {
+      showToast(err.message);
+    } finally {
+      setDeleting(false);
+    }
   };
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="max-w-5xl mx-auto px-8 pt-6">
-        <div className="flex border-b border-gray-200 bg-white rounded-t-xl overflow-hidden shadow-sm">
-          {tabs.map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-7 py-3.5 text-sm font-medium border-b-2 transition-all flex-1 justify-center -mb-px ${
-                activeTab === tab.id
-                  ? "border-[#004900] text-[#004900] bg-white"
-                  : "border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50"
-              }`}
-            >
-              <span className={activeTab === tab.id ? "text-[#004900]" : "text-gray-400"}>{tab.icon}</span>
-              {tab.label}
-            </button>
-          ))}
+      <div className="max-w-7xl mx-auto px-6 py-8">
+
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Manage Courses</h1>
+            <p className="text-sm text-gray-500 mt-0.5">Top-level containers for the SLAN curriculum</p>
+          </div>
+          <span className="text-sm text-gray-400">{courses.length} course{courses.length !== 1 ? "s" : ""}</span>
+        </div>
+
+        {/* Table card */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+
+          {loading && (
+            <div className="flex items-center justify-center py-20 text-gray-400 text-sm">
+              Loading courses…
+            </div>
+          )}
+
+          {!loading && fetchError && (
+            <div className="flex flex-col items-center justify-center py-20 gap-3">
+              <p className="text-sm text-red-600">{fetchError}</p>
+              <button onClick={fetchCourses}
+                className="text-sm text-[#004900] underline">Retry</button>
+            </div>
+          )}
+
+          {!loading && !fetchError && courses.length === 0 && (
+            <div className="flex items-center justify-center py-20 text-gray-400 text-sm">
+              No courses found.
+            </div>
+          )}
+
+          {!loading && !fetchError && courses.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-100">
+                    <th className="text-left px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide w-12">ID</th>
+                    <th className="text-left px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Course Name</th>
+                    <th className="text-left px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
+                    <th className="text-left px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Tracks</th>
+                    <th className="text-right px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {courses.map((course) => (
+                    <tr key={course.id} className="hover:bg-gray-50/60 transition-colors">
+                      <td className="px-6 py-4 text-gray-400 font-mono text-xs">{course.id}</td>
+                      <td className="px-6 py-4">
+                        <div className="font-medium text-gray-900">{course.title}</div>
+                        {course.shortDescription && (
+                          <div className="text-xs text-gray-400 mt-0.5 line-clamp-1 max-w-xs">
+                            {course.shortDescription}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-6 py-4">
+                        <Badge status={course.status} />
+                      </td>
+                      <td className="px-6 py-4 text-gray-500">
+                        {course.trackCount ?? "—"}
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center justify-end gap-2">
+
+                          {/* Add Track */}
+                          <button
+                            onClick={() => setModal({ type: "addTrack", course })}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-[#004900] text-white hover:bg-[#003700] transition-colors"
+                          >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                              <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+                            </svg>
+                            Add Track
+                          </button>
+
+                          {/* View */}
+                          <button
+                            onClick={() => setModal({ type: "view", course })}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+                          >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                              <circle cx="12" cy="12" r="3" />
+                            </svg>
+                            View
+                          </button>
+
+                          {/* Edit */}
+                          <button
+                            onClick={() => setModal({ type: "edit", course })}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-blue-200 text-blue-600 hover:bg-blue-50 transition-colors"
+                          >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                            </svg>
+                            Edit
+                          </button>
+
+                          {/* Delete */}
+                          <button
+                            onClick={() => setModal({ type: "delete", course })}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-red-200 text-red-600 hover:bg-red-50 transition-colors"
+                          >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <polyline points="3 6 5 6 21 6" />
+                              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                              <path d="M10 11v6M14 11v6" />
+                              <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                            </svg>
+                            Delete
+                          </button>
+
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
 
-      <div className="max-w-5xl mx-auto px-8 py-6">
-        <div className="bg-white rounded-b-xl rounded-tr-xl border border-gray-200 border-t-0 p-6 shadow-sm">
-          {activeTab === "tracks" && <TracksTab toast={showToast} />}
-          {activeTab === "modules" && <ModulesTab toast={showToast} />}
-          {activeTab === "units" && <UnitsTab toast={showToast} />}
-        </div>
-      </div>
+      {/* ── Add Track Modal ── */}
+      {modal.type === "addTrack" && (
+        <Modal
+          title={`Add Track to "${modal.course.title}"`}
+          onClose={() => setModal({ type: "none" })}
+        >
+          <TrackCreate
+            courseId={modal.course.id}
+            onComplete={() => {
+              setModal({ type: "none" });
+              showToast("Track added successfully");
+              fetchCourses();
+            }}
+            onCancel={() => setModal({ type: "none" })}
+          />
+        </Modal>
+      )}
 
-      {toastMsg && <Toast message={toastMsg.text} type={toastMsg.type} onClose={() => setToastMsg(null)} />}
+      {/* ── Edit Modal ── */}
+      {modal.type === "edit" && (
+        <Modal
+          title={`Edit Course — ${modal.course.title}`}
+          onClose={() => setModal({ type: "none" })}
+        >
+          <EditCourseForm
+            course={modal.course}
+            onDone={() => {
+              setModal({ type: "none" });
+              showToast("Course updated");
+              fetchCourses();
+            }}
+          />
+        </Modal>
+      )}
+
+      {/* ── View Modal ── */}
+      {modal.type === "view" && (
+        <Modal
+          title={`Course Details`}
+          onClose={() => setModal({ type: "none" })}
+        >
+          <div className="space-y-4 text-sm">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-xs text-gray-400 mb-1">ID</p>
+                <p className="font-mono font-medium text-gray-800">{modal.course.id}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-400 mb-1">Status</p>
+                <Badge status={modal.course.status} />
+              </div>
+            </div>
+            <div>
+              <p className="text-xs text-gray-400 mb-1">Title</p>
+              <p className="font-medium text-gray-800">{modal.course.title}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-400 mb-1">Short Description</p>
+              <p className="text-gray-700">{modal.course.shortDescription || "—"}</p>
+            </div>
+            {modal.course.thumbnail && (
+              <div>
+                <p className="text-xs text-gray-400 mb-2">Thumbnail</p>
+                <img src={modal.course.thumbnail} alt="thumbnail"
+                  className="w-full max-w-xs rounded-xl object-cover border border-gray-100" />
+              </div>
+            )}
+          </div>
+        </Modal>
+      )}
+
+      {/* ── Delete Confirm ── */}
+      {modal.type === "delete" && (
+        <ConfirmModal
+          message={`Are you sure you want to delete "${modal.course.title}"? This will cascade and remove all its tracks, modules, and units.`}
+          onConfirm={handleDelete}
+          onCancel={() => setModal({ type: "none" })}
+          loading={deleting}
+        />
+      )}
+
+      {/* Toast */}
+      {toast && (
+        <div className="fixed bottom-6 right-6 bg-[#004900] text-white px-5 py-3 rounded-xl shadow-lg flex items-center gap-3 z-50">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+          <span className="text-sm font-medium">{toast}</span>
+        </div>
+      )}
     </div>
   );
 }

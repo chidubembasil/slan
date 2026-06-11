@@ -14,7 +14,7 @@ export default function SideBar({ isOpen, onClose }: Props) {
 
   const navItems = [
     { path: "/dashboard", name: "Dashboard", icon: LayoutGrid },
-    { path: "/course", name: "Slan Course", icon: BookOpen },
+    { path: "/course", name: "Courses", icon: BookOpen },
     { path: "/users", name: "Users", icon: Users },
     { path: "/assessment", name: "Assessment", icon: CheckSquare },
     { path: "/payment", name: "Payment", icon: CreditCard },

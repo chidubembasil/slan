@@ -22,7 +22,7 @@ export default function Course() {
                 : "text-gray-500"
             }`}
           >
-            Create Courses
+            Create Course
           </button>
         </li>
 
