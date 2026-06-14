@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
 
 const BASE = import.meta.env.VITE_BASE_URL;
 
@@ -166,6 +165,149 @@ function EditTrackForm({ track, onDone }: { track: Track; onDone: () => void }) 
         <button onClick={handleSave} disabled={loading}
           className="bg-[#004900] text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-[#003700] disabled:opacity-60">
           {loading ? "Saving..." : "Save Changes"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Add Module Form (embedded modal) ───────────────────────────────────────────
+// POST /admin/tracks/{trackId}/modules
+
+type ModuleForm = {
+  title: string;
+  description: string;
+  content: string;
+  estimatedReadMinutes: number;
+  passMarkPercent: number;
+  maxAttempts: number;
+  status: "draft" | "published" | "archived";
+};
+
+function AddModuleForm({ trackId, onDone, onCancel }: {
+  trackId: number; onDone: () => void; onCancel: () => void;
+}) {
+  const [form, setForm] = useState<ModuleForm>({
+    title: "",
+    description: "",
+    content: "",
+    estimatedReadMinutes: 0,
+    passMarkPercent: 65,
+    maxAttempts: 2,
+    status: "draft",
+  });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [formErrors, setFormErrors] = useState<Partial<Record<keyof ModuleForm, string>>>({});
+
+  const set = (k: keyof ModuleForm, v: string | number) =>
+    setForm(f => ({ ...f, [k]: v }));
+
+  const validate = () => {
+    const e: Partial<Record<keyof ModuleForm, string>> = {};
+    if (!form.title.trim()) e.title = "Title is required";
+    if (!form.description.trim()) e.description = "Description is required";
+    setFormErrors(e);
+    return Object.keys(e).length === 0;
+  };
+
+  const handleSubmit = async () => {
+    setError("");
+    if (!validate()) return;
+    const token = localStorage.getItem("adminAccessToken");
+    if (!token) { setError("Not authenticated"); return; }
+    setLoading(true);
+    try {
+      const res = await fetch(`${BASE}admin/tracks/${trackId}/modules`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        credentials: "include",
+        body: JSON.stringify({
+          title: form.title,
+          description: form.description,
+          content: form.content || undefined,
+          estimatedReadMinutes: form.estimatedReadMinutes,
+          passMarkPercent: form.passMarkPercent,
+          maxAttempts: form.maxAttempts,
+          status: form.status,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to create module");
+      onDone();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-1.5">
+          Title <span className="text-red-500">*</span>
+        </label>
+        <input value={form.title} onChange={e => set("title", e.target.value)}
+          className={inputCls} placeholder="e.g. Introduction to Leadership" />
+        {formErrors.title && <p className="text-xs text-red-600 mt-1">{formErrors.title}</p>}
+      </div>
+
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-1.5">
+          Description <span className="text-red-500">*</span>
+        </label>
+        <textarea rows={3} value={form.description} onChange={e => set("description", e.target.value)}
+          className={textareaCls} placeholder="Full description of this module" />
+        {formErrors.description && <p className="text-xs text-red-600 mt-1">{formErrors.description}</p>}
+      </div>
+
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-1.5">Content</label>
+        <textarea rows={4} value={form.content} onChange={e => set("content", e.target.value)}
+          className={textareaCls} placeholder="Module content (optional)" />
+      </div>
+
+      <div className="grid grid-cols-3 gap-4">
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-1.5">Est. Read (mins)</label>
+          <input type="number" min={0} value={form.estimatedReadMinutes}
+            onChange={e => set("estimatedReadMinutes", Number(e.target.value))}
+            className={inputCls} />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-1.5">Pass Mark %</label>
+          <input type="number" min={0} max={100} value={form.passMarkPercent}
+            onChange={e => set("passMarkPercent", Number(e.target.value))}
+            className={inputCls} />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-1.5">Max Attempts</label>
+          <input type="number" min={1} value={form.maxAttempts}
+            onChange={e => set("maxAttempts", Number(e.target.value))}
+            className={inputCls} />
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-1.5">Status</label>
+        <select value={form.status} onChange={e => set("status", e.target.value)}
+          className={inputCls} aria-label="select">
+          {statusOptions.map(s => (
+            <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
+          ))}
+        </select>
+      </div>
+
+      {error && <p className="text-xs text-red-600">{error}</p>}
+      <div className="flex gap-3 pt-1">
+        <button onClick={handleSubmit} disabled={loading}
+          className="bg-[#004900] text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-[#003700] disabled:opacity-60">
+          {loading ? "Creating..." : "Create Module →"}
+        </button>
+        <button onClick={onCancel}
+          className="px-5 py-2.5 rounded-lg text-sm font-medium border border-gray-300 text-gray-600 hover:bg-gray-50">
+          Cancel
         </button>
       </div>
     </div>
@@ -565,10 +707,10 @@ type ModalState =
   | { type: "none" }
   | { type: "edit"; track: Track }
   | { type: "delete"; track: Track }
+  | { type: "addModule"; track: Track }
   | { type: "addAssessment"; track: Track };
 
 export default function ManageTracks() {
-  const navigate = useNavigate();
   const [tracks, setTracks] = useState<Track[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState("");
@@ -710,9 +852,9 @@ export default function ManageTracks() {
                       <td className="px-6 py-4">
                         <div className="flex items-center justify-end gap-2">
 
-                          {/* Add Module — navigates to ModuleCreate page */}
+                          {/* Add Module — opens embedded modal */}
                           <button
-                            onClick={() => navigate(`/module-create?trackId=${track.id}`)}
+                            onClick={() => setModal({ type: "addModule", track })}
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-[#004900] text-white hover:bg-[#003700] transition-colors"
                           >
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -779,6 +921,20 @@ export default function ManageTracks() {
               showToast("Track updated successfully");
               fetchTracks();
             }}
+          />
+        </Modal>
+      )}
+
+      {/* ── Add Module Modal ── */}
+      {modal.type === "addModule" && (
+        <Modal title={`Add Module to "${modal.track.title}"`} onClose={() => setModal({ type: "none" })}>
+          <AddModuleForm
+            trackId={modal.track.id}
+            onDone={() => {
+              setModal({ type: "none" });
+              showToast("Module created successfully");
+            }}
+            onCancel={() => setModal({ type: "none" })}
           />
         </Modal>
       )}
