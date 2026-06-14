@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from "react";
+import { useAuthGuard } from "../hooks/useAuthGuard"
 import {
   Search,
   Send,
@@ -317,6 +318,7 @@ function DetailPanel({
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 export default function Support() {
+  useAuthGuard();
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [stats, setStats] = useState<SupportStats | null>(null);
   const [loading, setLoading] = useState(true);

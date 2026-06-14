@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import CreateAssessmentModal from '../components/AssessmentModal';
 import { Clock, CheckCircle2, AlertTriangle, Eye, Search, Plus } from 'lucide-react';
+import { useAuthGuard } from "../hooks/useAuthGuard"
 
 interface AssessmentSubmission {
   id: string;
@@ -23,6 +24,7 @@ interface AssessmentSubmission {
 }
 
 const AssessmentReviewQueue: React.FC = () => {
+  useAuthGuard();
   const [submissions, setSubmissions] = useState<AssessmentSubmission[]>([]);
   const [selectedSubmission, setSelectedSubmission] = useState<AssessmentSubmission | null>(null);
   const [loading, setLoading] = useState(true);

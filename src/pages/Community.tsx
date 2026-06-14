@@ -1,6 +1,6 @@
-// CommunityMod.tsx
 import { useEffect, useMemo, useState } from "react";
 import { Search } from "lucide-react";
+import { useAuthGuard } from "../hooks/useAuthGuard"
 
 const BASE = import.meta.env.VITE_API_BASE_URL?? "";
 
@@ -26,6 +26,7 @@ interface Stats {
 }
 
 export default function Community() {
+  useAuthGuard();
   const [allReports, setAllReports] = useState<Report[]>([]);
   const [stats, setStats] = useState<Stats>({ pending: 0, underReview: 0, resolved: 0, total: 0 });
   const [selected, setSelected] = useState<Report | null>(null);

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 
 const BASE = import.meta.env.VITE_BASE_URL;
 
@@ -15,8 +16,6 @@ type Track = {
   course?: { id: number; title: string };
 };
 
-// ── Badge ─────────────────────────────────────────────────────────────────────
-
 const statusBadge: Record<TrackStatus, string> = {
   published: "bg-green-100 text-green-700",
   draft: "bg-yellow-100 text-yellow-700",
@@ -30,8 +29,6 @@ function Badge({ status }: { status: TrackStatus }) {
     </span>
   );
 }
-
-// ── Modal Shell ───────────────────────────────────────────────────────────────
 
 function Modal({ title, onClose, children }: {
   title: string; onClose: () => void; children: React.ReactNode;
@@ -49,8 +46,6 @@ function Modal({ title, onClose, children }: {
     </div>
   );
 }
-
-// ── Confirm Delete ────────────────────────────────────────────────────────────
 
 function ConfirmModal({ message, onConfirm, onCancel, loading }: {
   message: string; onConfirm: () => void; onCancel: () => void; loading: boolean;
@@ -83,11 +78,11 @@ function ConfirmModal({ message, onConfirm, onCancel, loading }: {
   );
 }
 
-// ── Edit Track Form ───────────────────────────────────────────────────────────
-
 const inputCls = "w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900]";
 const textareaCls = inputCls + " resize-none";
 const statusOptions = ["draft", "published", "archived"] as const;
+
+// ── Edit Track Form ───────────────────────────────────────────────────────────
 
 function EditTrackForm({ track, onDone }: { track: Track; onDone: () => void }) {
   const [form, setForm] = useState({
@@ -177,111 +172,389 @@ function EditTrackForm({ track, onDone }: { track: Track; onDone: () => void }) 
   );
 }
 
-// ── Add Module Form ───────────────────────────────────────────────────────────
+// ── Add Assessment Form ───────────────────────────────────────────────────────
+// POST /admin/tracks/{trackId}/assessment  (track assessment config)
+// POST /admin/assessment-items             (individual questions, parentType hidden as track_assessment)
 
-type ModuleForm = {
+type AssessmentConfigForm = {
   title: string;
   description: string;
-  shortDescription: string;
-  status: "draft" | "published" | "archived";
+  passMarkPercent: number;
+  maxAttempts: number;
+  timeLimitMinutes: number;
+  isActive: boolean;
 };
 
-function AddModuleForm({ trackId, onDone, onCancel }: {
-  trackId: number; onDone: () => void; onCancel: () => void;
+type QuestionOption = { id: string; text: string };
+
+type QuestionForm = {
+  questionText: string;
+  questionType: "multiple_choice" | "true_false" | "short_answer";
+  options: QuestionOption[];
+  correctAnswer: string;
+  explanation: string;
+  orderIndex: number;
+  points: number;
+};
+
+function AddAssessmentForm({ track, onDone, onCancel }: {
+  track: Track; onDone: () => void; onCancel: () => void;
 }) {
-  const [form, setForm] = useState<ModuleForm>({
-    title: "", description: "", shortDescription: "", status: "draft",
+  // Tab: config | questions
+  const [tab, setTab] = useState<"config" | "questions">("config");
+
+  const [config, setConfig] = useState<AssessmentConfigForm>({
+    title: "",
+    description: "",
+    passMarkPercent: 70,
+    maxAttempts: 2,
+    timeLimitMinutes: 0,
+    isActive: false,
   });
-  const [loading, setLoading] = useState(false);
+
+  const [questions, setQuestions] = useState<QuestionForm[]>([]);
+  const [newQ, setNewQ] = useState<QuestionForm>({
+    questionText: "",
+    questionType: "multiple_choice",
+    options: [
+      { id: "a", text: "" },
+      { id: "b", text: "" },
+      { id: "c", text: "" },
+      { id: "d", text: "" },
+    ],
+    correctAnswer: "",
+    explanation: "",
+    orderIndex: 0,
+    points: 1,
+  });
+
+  const [configLoading, setConfigLoading] = useState(false);
+  const [questionLoading, setQuestionLoading] = useState(false);
+  const [configSaved, setConfigSaved] = useState(false);
+  const [savedAssessmentId, setSavedAssessmentId] = useState<number | null>(null);
   const [error, setError] = useState("");
-  const [formErrors, setFormErrors] = useState<Partial<Record<keyof ModuleForm, string>>>({});
+  const [configErrors, setConfigErrors] = useState<Partial<Record<keyof AssessmentConfigForm, string>>>({});
+  const [qErrors, setQErrors] = useState<Partial<Record<keyof QuestionForm, string>>>({});
 
-  const set = (k: keyof ModuleForm, v: string) => setForm(f => ({ ...f, [k]: v }));
+  const setC = (k: keyof AssessmentConfigForm, v: string | number | boolean) =>
+    setConfig(f => ({ ...f, [k]: v }));
 
-  const validate = () => {
-    const e: Partial<Record<keyof ModuleForm, string>> = {};
-    if (!form.title.trim()) e.title = "Title is required";
-    if (!form.description.trim()) e.description = "Description is required";
-    if (!form.shortDescription.trim()) e.shortDescription = "Short description is required";
-    setFormErrors(e);
-    return Object.keys(e).length === 0;
+  const setQ = (k: keyof QuestionForm, v: any) =>
+    setNewQ(f => ({ ...f, [k]: v }));
+
+  const updateOption = (idx: number, text: string) => {
+    const opts = [...newQ.options];
+    opts[idx] = { ...opts[idx], text };
+    setQ("options", opts);
   };
 
-  const handleSubmit = async () => {
-    setError("");
-    if (!validate()) return;
+  // STEP 1 — save assessment config
+  const handleSaveConfig = async () => {
+    const e: Partial<Record<keyof AssessmentConfigForm, string>> = {};
+    if (!config.title.trim()) e.title = "Title is required";
+    if (!config.description.trim()) e.description = "Description is required";
+    setConfigErrors(e);
+    if (Object.keys(e).length) return;
+
     const token = localStorage.getItem("adminAccessToken");
     if (!token) { setError("Not authenticated"); return; }
-    setLoading(true);
+    setConfigLoading(true);
+    setError("");
     try {
-      const res = await fetch(`${BASE}admin/modules`, {
+      const res = await fetch(`${BASE}admin/tracks/${track.id}/assessment`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         credentials: "include",
         body: JSON.stringify({
-          trackId,
-          title: form.title,
-          description: form.description,
-          shortDescription: form.shortDescription,
-          status: form.status,
+          title: config.title,
+          description: config.description,
+          passMarkPercent: config.passMarkPercent,
+          maxAttempts: config.maxAttempts,
+          timeLimitMinutes: config.timeLimitMinutes,
+          isActive: config.isActive,
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Failed to create module");
-      onDone();
+      if (!res.ok) throw new Error(data.message || "Failed to save assessment config");
+      // grab the returned assessment id for linking questions
+      const assessmentId =
+        data.data?.id ?? data.id ?? data.data?.assessmentId ?? null;
+      setSavedAssessmentId(assessmentId);
+      setConfigSaved(true);
+      setTab("questions");
     } catch (err: any) {
       setError(err.message);
     } finally {
-      setLoading(false);
+      setConfigLoading(false);
+    }
+  };
+
+  // STEP 2 — add individual question
+  const handleAddQuestion = async () => {
+    const e: Partial<Record<keyof QuestionForm, string>> = {};
+    if (!newQ.questionText.trim()) e.questionText = "Question text is required";
+    if (newQ.questionType === "multiple_choice" && newQ.options.some(o => !o.text.trim()))
+      e.options = "All options must be filled in";
+    if (!newQ.correctAnswer.trim()) e.correctAnswer = "Correct answer is required";
+    setQErrors(e);
+    if (Object.keys(e).length) return;
+
+    const token = localStorage.getItem("adminAccessToken");
+    if (!token) { setError("Not authenticated"); return; }
+    setQuestionLoading(true);
+    setError("");
+    try {
+      const res = await fetch(`${BASE}admin/assessment-items`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        credentials: "include",
+        body: JSON.stringify({
+          parentId: savedAssessmentId,
+          parentType: "track_assessment", // hidden from UI, always track_assessment
+          questionText: newQ.questionText,
+          questionType: newQ.questionType,
+          options: newQ.questionType === "multiple_choice" ? newQ.options : undefined,
+          correctAnswer: newQ.correctAnswer,
+          explanation: newQ.explanation || undefined,
+          orderIndex: questions.length,
+          points: newQ.points,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to add question");
+      setQuestions(prev => [...prev, newQ]);
+      // reset question form
+      setNewQ({
+        questionText: "",
+        questionType: "multiple_choice",
+        options: [
+          { id: "a", text: "" },
+          { id: "b", text: "" },
+          { id: "c", text: "" },
+          { id: "d", text: "" },
+        ],
+        correctAnswer: "",
+        explanation: "",
+        orderIndex: 0,
+        points: 1,
+      });
+      setQErrors({});
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setQuestionLoading(false);
     }
   };
 
   return (
-    <div className="space-y-4">
-      <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1.5">
-          Title <span className="text-red-500">*</span>
-        </label>
-        <input value={form.title} onChange={e => set("title", e.target.value)} className={inputCls}
-          placeholder="e.g. Introduction to Leadership" />
-        {formErrors.title && <p className="text-xs text-red-600 mt-1">{formErrors.title}</p>}
-      </div>
-      <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1.5">
-          Short Description <span className="text-red-500">*</span>
-        </label>
-        <input value={form.shortDescription} onChange={e => set("shortDescription", e.target.value)}
-          className={inputCls} placeholder="One-line summary" />
-        {formErrors.shortDescription && <p className="text-xs text-red-600 mt-1">{formErrors.shortDescription}</p>}
-      </div>
-      <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1.5">
-          Description <span className="text-red-500">*</span>
-        </label>
-        <textarea rows={3} value={form.description} onChange={e => set("description", e.target.value)}
-          className={textareaCls} placeholder="Full description of this module" />
-        {formErrors.description && <p className="text-xs text-red-600 mt-1">{formErrors.description}</p>}
-      </div>
-      <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1.5">Status</label>
-        <select value={form.status} onChange={e => set("status", e.target.value)}
-          className={inputCls} aria-label="select">
-          {statusOptions.map(s => (
-            <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
-          ))}
-        </select>
-      </div>
-      {error && <p className="text-xs text-red-600">{error}</p>}
-      <div className="flex gap-3 pt-1">
-        <button onClick={handleSubmit} disabled={loading}
-          className="bg-[#004900] text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-[#003700] disabled:opacity-60">
-          {loading ? "Creating..." : "Create Module →"}
+    <div className="space-y-5">
+      {/* Tabs */}
+      <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+        <button
+          onClick={() => setTab("config")}
+          className={`flex-1 py-2 rounded-md text-xs font-medium transition-colors ${
+            tab === "config" ? "bg-white text-[#004900] shadow-sm" : "text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          1 · Assessment Config
         </button>
-        <button onClick={onCancel}
-          className="px-5 py-2.5 rounded-lg text-sm font-medium border border-gray-300 text-gray-600 hover:bg-gray-50">
-          Cancel
+        <button
+          onClick={() => { if (configSaved) setTab("questions"); }}
+          disabled={!configSaved}
+          className={`flex-1 py-2 rounded-md text-xs font-medium transition-colors ${
+            tab === "questions" ? "bg-white text-[#004900] shadow-sm" : "text-gray-500 hover:text-gray-700"
+          } disabled:opacity-40 disabled:cursor-not-allowed`}
+        >
+          2 · Questions {questions.length > 0 && `(${questions.length})`}
         </button>
       </div>
+
+      {/* ── Tab 1: Config ── */}
+      {tab === "config" && (
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1.5">
+              Title <span className="text-red-500">*</span>
+            </label>
+            <input value={config.title} onChange={e => setC("title", e.target.value)}
+              className={inputCls} placeholder="e.g. Track Final Assessment" />
+            {configErrors.title && <p className="text-xs text-red-600 mt-1">{configErrors.title}</p>}
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1.5">
+              Description <span className="text-red-500">*</span>
+            </label>
+            <textarea rows={3} value={config.description} onChange={e => setC("description", e.target.value)}
+              className={textareaCls} placeholder="What this assessment covers" />
+            {configErrors.description && <p className="text-xs text-red-600 mt-1">{configErrors.description}</p>}
+          </div>
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1.5">Pass Mark %</label>
+              <input type="number" min={0} max={100} value={config.passMarkPercent}
+                onChange={e => setC("passMarkPercent", Number(e.target.value))}
+                className={inputCls} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1.5">Max Attempts</label>
+              <input type="number" min={1} value={config.maxAttempts}
+                onChange={e => setC("maxAttempts", Number(e.target.value))}
+                className={inputCls} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1.5">Time Limit (mins)</label>
+              <input type="number" min={0} value={config.timeLimitMinutes}
+                onChange={e => setC("timeLimitMinutes", Number(e.target.value))}
+                className={inputCls} placeholder="0 = unlimited" />
+            </div>
+          </div>
+          <label className="flex items-center gap-2.5 text-sm cursor-pointer">
+            <input type="checkbox" checked={config.isActive}
+              onChange={e => setC("isActive", e.target.checked)}
+              className="w-4 h-4 accent-[#004900]" />
+            <span className="text-gray-700">Active immediately</span>
+          </label>
+
+          {error && <p className="text-xs text-red-600">{error}</p>}
+
+          <div className="flex gap-3 pt-1">
+            <button onClick={handleSaveConfig} disabled={configLoading}
+              className="bg-[#004900] text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-[#003700] disabled:opacity-60">
+              {configLoading ? "Saving..." : "Save & Add Questions →"}
+            </button>
+            <button onClick={onCancel}
+              className="px-5 py-2.5 rounded-lg text-sm font-medium border border-gray-300 text-gray-600 hover:bg-gray-50">
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Tab 2: Questions ── */}
+      {tab === "questions" && (
+        <div className="space-y-5">
+          {/* Added questions list */}
+          {questions.length > 0 && (
+            <div className="bg-gray-50 rounded-xl p-4 space-y-2">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                Added Questions ({questions.length})
+              </p>
+              {questions.map((q, i) => (
+                <div key={i} className="flex items-start gap-2.5 bg-white rounded-lg px-3.5 py-2.5 border border-gray-100">
+                  <span className="text-xs font-mono text-gray-400 mt-0.5 shrink-0">Q{i + 1}</span>
+                  <p className="text-xs text-gray-700 line-clamp-2">{q.questionText}</p>
+                  <span className="ml-auto text-xs text-gray-400 shrink-0">{q.points}pt</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* New question form */}
+          <div className="border border-gray-200 rounded-xl p-4 space-y-4">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">New Question</p>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                Question Text <span className="text-red-500">*</span>
+              </label>
+              <textarea rows={2} value={newQ.questionText}
+                onChange={e => setQ("questionText", e.target.value)}
+                className={textareaCls} placeholder="Enter the question..." />
+              {qErrors.questionText && <p className="text-xs text-red-600 mt-1">{qErrors.questionText}</p>}
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1.5">Question Type</label>
+                <select value={newQ.questionType}
+                  onChange={e => setQ("questionType", e.target.value)}
+                  className={inputCls} aria-label="select">
+                  <option value="multiple_choice">Multiple Choice</option>
+                  <option value="true_false">True / False</option>
+                  <option value="short_answer">Short Answer</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1.5">Points</label>
+                <input type="number" min={1} value={newQ.points}
+                  onChange={e => setQ("points", Number(e.target.value))}
+                  className={inputCls} />
+              </div>
+            </div>
+
+            {newQ.questionType === "multiple_choice" && (
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-2">Options</label>
+                <div className="space-y-2">
+                  {newQ.options.map((opt, idx) => (
+                    <div key={opt.id} className="flex items-center gap-2">
+                      <span className="text-xs font-mono text-gray-400 w-4 shrink-0">
+                        {opt.id.toUpperCase()}
+                      </span>
+                      <input value={opt.text} onChange={e => updateOption(idx, e.target.value)}
+                        className={inputCls} placeholder={`Option ${opt.id.toUpperCase()}`} />
+                    </div>
+                  ))}
+                </div>
+                {qErrors.options && <p className="text-xs text-red-600 mt-1">{qErrors.options}</p>}
+              </div>
+            )}
+
+            {newQ.questionType === "true_false" && (
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                  Correct Answer <span className="text-red-500">*</span>
+                </label>
+                <select value={newQ.correctAnswer}
+                  onChange={e => setQ("correctAnswer", e.target.value)}
+                  className={inputCls} aria-label="select">
+                  <option value="">Select…</option>
+                  <option value="true">True</option>
+                  <option value="false">False</option>
+                </select>
+                {qErrors.correctAnswer && <p className="text-xs text-red-600 mt-1">{qErrors.correctAnswer}</p>}
+              </div>
+            )}
+
+            {newQ.questionType !== "true_false" && (
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                  Correct Answer <span className="text-red-500">*</span>
+                </label>
+                <input value={newQ.correctAnswer}
+                  onChange={e => setQ("correctAnswer", e.target.value)}
+                  className={inputCls}
+                  placeholder={newQ.questionType === "multiple_choice" ? "e.g. A or the option text" : "Expected answer"} />
+                {qErrors.correctAnswer && <p className="text-xs text-red-600 mt-1">{qErrors.correctAnswer}</p>}
+              </div>
+            )}
+
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1.5">Explanation (optional)</label>
+              <input value={newQ.explanation}
+                onChange={e => setQ("explanation", e.target.value)}
+                className={inputCls} placeholder="Why this answer is correct" />
+            </div>
+          </div>
+
+          {error && <p className="text-xs text-red-600">{error}</p>}
+
+          <div className="flex gap-3 pt-1">
+            <button onClick={handleAddQuestion} disabled={questionLoading}
+              className="bg-[#004900] text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-[#003700] disabled:opacity-60">
+              {questionLoading ? "Adding..." : "Add Question →"}
+            </button>
+            <button onClick={onDone}
+              className="px-5 py-2.5 rounded-lg text-sm font-medium border border-[#004900] text-[#004900] hover:bg-green-50">
+              Done ({questions.length} question{questions.length !== 1 ? "s" : ""})
+            </button>
+            <button onClick={onCancel}
+              className="px-5 py-2.5 rounded-lg text-sm font-medium border border-gray-300 text-gray-600 hover:bg-gray-50">
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -292,9 +565,10 @@ type ModalState =
   | { type: "none" }
   | { type: "edit"; track: Track }
   | { type: "delete"; track: Track }
-  | { type: "addModule"; track: Track };
+  | { type: "addAssessment"; track: Track };
 
 export default function ManageTracks() {
+  const navigate = useNavigate();
   const [tracks, setTracks] = useState<Track[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState("");
@@ -356,7 +630,6 @@ export default function ManageTracks() {
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-6 py-8">
 
-        {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Manage Tracks</h1>
@@ -367,7 +640,6 @@ export default function ManageTracks() {
           </span>
         </div>
 
-        {/* Table card */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
 
           {loading && (
@@ -438,15 +710,26 @@ export default function ManageTracks() {
                       <td className="px-6 py-4">
                         <div className="flex items-center justify-end gap-2">
 
-                          {/* Add Module */}
+                          {/* Add Module — navigates to ModuleCreate page */}
                           <button
-                            onClick={() => setModal({ type: "addModule", track })}
+                            onClick={() => navigate(`/module-create?trackId=${track.id}`)}
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-[#004900] text-white hover:bg-[#003700] transition-colors"
                           >
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                               <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
                             </svg>
                             Add Module
+                          </button>
+
+                          {/* Add Assessment */}
+                          <button
+                            onClick={() => setModal({ type: "addAssessment", track })}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-purple-600 text-white hover:bg-purple-700 transition-colors"
+                          >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                              <path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+                            </svg>
+                            Add Assessment
                           </button>
 
                           {/* Edit */}
@@ -500,14 +783,14 @@ export default function ManageTracks() {
         </Modal>
       )}
 
-      {/* ── Add Module Modal ── */}
-      {modal.type === "addModule" && (
-        <Modal title={`Add Module to "${modal.track.title}"`} onClose={() => setModal({ type: "none" })}>
-          <AddModuleForm
-            trackId={modal.track.id}
+      {/* ── Add Assessment Modal ── */}
+      {modal.type === "addAssessment" && (
+        <Modal title={`Add Assessment to "${modal.track.title}"`} onClose={() => setModal({ type: "none" })}>
+          <AddAssessmentForm
+            track={modal.track}
             onDone={() => {
               setModal({ type: "none" });
-              showToast("Module added successfully");
+              showToast("Assessment saved successfully");
             }}
             onCancel={() => setModal({ type: "none" })}
           />

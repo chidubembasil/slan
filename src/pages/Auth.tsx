@@ -35,6 +35,24 @@ export default function AdminLogin() {
     }
   }, [resendTimer]);
 
+  useEffect(() => {
+    const check = () => {
+      const token = localStorage.getItem("adminAccessToken");
+      const expiry = localStorage.getItem("adminTokenExpiry");
+      if (token && expiry && Date.now() >= Number(expiry)) {
+        localStorage.removeItem("adminAccessToken");
+        localStorage.removeItem("adminRefreshToken");
+        localStorage.removeItem("adminUser");
+        localStorage.removeItem("adminTokenExpiry");
+        window.location.href = "/";
+      }
+    };
+
+    check(); // run immediately on mount
+    const interval = setInterval(check, 30 * 1000); // check every 30 seconds
+    return () => clearInterval(interval);
+  }, []);
+
   const saveSession = (data: any) => {
     const token = data.data?.accessToken || data.data?.token || data.accessToken || data.token;
     const refresh = data.data?.refreshToken || data.refreshToken;

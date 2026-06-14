@@ -1,6 +1,7 @@
 // Dashboard.tsx
 import { useEffect, useState } from "react";
 import { Users, BookOpen, ClipboardCheck, CreditCard } from "lucide-react";
+import { useAuthGuard } from "../hooks/useAuthGuard"
 
 const BASE = import.meta.env.VITE_API_BASE_URL?? "";
 
@@ -31,6 +32,7 @@ interface Alert {
 
 
 export default function Dashboard() {
+  useAuthGuard();
   const [stats, setStats] = useState<Stats>({
     totalLearners: 0,
     activeCourses: 0,

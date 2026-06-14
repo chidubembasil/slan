@@ -4,8 +4,10 @@ import Upload from "../components/Upload-Course";
 import ManageTracks from "../components/Manage-Tracks";
 import ManageModules from "../components/Manage-Module";
 import ManageUnits from "../components/Manage-Unit";
+import { useAuthGuard } from "../hooks/useAuthGuard"
 
 export default function Course() {
+  useAuthGuard();
   const [activeTab, setActiveTab] = useState("manage");
 
   return (

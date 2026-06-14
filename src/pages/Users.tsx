@@ -1,6 +1,7 @@
 // UsersTable.tsx
 import { useEffect, useState } from "react";
 import { Search, Eye, Pencil, Trash2 } from "lucide-react";
+import { useAuthGuard } from "../hooks/useAuthGuard"
 
 interface User {
   id: string;
@@ -22,6 +23,7 @@ interface Column {
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
 
 export default function Users() {
+  useAuthGuard();
   const [users, setUsers] = useState<User[]>([]);
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
@@ -149,6 +151,7 @@ export default function Users() {
   };
 
   return (
+    
     <div className="bg-white p-6 shadow-sm rounded-xl w-full border border-gray-100">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-semibold text-slate-900">Users Management</h1>

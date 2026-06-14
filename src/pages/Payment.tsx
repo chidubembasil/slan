@@ -1,6 +1,7 @@
 // src/pages/Payment.tsx
 import { useEffect, useState, useMemo } from "react"
 import { Search, Download, Eye, CreditCard, Clock, AlertCircle, TrendingUp } from "lucide-react"
+import { useAuthGuard } from "../hooks/useAuthGuard"
 
 type Stats = {
   totalRevenue: number
@@ -22,6 +23,7 @@ type Invoice = {
 const API_BASE = "/api/payments" // <-- change this
 
 export default function Payment() {
+  useAuthGuard();
   const [stats, setStats] = useState<Stats | null>(null)
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [loading, setLoading] = useState(true)

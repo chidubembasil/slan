@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 import { Download, Users, BookOpen, Award, TrendingUp, BarChart3 } from "lucide-react"
+import { useAuthGuard } from "../hooks/useAuthGuard"
 
 type Period = "week" | "month" | "quarter" | "year"
 
@@ -70,6 +71,7 @@ const getMockData = (period: Period): ReportData => {
 }
 
 export default function Report() {
+  useAuthGuard();
   const [period, setPeriod] = useState<Period>("month")
   const [data, setData] = useState<ReportData | null>(null)
   const [loading, setLoading] = useState(true)
