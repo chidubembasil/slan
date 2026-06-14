@@ -43,11 +43,11 @@ export default function AdminLogin() {
     localStorage.setItem("adminAccessToken", token);
     localStorage.setItem("adminRefreshToken", refresh);
     localStorage.setItem("adminUser", JSON.stringify(user));
-    const hours = trustDevice? 8 : 1;
+    const hours = trustDevice ? 8 : 1;
     localStorage.setItem("adminTokenExpiry", String(Date.now() + hours * 3600 * 1000));
   };
 
-  // STEP 1: send OTP
+  // STEP 1: POST /admin/auth/login — validates credentials + sends OTP
   const handleCredentialsNext = async () => {
     const newErrors: Record<string, string> = {};
     if (!email.trim()) newErrors.email = "Email is required";
@@ -58,43 +58,38 @@ export default function AdminLogin() {
     setOtpSending(true);
     setErrors({});
     try {
-      const res = await fetch(`${BASE}admin/auth/otp/send`, {
+      const res = await fetch(`${BASE}admin/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, password }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Failed to send OTP");
+      if (!res.ok) throw new Error(data.message || "Invalid credentials");
       setStep("otp");
       setResendTimer(60);
       setOtp(Array(6).fill(""));
       setTimeout(() => otpRefs.current[0]?.focus(), 150);
     } catch (err: any) {
-      setErrors({ email: err.message });
+      setErrors({ submit: err.message });
     } finally {
       setOtpSending(false);
     }
   };
 
-  // STEP 2: verify OTP + login
+  // STEP 2: POST /admin/auth/login/verify-otp — verifies OTP + returns tokens
   const handleSubmit = async (otpOverride?: string) => {
-    const currentOtp = otpOverride?? otp.join("");
-    const newErrors: Record<string, string> = {};
-    if (!email.trim()) newErrors.email = "Email is required";
-    if (!password) newErrors.password = "Password is required";
-    if (currentOtp.length!== 6) newErrors.otp = "Enter the 6-digit OTP";
-    if (Object.keys(newErrors).length) return setErrors(newErrors);
+    const currentOtp = otpOverride ?? otp.join("");
+    if (currentOtp.length !== 6) return setErrors({ otp: "Enter the 6-digit OTP" });
 
     setLoading(true);
     setErrors({});
     try {
-      const res = await fetch(`${BASE}admin/auth/login`, {
+      const res = await fetch(`${BASE}admin/auth/login/verify-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
           email,
-          password,
           otp: currentOtp,
           trustWorkstation: trustDevice,
         }),
@@ -110,27 +105,14 @@ export default function AdminLogin() {
     }
   };
 
-  const handleOtpChange = (index: number, value: string) => {
-    if (!/^\d*$/.test(value)) return;
-    const newOtp = [...otp];
-    newOtp[index] = value.slice(-1);
-    setOtp(newOtp);
-    setOtpError("");
-    setErrors((prev) => ({...prev, otp: "" }));
-    if (value && index < 5) otpRefs.current[index + 1]?.focus();
-
-    if (newOtp.every((d) => d) && email && password) {
-      setTimeout(() => handleSubmit(newOtp.join("")), 80);
-    }
-  };
-
+  // RESEND: POST /admin/auth/login/resend-otp
   const handleResend = async () => {
-    if (resendTimer > 0 ||!email) return;
+    if (resendTimer > 0 || !email) return;
     setOtpSending(true);
     setOtp(Array(6).fill(""));
     setOtpError("");
     try {
-      const res = await fetch(`${BASE}admin/auth/otp/send`, {
+      const res = await fetch(`${BASE}admin/auth/login/resend-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
@@ -143,6 +125,20 @@ export default function AdminLogin() {
       setOtpError(err.message);
     } finally {
       setOtpSending(false);
+    }
+  };
+
+  const handleOtpChange = (index: number, value: string) => {
+    if (!/^\d*$/.test(value)) return;
+    const newOtp = [...otp];
+    newOtp[index] = value.slice(-1);
+    setOtp(newOtp);
+    setOtpError("");
+    setErrors((prev) => ({ ...prev, otp: "" }));
+    if (value && index < 5) otpRefs.current[index + 1]?.focus();
+
+    if (newOtp.every((d) => d) && email && password) {
+      setTimeout(() => handleSubmit(newOtp.join("")), 80);
     }
   };
 
@@ -162,20 +158,30 @@ export default function AdminLogin() {
         <div className="p-8 lg:p-12 flex flex-col justify-center">
           <h2 className="text-2xl font-semibold mb-1">Authorize Access</h2>
           <p className="text-sm text-gray-500 mb-7">
-            {step === 'credentials'? 'Enter your credentials to continue.' : 'Enter the 6-digit code sent to your email.'}
+            {step === 'credentials' ? 'Enter your credentials to continue.' : 'Enter the 6-digit code sent to your email.'}
           </p>
 
           <div className="space-y-4">
-            {step === 'credentials'? (
+            {step === 'credentials' ? (
               <>
                 {/* Email */}
                 <div>
                   <label className="text-xs font-medium text-gray-700 block mb-1.5">Email Address</label>
                   <div className="relative">
-                    <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="admin@example.com" className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] pr-10" />
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleCredentialsNext()}
+                      placeholder="admin@example.com"
+                      className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] pr-10"
+                    />
                     {otpSending && (
                       <span className="absolute right-3 top-1/2 -translate-y-1/2">
-                        <svg className="animate-spin h-4 w-4 text-[#004900]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+                        <svg className="animate-spin h-4 w-4 text-[#004900]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
+                        </svg>
                       </span>
                     )}
                   </div>
@@ -185,19 +191,40 @@ export default function AdminLogin() {
                 {/* Password */}
                 <div>
                   <label className="text-xs font-medium text-gray-700 block mb-1.5">Password</label>
-                  <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter password" className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900]" />
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleCredentialsNext()}
+                    placeholder="Enter password"
+                    className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900]"
+                  />
                   {errors.password && <p className="text-xs text-red-600 mt-1">{errors.password}</p>}
                 </div>
 
                 <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer select-none">
-                  <input type="checkbox" checked={trustDevice} onChange={(e) => setTrustDevice(e.target.checked)} className="rounded" />
+                  <input
+                    type="checkbox"
+                    checked={trustDevice}
+                    onChange={(e) => setTrustDevice(e.target.checked)}
+                    className="rounded"
+                  />
                   Trust this workstation for 8 hours
                 </label>
 
-                {errors.submit && <div className="bg-red-50 border border-red-200 rounded-lg px-3.5 py-2.5"><p className="text-xs text-red-700">{errors.submit}</p></div>}
+                {errors.submit && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg px-3.5 py-2.5">
+                    <p className="text-xs text-red-700">{errors.submit}</p>
+                  </div>
+                )}
 
-                <button type="button" onClick={handleCredentialsNext} disabled={otpSending} className="w-full bg-[#004900] text-white py-2.5 rounded-lg font-medium text-sm disabled:opacity-60 hover:bg-[#005c00] transition-colors mt-2">
-                  {otpSending? "Sending OTP…" : "Login →"}
+                <button
+                  type="button"
+                  onClick={handleCredentialsNext}
+                  disabled={otpSending}
+                  className="w-full bg-[#004900] text-white py-2.5 rounded-lg font-medium text-sm disabled:opacity-60 hover:bg-[#005c00] transition-colors mt-2"
+                >
+                  {otpSending ? "Sending OTP…" : "Login →"}
                 </button>
               </>
             ) : (
@@ -207,30 +234,74 @@ export default function AdminLogin() {
                     <p className="text-[11px] text-gray-500">OTP sent to</p>
                     <p className="text-sm font-medium text-gray-900">{email}</p>
                   </div>
-                  <button type="button" onClick={() => setStep('credentials')} className="text-xs text-[#004900] font-medium">Change</button>
+                  <button type="button" onClick={() => setStep('credentials')} className="text-xs text-[#004900] font-medium">
+                    Change
+                  </button>
                 </div>
 
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
                     <label className="text-xs font-medium text-gray-700">OTP Code</label>
-                    <button type="button" onClick={handleResend} disabled={resendTimer > 0 || otpSending} className="text-xs text-[#004900] font-medium disabled:text-gray-400 disabled:cursor-not-allowed">
-                      {otpSending? "Sending…" : resendTimer > 0? `Resend in ${resendTimer}s` : "Resend OTP"}
+                    <button
+                      type="button"
+                      onClick={handleResend}
+                      disabled={resendTimer > 0 || otpSending}
+                      className="text-xs text-[#004900] font-medium disabled:text-gray-400 disabled:cursor-not-allowed"
+                    >
+                      {otpSending ? "Sending…" : resendTimer > 0 ? `Resend in ${resendTimer}s` : "Resend OTP"}
                     </button>
                   </div>
                   <div className="flex gap-2">
                     {otp.map((digit, i) => (
-                      <input key={i} ref={(el) => { otpRefs.current[i] = el; }} type="text" inputMode="numeric" pattern="[0-9]*" maxLength={1} value={digit} onChange={(e) => handleOtpChange(i, e.target.value)} onKeyDown={(e) => { if (e.key === "Backspace" &&!digit && i > 0) otpRefs.current[i - 1]?.focus(); }} onPaste={(e) => { e.preventDefault(); const pasted = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6); if (!pasted) return; const newOtp = [...otp]; pasted.split("").forEach((ch, idx) => { if (idx < 6) newOtp[idx] = ch; }); setOtp(newOtp); }} className={`flex-1 min-w-0 h-12 text-center text-xl font-semibold border-2 rounded-lg focus:outline-none focus:ring-2 transition-colors ${digit? "border-[#004900] focus:ring-[#004900]/20" : "border-gray-300 focus:border-[#004900] focus:ring-[#004900]/20"}`} aria-label="input"/>
+                      <input
+                        key={i}
+                        ref={(el) => { otpRefs.current[i] = el; }}
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        maxLength={1}
+                        value={digit}
+                        onChange={(e) => handleOtpChange(i, e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Backspace" && !digit && i > 0) otpRefs.current[i - 1]?.focus();
+                        }}
+                        onPaste={(e) => {
+                          e.preventDefault();
+                          const pasted = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6);
+                          if (!pasted) return;
+                          const newOtp = [...otp];
+                          pasted.split("").forEach((ch, idx) => { if (idx < 6) newOtp[idx] = ch; });
+                          setOtp(newOtp);
+                        }}
+                        className={`flex-1 min-w-0 h-12 text-center text-xl font-semibold border-2 rounded-lg focus:outline-none focus:ring-2 transition-colors ${digit ? "border-[#004900] focus:ring-[#004900]/20" : "border-gray-300 focus:border-[#004900] focus:ring-[#004900]/20"}`}
+                        aria-label="input"
+                      />
                     ))}
                   </div>
                   {(errors.otp || otpError) && <p className="text-xs text-red-600 mt-1">{errors.otp || otpError}</p>}
                 </div>
 
-                {errors.submit && <div className="bg-red-50 border border-red-200 rounded-lg px-3.5 py-2.5"><p className="text-xs text-red-700">{errors.submit}</p></div>}
+                {errors.submit && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg px-3.5 py-2.5">
+                    <p className="text-xs text-red-700">{errors.submit}</p>
+                  </div>
+                )}
 
-                <button type="button" onClick={() => handleSubmit()} disabled={loading || otp.join("").length!== 6} className="w-full bg-[#004900] text-white py-2.5 rounded-lg font-medium text-sm disabled:opacity-60 hover:bg-[#005c00] transition-colors mt-2">
-                  {loading? "Authorizing…" : "Submit →"}
+                <button
+                  type="button"
+                  onClick={() => handleSubmit()}
+                  disabled={loading || otp.join("").length !== 6}
+                  className="w-full bg-[#004900] text-white py-2.5 rounded-lg font-medium text-sm disabled:opacity-60 hover:bg-[#005c00] transition-colors mt-2"
+                >
+                  {loading ? "Authorizing…" : "Submit →"}
                 </button>
-                <button type="button" onClick={() => setStep('credentials')} className="w-full text-xs text-gray-500 mt-1 hover:text-gray-700">Back to login</button>
+                <button
+                  type="button"
+                  onClick={() => setStep('credentials')}
+                  className="w-full text-xs text-gray-500 mt-1 hover:text-gray-700"
+                >
+                  Back to login
+                </button>
               </>
             )}
           </div>
