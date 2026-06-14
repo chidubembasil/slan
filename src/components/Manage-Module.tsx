@@ -4,6 +4,8 @@ const BASE = import.meta.env.VITE_BASE_URL;
 
 type ModuleStatus = "draft" | "published" | "archived";
 
+type Track = { id: number; title: string };
+
 type Module = {
   id: number;
   title: string;
@@ -297,10 +299,6 @@ function EditModuleForm({
 }
 
 // ── Add Unit Form ─────────────────────────────────────────────────────────────
-// POST /admin/modules/{moduleId}/units
-// Fields from UnitCreate.tsx (image 3):
-// title, description, content, summary, caseStudy, discussionPrompt,
-// videoUrl, pdfUrl, estimatedReadMinutes, passMarkPercent, maxAttempts, status
 
 type UnitForm = {
   title: string;
@@ -395,7 +393,6 @@ function AddUnitForm({
 
   return (
     <div className="space-y-4">
-      {/* Required */}
       <div>
         <label className="block text-xs font-medium text-gray-700 mb-1.5">
           Title <span className="text-red-500">*</span>
@@ -513,9 +510,7 @@ function AddUnitForm({
             type="number"
             min={0}
             value={form.estimatedReadMinutes}
-            onChange={(e) =>
-              set("estimatedReadMinutes", Number(e.target.value))
-            }
+            onChange={(e) => set("estimatedReadMinutes", Number(e.target.value))}
             className={inputCls}
           />
         </div>
@@ -585,8 +580,6 @@ function AddUnitForm({
 }
 
 // ── Add Assessment Form ───────────────────────────────────────────────────────
-// Step 1: POST /admin/modules/{moduleId}/assessment  → assessment config
-// Step 2: POST /admin/assessment-items               → questions (parentType: "module_assessment" hidden)
 
 type AssessmentConfigForm = {
   title: string;
@@ -629,9 +622,7 @@ function AddAssessmentForm({
   });
 
   const [questions, setQuestions] = useState<QuestionForm[]>([]);
-  const [savedAssessmentId, setSavedAssessmentId] = useState<number | null>(
-    null
-  );
+  const [savedAssessmentId, setSavedAssessmentId] = useState<number | null>(null);
   const [configSaved, setConfigSaved] = useState(false);
 
   const [newQ, setNewQ] = useState<QuestionForm>({
@@ -665,7 +656,6 @@ function AddAssessmentForm({
     setQ("options", opts);
   };
 
-  // STEP 1 — save assessment config to /admin/modules/{moduleId}/assessment
   const handleSaveConfig = async () => {
     const e: Partial<Record<keyof AssessmentConfigForm, string>> = {};
     if (!config.title.trim()) e.title = "Title is required";
@@ -709,7 +699,6 @@ function AddAssessmentForm({
     }
   };
 
-  // STEP 2 — add question to /admin/assessment-items
   const handleAddQuestion = async () => {
     const e: Partial<Record<keyof QuestionForm | "options", string>> = {};
     if (!newQ.questionText.trim()) e.questionText = "Question text is required";
@@ -737,7 +726,7 @@ function AddAssessmentForm({
         credentials: "include",
         body: JSON.stringify({
           parentId: savedAssessmentId,
-          parentType: "module_assessment", // hidden from UI
+          parentType: "module_assessment",
           questionText: newQ.questionText,
           questionType: newQ.questionType,
           options:
@@ -776,7 +765,6 @@ function AddAssessmentForm({
 
   return (
     <div className="space-y-5">
-      {/* Tabs */}
       <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
         <button
           onClick={() => setTab("config")}
@@ -789,9 +777,7 @@ function AddAssessmentForm({
           1 · Assessment Config
         </button>
         <button
-          onClick={() => {
-            if (configSaved) setTab("questions");
-          }}
+          onClick={() => { if (configSaved) setTab("questions"); }}
           disabled={!configSaved}
           className={`flex-1 py-2 rounded-md text-xs font-medium transition-colors ${
             tab === "questions"
@@ -803,7 +789,6 @@ function AddAssessmentForm({
         </button>
       </div>
 
-      {/* ── Tab 1: Config ── */}
       {tab === "config" && (
         <div className="space-y-4">
           <div>
@@ -832,9 +817,7 @@ function AddAssessmentForm({
               placeholder="What this assessment covers"
             />
             {configErrors.description && (
-              <p className="text-xs text-red-600 mt-1">
-                {configErrors.description}
-              </p>
+              <p className="text-xs text-red-600 mt-1">{configErrors.description}</p>
             )}
           </div>
           <div className="grid grid-cols-3 gap-4">
@@ -847,9 +830,7 @@ function AddAssessmentForm({
                 min={0}
                 max={100}
                 value={config.passMarkPercent}
-                onChange={(e) =>
-                  setC("passMarkPercent", Number(e.target.value))
-                }
+                onChange={(e) => setC("passMarkPercent", Number(e.target.value))}
                 className={inputCls}
               />
             </div>
@@ -873,9 +854,7 @@ function AddAssessmentForm({
                 type="number"
                 min={0}
                 value={config.timeLimitMinutes}
-                onChange={(e) =>
-                  setC("timeLimitMinutes", Number(e.target.value))
-                }
+                onChange={(e) => setC("timeLimitMinutes", Number(e.target.value))}
                 className={inputCls}
                 placeholder="0 = unlimited"
               />
@@ -911,10 +890,8 @@ function AddAssessmentForm({
         </div>
       )}
 
-      {/* ── Tab 2: Questions ── */}
       {tab === "questions" && (
         <div className="space-y-5">
-          {/* Added questions list */}
           {questions.length > 0 && (
             <div className="bg-gray-50 rounded-xl p-4 space-y-2">
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
@@ -939,7 +916,6 @@ function AddAssessmentForm({
             </div>
           )}
 
-          {/* New question form */}
           <div className="border border-gray-200 rounded-xl p-4 space-y-4">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
               New Question
@@ -957,9 +933,7 @@ function AddAssessmentForm({
                 placeholder="Enter the question..."
               />
               {qErrors.questionText && (
-                <p className="text-xs text-red-600 mt-1">
-                  {qErrors.questionText}
-                </p>
+                <p className="text-xs text-red-600 mt-1">{qErrors.questionText}</p>
               )}
             </div>
 
@@ -1035,9 +1009,7 @@ function AddAssessmentForm({
                   <option value="false">False</option>
                 </select>
                 {qErrors.correctAnswer && (
-                  <p className="text-xs text-red-600 mt-1">
-                    {qErrors.correctAnswer}
-                  </p>
+                  <p className="text-xs text-red-600 mt-1">{qErrors.correctAnswer}</p>
                 )}
               </div>
             ) : (
@@ -1056,9 +1028,7 @@ function AddAssessmentForm({
                   }
                 />
                 {qErrors.correctAnswer && (
-                  <p className="text-xs text-red-600 mt-1">
-                    {qErrors.correctAnswer}
-                  </p>
+                  <p className="text-xs text-red-600 mt-1">{qErrors.correctAnswer}</p>
                 )}
               </div>
             )}
@@ -1090,8 +1060,7 @@ function AddAssessmentForm({
               onClick={onDone}
               className="px-5 py-2.5 rounded-lg text-sm font-medium border border-[#004900] text-[#004900] hover:bg-green-50"
             >
-              Done ({questions.length} question
-              {questions.length !== 1 ? "s" : ""})
+              Done ({questions.length} question{questions.length !== 1 ? "s" : ""})
             </button>
             <button
               onClick={onCancel}
@@ -1117,6 +1086,8 @@ type ModalState =
 
 export default function ManageModules() {
   const [modules, setModules] = useState<Module[]>([]);
+  const [tracks, setTracks] = useState<Track[]>([]);
+  const [selectedTrackId, setSelectedTrackId] = useState<number | "all">("all");
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState("");
   const [modal, setModal] = useState<ModalState>({ type: "none" });
@@ -1133,15 +1104,48 @@ export default function ManageModules() {
     setFetchError("");
     const token = localStorage.getItem("adminAccessToken");
     try {
-      const res = await fetch(`${BASE}admin/modules`, {
+      // 1. Fetch all tracks
+      const tracksRes = await fetch(`${BASE}admin/tracks`, {
         headers: { Authorization: `Bearer ${token}` },
         credentials: "include",
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Failed to load modules");
-      setModules(
-        Array.isArray(data) ? data : data.data ?? data.modules ?? []
+      const tracksData = await tracksRes.json();
+      if (!tracksRes.ok)
+        throw new Error(tracksData.message || "Failed to load tracks");
+
+      const allTracks: Track[] = Array.isArray(tracksData)
+        ? tracksData
+        : tracksData.data ?? tracksData.tracks ?? [];
+
+      setTracks(allTracks);
+
+      if (allTracks.length === 0) {
+        setModules([]);
+        return;
+      }
+
+      // 2. Fetch modules for each track in parallel
+      const results = await Promise.all(
+        allTracks.map((track) =>
+          fetch(`${BASE}admin/tracks/${track.id}/modules`, {
+            headers: { Authorization: `Bearer ${token}` },
+            credentials: "include",
+          })
+            .then((r) => r.json())
+            .then((d) => {
+              const mods: Module[] = Array.isArray(d)
+                ? d
+                : d.data ?? d.modules ?? [];
+              return mods.map((m) => ({
+                ...m,
+                track: m.track ?? { id: track.id, title: track.title },
+              }));
+            })
+            .catch(() => [] as Module[])
+        )
       );
+
+      setModules(results.flat());
     } catch (err: any) {
       setFetchError(err.message);
     } finally {
@@ -1179,6 +1183,12 @@ export default function ManageModules() {
 
   const closeModal = () => setModal({ type: "none" });
 
+  // Filter modules by selected track
+  const filteredModules =
+    selectedTrackId === "all"
+      ? modules
+      : modules.filter((m) => m.trackId === selectedTrackId || m.track?.id === selectedTrackId);
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-6 py-8">
@@ -1192,9 +1202,38 @@ export default function ManageModules() {
             </p>
           </div>
           <span className="text-sm text-gray-400">
-            {modules.length} module{modules.length !== 1 ? "s" : ""}
+            {filteredModules.length} module{filteredModules.length !== 1 ? "s" : ""}
           </span>
         </div>
+
+        {/* Track filter pills */}
+        {!loading && !fetchError && tracks.length > 0 && (
+          <div className="flex items-center gap-2 mb-5 flex-wrap">
+            <button
+              onClick={() => setSelectedTrackId("all")}
+              className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                selectedTrackId === "all"
+                  ? "bg-[#004900] text-white"
+                  : "bg-white border border-gray-200 text-gray-600 hover:border-[#004900] hover:text-[#004900]"
+              }`}
+            >
+              All tracks
+            </button>
+            {tracks.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => setSelectedTrackId(t.id)}
+                className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                  selectedTrackId === t.id
+                    ? "bg-[#004900] text-white"
+                    : "bg-white border border-gray-200 text-gray-600 hover:border-[#004900] hover:text-[#004900]"
+                }`}
+              >
+                {t.title}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Table card */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
@@ -1217,13 +1256,15 @@ export default function ManageModules() {
             </div>
           )}
 
-          {!loading && !fetchError && modules.length === 0 && (
+          {!loading && !fetchError && filteredModules.length === 0 && (
             <div className="flex items-center justify-center py-20 text-gray-400 text-sm">
-              No modules found.
+              {modules.length === 0
+                ? "No modules found. Create a module from a track first."
+                : "No modules in this track."}
             </div>
           )}
 
-          {!loading && !fetchError && modules.length > 0 && (
+          {!loading && !fetchError && filteredModules.length > 0 && (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -1246,7 +1287,7 @@ export default function ManageModules() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {modules.map((mod) => (
+                  {filteredModules.map((mod) => (
                     <tr
                       key={mod.id}
                       className="hover:bg-gray-50/60 transition-colors"

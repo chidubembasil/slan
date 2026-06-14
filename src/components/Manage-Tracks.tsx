@@ -350,7 +350,7 @@ function AddAssessmentForm({ track, onDone, onCancel }: {
     description: "",
     passMarkPercent: 70,
     maxAttempts: 2,
-    timeLimitMinutes: 0,
+    timeLimitMinutes: 30,
     isActive: false,
   });
 
