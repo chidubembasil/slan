@@ -33,6 +33,41 @@ const inputCls =
 const textareaCls = inputCls + " resize-none";
 const statusOptions = ["draft", "published", "archived"] as const;
 
+// ── Cloudinary upload helper ───────────────────────────────────────────────────
+
+const uploadToCloudinary = async (file: File, folder: string = "curriculum"): Promise<string> => {
+  const API_KEY = import.meta.env.VITE_API_KEY;
+  const API_SECRET = import.meta.env.VITE_API_SECRET_KEY;
+  const CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
+  if (!API_KEY || !API_SECRET || !CLOUD_NAME) throw new Error("Cloudinary credentials missing");
+
+  const timestamp = Math.round(new Date().getTime() / 1000);
+  const signatureString = `folder=${folder}&timestamp=${timestamp}${API_SECRET}`;
+  const signature = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(signatureString));
+  const signatureHex = Array.from(new Uint8Array(signature))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("api_key", API_KEY);
+  formData.append("timestamp", timestamp.toString());
+  formData.append("signature", signatureHex);
+  formData.append("folder", folder);
+
+  const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/upload`, {
+    method: "POST",
+    body: formData,
+  });
+  const data = await res.json();
+  if (!res.ok || data.error) throw new Error(data.error?.message || "Upload failed");
+  return data.secure_url;
+};
+
+const ACCEPTED_VIDEO_TYPES = ["video/mp4", "video/webm", "video/ogg", "video/quicktime"];
+const MAX_VIDEO_SIZE_MB = 200;
+const MAX_PDF_SIZE_MB = 25;
+
 // ── Badge ─────────────────────────────────────────────────────────────────────
 
 const statusBadge: Record<UnitStatus, string> = {
@@ -157,25 +192,77 @@ function EditUnitForm({
     summary: unit.summary ?? "",
     caseStudy: unit.caseStudy ?? "",
     discussionPrompt: unit.discussionPrompt ?? "",
-    videoUrl: unit.videoUrl ?? "",
-    pdfUrl: unit.pdfUrl ?? "",
     estimatedReadMinutes: unit.estimatedReadMinutes ?? 0,
     passMarkPercent: unit.passMarkPercent ?? 60,
     maxAttempts: unit.maxAttempts ?? 3,
     status: unit.status,
   });
+
+  // Existing media URLs (already on the unit) vs newly selected replacement files
+  const [existingVideoUrl, setExistingVideoUrl] = useState(unit.videoUrl ?? "");
+  const [existingPdfUrl, setExistingPdfUrl] = useState(unit.pdfUrl ?? "");
+  const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
+
   const [loading, setLoading] = useState(false);
+  const [uploadStage, setUploadStage] = useState("");
   const [error, setError] = useState("");
-  const [formErrors, setFormErrors] = useState<Partial<Record<keyof typeof form, string>>>({});
+  const [formErrors, setFormErrors] = useState<
+    Partial<Record<keyof typeof form, string>> & { video?: string; pdf?: string }
+  >({});
 
   const set = (k: keyof typeof form, v: string | number) =>
     setForm((f) => ({ ...f, [k]: v }));
+
+  const handleVideoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null;
+    if (!file) {
+      setVideoFile(null);
+      return;
+    }
+    if (!ACCEPTED_VIDEO_TYPES.includes(file.type)) {
+      setFormErrors((prev) => ({ ...prev, video: "Unsupported video format" }));
+      setVideoFile(null);
+      e.target.value = "";
+      return;
+    }
+    if (file.size > MAX_VIDEO_SIZE_MB * 1024 * 1024) {
+      setFormErrors((prev) => ({ ...prev, video: `Video must be under ${MAX_VIDEO_SIZE_MB}MB` }));
+      setVideoFile(null);
+      e.target.value = "";
+      return;
+    }
+    setFormErrors((prev) => ({ ...prev, video: undefined }));
+    setVideoFile(file);
+  };
+
+  const handlePdfChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null;
+    if (!file) {
+      setPdfFile(null);
+      return;
+    }
+    if (file.type !== "application/pdf") {
+      setFormErrors((prev) => ({ ...prev, pdf: "File must be a PDF" }));
+      setPdfFile(null);
+      e.target.value = "";
+      return;
+    }
+    if (file.size > MAX_PDF_SIZE_MB * 1024 * 1024) {
+      setFormErrors((prev) => ({ ...prev, pdf: `PDF must be under ${MAX_PDF_SIZE_MB}MB` }));
+      setPdfFile(null);
+      e.target.value = "";
+      return;
+    }
+    setFormErrors((prev) => ({ ...prev, pdf: undefined }));
+    setPdfFile(file);
+  };
 
   const validate = () => {
     const e: Partial<Record<keyof typeof form, string>> = {};
     if (!form.title.trim()) e.title = "Title is required";
     if (!form.description.trim()) e.description = "Description is required";
-    setFormErrors(e);
+    setFormErrors((prev) => ({ ...prev, ...e }));
     return Object.keys(e).length === 0;
   };
 
@@ -183,9 +270,26 @@ function EditUnitForm({
     if (!validate()) return;
     setError("");
     const token = localStorage.getItem("adminAccessToken");
-    if (!token) { setError("Not authenticated"); return; }
+    if (!token) {
+      setError("Not authenticated");
+      return;
+    }
     setLoading(true);
+
+    let videoUrl = existingVideoUrl || undefined;
+    let pdfUrl = existingPdfUrl || undefined;
+
     try {
+      if (videoFile) {
+        setUploadStage("Uploading video...");
+        videoUrl = await uploadToCloudinary(videoFile, "videos");
+      }
+      if (pdfFile) {
+        setUploadStage("Uploading PDF...");
+        pdfUrl = await uploadToCloudinary(pdfFile, "pdfs");
+      }
+
+      setUploadStage("Saving changes...");
       const res = await fetch(`${BASE}admin/units/${unit.id}`, {
         method: "PUT",
         headers: {
@@ -200,8 +304,8 @@ function EditUnitForm({
           summary: form.summary || undefined,
           caseStudy: form.caseStudy || undefined,
           discussionPrompt: form.discussionPrompt || undefined,
-          videoUrl: form.videoUrl || undefined,
-          pdfUrl: form.pdfUrl || undefined,
+          videoUrl,
+          pdfUrl,
           estimatedReadMinutes: form.estimatedReadMinutes,
           passMarkPercent: form.passMarkPercent,
           maxAttempts: form.maxAttempts,
@@ -215,6 +319,7 @@ function EditUnitForm({
       setError(err.message);
     } finally {
       setLoading(false);
+      setUploadStage("");
     }
   };
 
@@ -306,25 +411,81 @@ function EditUnitForm({
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="block text-xs font-medium text-gray-700 mb-1.5">
-            Video URL
+            Video file
           </label>
+          {existingVideoUrl && !videoFile && (
+            <div className="flex items-center justify-between mb-1.5 bg-purple-50 border border-purple-100 rounded-lg px-3 py-2">
+              <a
+                href={existingVideoUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs text-purple-700 underline truncate max-w-[160px]"
+              >
+                Current video
+              </a>
+              <button
+                type="button"
+                onClick={() => setExistingVideoUrl("")}
+                className="text-xs text-red-500 hover:text-red-700 ml-2"
+              >
+                Remove
+              </button>
+            </div>
+          )}
           <input
-            value={form.videoUrl}
-            onChange={(e) => set("videoUrl", e.target.value)}
+            type="file"
+            accept="video/mp4,video/webm,video/ogg,video/quicktime"
+            onChange={handleVideoChange}
             className={inputCls}
-            placeholder="https://..."
+            aria-label="Video file"
           />
+          {videoFile && (
+            <p className="text-xs text-gray-500 mt-1">
+              Selected: {videoFile.name} ({(videoFile.size / (1024 * 1024)).toFixed(1)} MB)
+            </p>
+          )}
+          {formErrors.video && (
+            <p className="text-xs text-red-600 mt-1">{formErrors.video}</p>
+          )}
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-700 mb-1.5">
-            PDF URL
+            PDF file
           </label>
+          {existingPdfUrl && !pdfFile && (
+            <div className="flex items-center justify-between mb-1.5 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+              <a
+                href={existingPdfUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs text-red-700 underline truncate max-w-[160px]"
+              >
+                Current PDF
+              </a>
+              <button
+                type="button"
+                onClick={() => setExistingPdfUrl("")}
+                className="text-xs text-red-500 hover:text-red-700 ml-2"
+              >
+                Remove
+              </button>
+            </div>
+          )}
           <input
-            value={form.pdfUrl}
-            onChange={(e) => set("pdfUrl", e.target.value)}
+            type="file"
+            accept="application/pdf"
+            onChange={handlePdfChange}
             className={inputCls}
-            placeholder="https://..."
+            aria-label="PDF file"
           />
+          {pdfFile && (
+            <p className="text-xs text-gray-500 mt-1">
+              Selected: {pdfFile.name} ({(pdfFile.size / (1024 * 1024)).toFixed(1)} MB)
+            </p>
+          )}
+          {formErrors.pdf && (
+            <p className="text-xs text-red-600 mt-1">{formErrors.pdf}</p>
+          )}
         </div>
       </div>
 
@@ -338,31 +499,6 @@ function EditUnitForm({
             min={0}
             value={form.estimatedReadMinutes}
             onChange={(e) => set("estimatedReadMinutes", Number(e.target.value))}
-            className={inputCls}
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1.5">
-            Pass Mark %
-          </label>
-          <input
-            type="number"
-            min={0}
-            max={100}
-            value={form.passMarkPercent}
-            onChange={(e) => set("passMarkPercent", Number(e.target.value))}
-            className={inputCls}
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1.5">
-            Max Attempts
-          </label>
-          <input
-            type="number"
-            min={1}
-            value={form.maxAttempts}
-            onChange={(e) => set("maxAttempts", Number(e.target.value))}
             className={inputCls}
           />
         </div>
@@ -393,7 +529,7 @@ function EditUnitForm({
           disabled={loading}
           className="bg-[#004900] text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-[#003700] disabled:opacity-60"
         >
-          {loading ? "Saving..." : "Save Changes"}
+          {loading ? uploadStage || "Saving..." : "Save Changes"}
         </button>
       </div>
     </div>
@@ -440,8 +576,6 @@ export default function ManageUnits() {
       const allTracks: Track[] = Array.isArray(tracksData)
         ? tracksData
         : tracksData.data ?? tracksData.tracks ?? [];
-
-  
 
       if (allTracks.length === 0) {
         setModules([]);

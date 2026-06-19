@@ -532,18 +532,6 @@ function AddAssessmentForm({ track, onDone, onCancel }: {
           </div>
           <div className="grid grid-cols-3 gap-4">
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1.5">Pass Mark %</label>
-              <input type="number" min={0} max={100} value={config.passMarkPercent}
-                onChange={e => setC("passMarkPercent", Number(e.target.value))}
-                className={inputCls} />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1.5">Max Attempts</label>
-              <input type="number" min={1} value={config.maxAttempts}
-                onChange={e => setC("maxAttempts", Number(e.target.value))}
-                className={inputCls} />
-            </div>
-            <div>
               <label className="block text-xs font-medium text-gray-700 mb-1.5">Time Limit (mins)</label>
               <input type="number" min={0} value={config.timeLimitMinutes}
                 onChange={e => setC("timeLimitMinutes", Number(e.target.value))}

@@ -10,8 +10,6 @@ type UnitForm = {
   summary: string;
   caseStudy: string;
   discussionPrompt: string;
-  videoUrl: string;
-  pdfUrl: string;
   estimatedReadMinutes: string;
   passMarkPercent: string;
   maxAttempts: string;
@@ -80,7 +78,8 @@ const uploadToCloudinary = async (file: File, folder: string = "curriculum"): Pr
   const signatureString = `folder=${folder}&timestamp=${timestamp}${API_SECRET}`;
   const signature = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(signatureString));
   const signatureHex = Array.from(new Uint8Array(signature))
-    .map(b => b.toString(16).padStart(2, "0")).join("");
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 
   const formData = new FormData();
   formData.append("file", file);
@@ -90,43 +89,100 @@ const uploadToCloudinary = async (file: File, folder: string = "curriculum"): Pr
   formData.append("folder", folder);
 
   const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/upload`, {
-    method: "POST", body: formData,
+    method: "POST",
+    body: formData,
   });
   const data = await res.json();
   if (!res.ok || data.error) throw new Error(data.error?.message || "Upload failed");
   return data.secure_url;
 };
 
+const ACCEPTED_VIDEO_TYPES = ["video/mp4", "video/webm", "video/ogg", "video/quicktime"];
+const MAX_VIDEO_SIZE_MB = 200;
+const MAX_PDF_SIZE_MB = 25;
+
 export default function UnitCreate({ onComplete }: { onComplete?: () => void }) {
   const [form, setForm] = useState<UnitForm>({
-    moduleId: "", title: "", description: "", content: "",
-    summary: "", caseStudy: "", discussionPrompt: "",
-    videoUrl: "", pdfUrl: "",
-    estimatedReadMinutes: "0", passMarkPercent: "60", maxAttempts: "3", status: "draft",
+    moduleId: "",
+    title: "",
+    description: "",
+    content: "",
+    summary: "",
+    caseStudy: "",
+    discussionPrompt: "",
+    estimatedReadMinutes: "0",
+    passMarkPercent: "60",
+    maxAttempts: "3",
+    status: "draft",
   });
 
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [pdfFile, setPdfFile] = useState<File | null>(null);
-  const [errors, setErrors] = useState<FormErrors<UnitForm>>({});
+  const [errors, setErrors] = useState<FormErrors<UnitForm> & { video?: string; pdf?: string }>({});
   const [loading, setLoading] = useState(false);
+  const [uploadStage, setUploadStage] = useState<string>("");
   const [submitError, setSubmitError] = useState("");
   const [toast, setToast] = useState<string | null>(null);
 
   const set = (key: keyof UnitForm, value: string) =>
     setForm((f) => ({ ...f, [key]: value }));
 
+  const handleVideoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null;
+    if (!file) {
+      setVideoFile(null);
+      return;
+    }
+    if (!ACCEPTED_VIDEO_TYPES.includes(file.type)) {
+      setErrors((prev) => ({ ...prev, video: "Unsupported video format" }));
+      setVideoFile(null);
+      e.target.value = "";
+      return;
+    }
+    if (file.size > MAX_VIDEO_SIZE_MB * 1024 * 1024) {
+      setErrors((prev) => ({ ...prev, video: `Video must be under ${MAX_VIDEO_SIZE_MB}MB` }));
+      setVideoFile(null);
+      e.target.value = "";
+      return;
+    }
+    setErrors((prev) => ({ ...prev, video: undefined }));
+    setVideoFile(file);
+  };
+
+  const handlePdfChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null;
+    if (!file) {
+      setPdfFile(null);
+      return;
+    }
+    if (file.type !== "application/pdf") {
+      setErrors((prev) => ({ ...prev, pdf: "File must be a PDF" }));
+      setPdfFile(null);
+      e.target.value = "";
+      return;
+    }
+    if (file.size > MAX_PDF_SIZE_MB * 1024 * 1024) {
+      setErrors((prev) => ({ ...prev, pdf: `PDF must be under ${MAX_PDF_SIZE_MB}MB` }));
+      setPdfFile(null);
+      e.target.value = "";
+      return;
+    }
+    setErrors((prev) => ({ ...prev, pdf: undefined }));
+    setPdfFile(file);
+  };
+
   const validate = (): boolean => {
     const e: FormErrors<UnitForm> = {};
     if (!form.moduleId.trim() || isNaN(Number(form.moduleId))) e.moduleId = "Valid Module ID is required";
     if (!form.title.trim()) e.title = "Title is required";
     if (!form.description.trim()) e.description = "Description is required";
-    if (form.estimatedReadMinutes === "" || isNaN(Number(form.estimatedReadMinutes))) 
+    if (form.estimatedReadMinutes === "" || isNaN(Number(form.estimatedReadMinutes)))
       e.estimatedReadMinutes = "Must be a valid number";
     const pmp = Number(form.passMarkPercent);
     if (isNaN(pmp) || pmp < 0 || pmp > 100) e.passMarkPercent = "Must be 0–100";
     const ma = Number(form.maxAttempts);
     if (isNaN(ma) || ma < 1) e.maxAttempts = "Must be at least 1";
-    setErrors(e);
+    setErrors((prev) => ({ ...prev, ...e }));
     return Object.keys(e).length === 0;
   };
 
@@ -142,13 +198,20 @@ export default function UnitCreate({ onComplete }: { onComplete?: () => void }) 
     }
 
     setLoading(true);
-    let finalVideoUrl = form.videoUrl;
-    let finalPdfUrl = form.pdfUrl;
+    let videoUrl: string | undefined;
+    let pdfUrl: string | undefined;
 
     try {
-      if (videoFile) finalVideoUrl = await uploadToCloudinary(videoFile, "videos");
-      if (pdfFile) finalPdfUrl = await uploadToCloudinary(pdfFile, "pdfs");
+      if (videoFile) {
+        setUploadStage("Uploading video...");
+        videoUrl = await uploadToCloudinary(videoFile, "videos");
+      }
+      if (pdfFile) {
+        setUploadStage("Uploading PDF...");
+        pdfUrl = await uploadToCloudinary(pdfFile, "pdfs");
+      }
 
+      setUploadStage("Saving unit...");
       const res = await fetch(`${BASE}admin/modules/${form.moduleId}/units`, {
         method: "POST",
         headers: {
@@ -163,8 +226,8 @@ export default function UnitCreate({ onComplete }: { onComplete?: () => void }) 
           summary: form.summary || undefined,
           caseStudy: form.caseStudy || undefined,
           discussionPrompt: form.discussionPrompt || undefined,
-          videoUrl: finalVideoUrl || undefined,
-          pdfUrl: finalPdfUrl || undefined,
+          videoUrl,
+          pdfUrl,
           estimatedReadMinutes: Number(form.estimatedReadMinutes),
           passMarkPercent: Number(form.passMarkPercent),
           maxAttempts: Number(form.maxAttempts),
@@ -181,12 +244,19 @@ export default function UnitCreate({ onComplete }: { onComplete?: () => void }) 
         if (onComplete) onComplete();
       }, 3000);
 
-      // Reset form
+      // Reset form (keep moduleId so admin can add the next unit to the same module)
       setForm({
-        moduleId: form.moduleId, title: "", description: "", content: "",
-        summary: "", caseStudy: "", discussionPrompt: "",
-        videoUrl: "", pdfUrl: "",
-        estimatedReadMinutes: "0", passMarkPercent: "60", maxAttempts: "3", status: "draft",
+        moduleId: form.moduleId,
+        title: "",
+        description: "",
+        content: "",
+        summary: "",
+        caseStudy: "",
+        discussionPrompt: "",
+        estimatedReadMinutes: "0",
+        passMarkPercent: "60",
+        maxAttempts: "3",
+        status: "draft",
       });
       setVideoFile(null);
       setPdfFile(null);
@@ -195,6 +265,7 @@ export default function UnitCreate({ onComplete }: { onComplete?: () => void }) 
       setSubmitError(err.message);
     } finally {
       setLoading(false);
+      setUploadStage("");
     }
   };
 
@@ -204,82 +275,155 @@ export default function UnitCreate({ onComplete }: { onComplete?: () => void }) 
         <Section number="3" title="Create Unit" subtitle="Belongs to a module — the smallest unit of learning content">
           <form onSubmit={handleSubmit} className="space-y-5">
             <Field label="Module ID" required error={errors.moduleId}>
-              <input type="number" min="1" value={form.moduleId}
+              <input
+                type="number"
+                min="1"
+                value={form.moduleId}
                 onChange={(e) => set("moduleId", e.target.value)}
-                placeholder="Enter the ID of the parent module" className={inputCls} />
+                placeholder="Enter the ID of the parent module"
+                className={inputCls}
+              />
             </Field>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <Field label="Title" required error={errors.title}>
-                <input type="text" value={form.title} onChange={(e) => set("title", e.target.value)}
-                  placeholder="e.g. What is Instructional Leadership?" className={inputCls} />
+                <input
+                  type="text"
+                  value={form.title}
+                  onChange={(e) => set("title", e.target.value)}
+                  placeholder="e.g. What is Instructional Leadership?"
+                  className={inputCls}
+                />
               </Field>
             </div>
 
             <Field label="Description" required error={errors.description}>
-              <textarea rows={3} value={form.description} onChange={(e) => set("description", e.target.value)}
-                placeholder="Brief description of this unit" className={textareaCls} />
+              <textarea
+                rows={3}
+                value={form.description}
+                onChange={(e) => set("description", e.target.value)}
+                placeholder="Brief description of this unit"
+                className={textareaCls}
+              />
             </Field>
 
             <Field label="Content">
-              <textarea rows={6} value={form.content} onChange={(e) => set("content", e.target.value)}
-                placeholder="Main learning content for this unit" className={textareaCls} />
+              <textarea
+                rows={6}
+                value={form.content}
+                onChange={(e) => set("content", e.target.value)}
+                placeholder="Main learning content for this unit"
+                className={textareaCls}
+              />
             </Field>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <Field label="Summary">
-                <textarea rows={3} value={form.summary} onChange={(e) => set("summary", e.target.value)}
-                  placeholder="Key takeaways (optional)" className={textareaCls} />
+                <textarea
+                  rows={3}
+                  value={form.summary}
+                  onChange={(e) => set("summary", e.target.value)}
+                  placeholder="Key takeaways (optional)"
+                  className={textareaCls}
+                />
               </Field>
               <Field label="Case Study">
-                <textarea rows={3} value={form.caseStudy} onChange={(e) => set("caseStudy", e.target.value)}
-                  placeholder="Real-world case study (optional)" className={textareaCls} />
+                <textarea
+                  rows={3}
+                  value={form.caseStudy}
+                  onChange={(e) => set("caseStudy", e.target.value)}
+                  placeholder="Real-world case study (optional)"
+                  className={textareaCls}
+                />
               </Field>
             </div>
 
             <Field label="Discussion Prompt">
-              <textarea rows={2} value={form.discussionPrompt} onChange={(e) => set("discussionPrompt", e.target.value)}
-                placeholder="Reflection or discussion question (optional)" className={textareaCls} />
+              <textarea
+                rows={2}
+                value={form.discussionPrompt}
+                onChange={(e) => set("discussionPrompt", e.target.value)}
+                placeholder="Reflection or discussion question (optional)"
+                className={textareaCls}
+              />
             </Field>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <Field label="Video">
-                <input type="file" accept="video/*" onChange={(e) => {
-                  const file = e.target.files?.[0] || null;
-                  setVideoFile(file);
-                  set("videoUrl", file ? file.name : "");
-                }} className={inputCls} aria-label="input" />
-                {videoFile && <p className="text-xs text-gray-500 mt-1">Selected: {videoFile.name}</p>}
+              <Field label="Video file" error={errors.video}>
+                <input
+                  type="file"
+                  accept="video/mp4,video/webm,video/ogg,video/quicktime"
+                  onChange={handleVideoChange}
+                  className={inputCls}
+                  aria-label="Video file"
+                />
+                {videoFile && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Selected: {videoFile.name} ({(videoFile.size / (1024 * 1024)).toFixed(1)} MB)
+                  </p>
+                )}
               </Field>
-              <Field label="PDF">
-                <input type="file" accept=".pdf" onChange={(e) => {
-                  const file = e.target.files?.[0] || null;
-                  setPdfFile(file);
-                  set("pdfUrl", file ? file.name : "");
-                }} className={inputCls} aria-label="input" />
-                {pdfFile && <p className="text-xs text-gray-500 mt-1">Selected: {pdfFile.name}</p>}
+              <Field label="PDF file" error={errors.pdf}>
+                <input
+                  type="file"
+                  accept="application/pdf"
+                  onChange={handlePdfChange}
+                  className={inputCls}
+                  aria-label="PDF file"
+                />
+                {pdfFile && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Selected: {pdfFile.name} ({(pdfFile.size / (1024 * 1024)).toFixed(1)} MB)
+                  </p>
+                )}
               </Field>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
               <Field label="Estimated Read (mins)" error={errors.estimatedReadMinutes}>
-                <input type="number" min="0" value={form.estimatedReadMinutes}
-                  onChange={(e) => set("estimatedReadMinutes", e.target.value)} className={inputCls} aria-label="input" />
+                <input
+                  type="number"
+                  min="0"
+                  value={form.estimatedReadMinutes}
+                  onChange={(e) => set("estimatedReadMinutes", e.target.value)}
+                  className={inputCls}
+                  aria-label="Estimated read minutes"
+                />
               </Field>
               <Field label="Pass Mark (%)" error={errors.passMarkPercent}>
-                <input type="number" min="0" max="100" value={form.passMarkPercent}
-                  onChange={(e) => set("passMarkPercent", e.target.value)} className={inputCls} aria-label="input" />
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={form.passMarkPercent}
+                  onChange={(e) => set("passMarkPercent", e.target.value)}
+                  className={inputCls}
+                  aria-label="Pass mark percent"
+                />
               </Field>
               <Field label="Max Attempts" error={errors.maxAttempts}>
-                <input type="number" min="1" value={form.maxAttempts}
-                  onChange={(e) => set("maxAttempts", e.target.value)} className={inputCls} aria-label="input" />
+                <input
+                  type="number"
+                  min="1"
+                  value={form.maxAttempts}
+                  onChange={(e) => set("maxAttempts", e.target.value)}
+                  className={inputCls}
+                  aria-label="Max attempts"
+                />
               </Field>
             </div>
 
             <Field label="Status" required>
-              <select value={form.status} onChange={(e) => set("status", e.target.value)} className={inputCls} aria-label="select">
+              <select
+                value={form.status}
+                onChange={(e) => set("status", e.target.value)}
+                className={inputCls}
+                aria-label="Status"
+              >
                 {statusOptions.map((s) => (
-                  <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
+                  <option key={s} value={s}>
+                    {s.charAt(0).toUpperCase() + s.slice(1)}
+                  </option>
                 ))}
               </select>
             </Field>
@@ -290,9 +434,12 @@ export default function UnitCreate({ onComplete }: { onComplete?: () => void }) 
               </div>
             )}
 
-            <button type="submit" disabled={loading}
-              className="bg-[#004900] text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-[#003700] disabled:opacity-60">
-              {loading ? "Creating unit..." : "Create Unit →"}
+            <button
+              type="submit"
+              disabled={loading}
+              className="bg-[#004900] text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-[#003700] disabled:opacity-60"
+            >
+              {loading ? uploadStage || "Creating unit..." : "Create Unit →"}
             </button>
           </form>
         </Section>
