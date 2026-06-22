@@ -1,6 +1,43 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
 const BASE = import.meta.env.VITE_BASE_URL;
+
+const CLOUDINARY_CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
+const CLOUDINARY_API_KEY = import.meta.env.VITE_API_KEY;
+const CLOUDINARY_API_SECRET = import.meta.env.VITE_API_SECRET_KEY;
+
+async function uploadFileToCloudinary(file: File, folder: string = "assessments"): Promise<string> {
+  if (!CLOUDINARY_API_KEY || !CLOUDINARY_API_SECRET || !CLOUDINARY_CLOUD_NAME) {
+    throw new Error("Cloudinary credentials missing");
+  }
+
+  const timestamp = Math.round(new Date().getTime() / 1000);
+  const signatureString = `folder=${folder}&timestamp=${timestamp}${CLOUDINARY_API_SECRET}`;
+  const signature = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(signatureString));
+  const signatureHex = Array.from(new Uint8Array(signature))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("api_key", CLOUDINARY_API_KEY);
+  formData.append("timestamp", timestamp.toString());
+  formData.append("signature", signatureHex);
+  formData.append("folder", folder);
+
+  const res = await fetch(
+    `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/raw/upload`,
+    { method: "POST", body: formData }
+  );
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err?.error?.message || "Cloudinary upload failed");
+  }
+
+  const data = await res.json();
+  return data.secure_url as string;
+}
 
 type TrackStatus = "draft" | "published" | "archived";
 
@@ -29,13 +66,13 @@ function Badge({ status }: { status: TrackStatus }) {
   );
 }
 
-function Modal({ title, onClose, children }: {
-  title: string; onClose: () => void; children: React.ReactNode;
+function Modal({ title, onClose, children, wide }: {
+  title: string; onClose: () => void; children: React.ReactNode; wide?: boolean;
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+      <div className={`relative bg-white rounded-2xl shadow-2xl w-full ${wide ? "max-w-3xl" : "max-w-2xl"} max-h-[90vh] overflow-y-auto`}>
         <div className="bg-[#004900] px-6 py-4 flex items-center justify-between rounded-t-2xl sticky top-0 z-10">
           <h2 className="text-white font-semibold text-base">{title}</h2>
           <button onClick={onClose} className="text-white/70 hover:text-white text-xl leading-none">✕</button>
@@ -90,17 +127,45 @@ function EditTrackForm({ track, onDone }: { track: Track; onDone: () => void }) 
     description: "",
     status: track.status,
     isFree: track.isFree,
+    thumbnail: track.thumbnail ?? "",
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
+  const [thumbnailPreview, setThumbnailPreview] = useState(track.thumbnail || "");
+  const [uploadingThumb, setUploadingThumb] = useState(false);
+  const thumbInputRef = useRef<HTMLInputElement>(null);
 
   const set = (k: keyof typeof form, v: string | boolean) =>
     setForm(f => ({ ...f, [k]: v }));
+
+  const handleThumbnailSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setThumbnailFile(file);
+    const reader = new FileReader();
+    reader.onload = (ev) => setThumbnailPreview(ev.target?.result as string);
+    reader.readAsDataURL(file);
+  };
 
   const handleSave = async () => {
     setError("");
     const token = localStorage.getItem("adminAccessToken");
     if (!token) { setError("Not authenticated"); return; }
+
+    let thumbnailUrl = form.thumbnail;
+    if (thumbnailFile) {
+      setUploadingThumb(true);
+      try {
+        thumbnailUrl = await uploadFileToCloudinary(thumbnailFile, "curriculum");
+      } catch (err: any) {
+        setError(err.message || "Thumbnail upload failed");
+        setUploadingThumb(false);
+        return;
+      }
+      setUploadingThumb(false);
+    }
+
     setLoading(true);
     try {
       const res = await fetch(`${BASE}admin/tracks/${track.id}`, {
@@ -113,6 +178,7 @@ function EditTrackForm({ track, onDone }: { track: Track; onDone: () => void }) 
           description: form.description || undefined,
           status: form.status,
           isFree: form.isFree,
+          thumbnail: thumbnailUrl || undefined,
         }),
       });
       const data = await res.json();
@@ -127,6 +193,34 @@ function EditTrackForm({ track, onDone }: { track: Track; onDone: () => void }) 
 
   return (
     <div className="space-y-4">
+      {/* Thumbnail Upload */}
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-1.5">Thumbnail</label>
+        <div className="flex items-center gap-4">
+          {thumbnailPreview && (
+            <img src={thumbnailPreview} alt="preview" className="w-16 h-16 rounded-lg object-cover border border-gray-200" />
+          )}
+          <div className="flex-1">
+            <button
+              onClick={() => thumbInputRef.current?.click()}
+              disabled={uploadingThumb}
+              className="px-4 py-2 rounded-lg text-xs font-medium border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-60"
+            >
+              {uploadingThumb ? "Uploading…" : thumbnailPreview ? "Change Image" : "Upload Image"}
+            </button>
+            <input
+              ref={thumbInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleThumbnailSelect}
+            />
+            <p className="text-xs text-gray-400 mt-1">JPG, PNG, WebP. Max 5MB.</p>
+          </div>
+        </div>
+        {error && <p className="text-xs text-red-600 mt-1">{error}</p>}
+      </div>
+
       <div>
         <label className="block text-xs font-medium text-gray-700 mb-1.5">
           Title <span className="text-red-500">*</span>
@@ -162,7 +256,7 @@ function EditTrackForm({ track, onDone }: { track: Track; onDone: () => void }) 
       </div>
       {error && <p className="text-xs text-red-600">{error}</p>}
       <div className="flex gap-3 pt-1">
-        <button onClick={handleSave} disabled={loading}
+        <button onClick={handleSave} disabled={loading || uploadingThumb}
           className="bg-[#004900] text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-[#003700] disabled:opacity-60">
           {loading ? "Saving..." : "Save Changes"}
         </button>
@@ -171,8 +265,7 @@ function EditTrackForm({ track, onDone }: { track: Track; onDone: () => void }) 
   );
 }
 
-// ── Add Module Form (embedded modal) ───────────────────────────────────────────
-// POST /admin/tracks/{trackId}/modules
+// ── Add Module Form ───────────────────────────────────────────────────────────
 
 type ModuleForm = {
   title: string;
@@ -252,7 +345,6 @@ function AddModuleForm({ trackId, onDone, onCancel }: {
           className={inputCls} placeholder="e.g. Introduction to Leadership" />
         {formErrors.title && <p className="text-xs text-red-600 mt-1">{formErrors.title}</p>}
       </div>
-
       <div>
         <label className="block text-xs font-medium text-gray-700 mb-1.5">
           Description <span className="text-red-500">*</span>
@@ -261,34 +353,28 @@ function AddModuleForm({ trackId, onDone, onCancel }: {
           className={textareaCls} placeholder="Full description of this module" />
         {formErrors.description && <p className="text-xs text-red-600 mt-1">{formErrors.description}</p>}
       </div>
-
       <div>
         <label className="block text-xs font-medium text-gray-700 mb-1.5">Content</label>
         <textarea rows={4} value={form.content} onChange={e => set("content", e.target.value)}
           className={textareaCls} placeholder="Module content (optional)" />
       </div>
-
       <div className="grid grid-cols-3 gap-4">
         <div>
           <label className="block text-xs font-medium text-gray-700 mb-1.5">Est. Read (mins)</label>
           <input type="number" min={0} value={form.estimatedReadMinutes}
-            onChange={e => set("estimatedReadMinutes", Number(e.target.value))}
-            className={inputCls} />
+            onChange={e => set("estimatedReadMinutes", Number(e.target.value))} className={inputCls} />
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-700 mb-1.5">Pass Mark %</label>
           <input type="number" min={0} max={100} value={form.passMarkPercent}
-            onChange={e => set("passMarkPercent", Number(e.target.value))}
-            className={inputCls} />
+            onChange={e => set("passMarkPercent", Number(e.target.value))} className={inputCls} />
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-700 mb-1.5">Max Attempts</label>
           <input type="number" min={1} value={form.maxAttempts}
-            onChange={e => set("maxAttempts", Number(e.target.value))}
-            className={inputCls} />
+            onChange={e => set("maxAttempts", Number(e.target.value))} className={inputCls} />
         </div>
       </div>
-
       <div>
         <label className="block text-xs font-medium text-gray-700 mb-1.5">Status</label>
         <select value={form.status} onChange={e => set("status", e.target.value)}
@@ -298,7 +384,6 @@ function AddModuleForm({ trackId, onDone, onCancel }: {
           ))}
         </select>
       </div>
-
       {error && <p className="text-xs text-red-600">{error}</p>}
       <div className="flex gap-3 pt-1">
         <button onClick={handleSubmit} disabled={loading}
@@ -314,38 +399,221 @@ function AddModuleForm({ trackId, onDone, onCancel }: {
   );
 }
 
-// ── Add Assessment Form ───────────────────────────────────────────────────────
-// POST /admin/tracks/{trackId}/assessment  (track assessment config)
-// POST /admin/assessment-items             (individual questions, parentType hidden as track_assessment)
+// ── Assessment Form types & helpers ───────────────────────────────────────────
 
-type AssessmentConfigForm = {
-  title: string;
-  description: string;
-  passMarkPercent: number;
-  maxAttempts: number;
-  timeLimitMinutes: number;
-  isActive: boolean;
-};
+type QuestionMode = "single" | "bulk" | "file";
 
-type QuestionOption = { id: string; text: string };
-
-type QuestionForm = {
+type SingleQuestion = {
   questionText: string;
   questionType: "multiple_choice" | "true_false" | "short_answer";
-  options: QuestionOption[];
+  options: { id: string; text: string }[];
   correctAnswer: string;
   explanation: string;
   orderIndex: number;
   points: number;
 };
 
-function AddAssessmentForm({ track, onDone, onCancel }: {
-  track: Track; onDone: () => void; onCancel: () => void;
-}) {
-  // Tab: config | questions
-  const [tab, setTab] = useState<"config" | "questions">("config");
+const emptyQuestion = (orderIndex = 0): SingleQuestion => ({
+  questionText: "",
+  questionType: "multiple_choice",
+  options: [
+    { id: "a", text: "" },
+    { id: "b", text: "" },
+    { id: "c", text: "" },
+    { id: "d", text: "" },
+  ],
+  correctAnswer: "",
+  explanation: "",
+  orderIndex,
+  points: 1,
+});
 
-  const [config, setConfig] = useState<AssessmentConfigForm>({
+// ── Question Editor ───────────────────────────────────────────────────────────
+
+function QuestionEditor({
+  q,
+  index,
+  onChange,
+  onRemove,
+  showRemove,
+}: {
+  q: SingleQuestion;
+  index: number;
+  onChange: (q: SingleQuestion) => void;
+  onRemove: () => void;
+  showRemove: boolean;
+}) {
+  const set = (k: keyof SingleQuestion, v: any) => onChange({ ...q, [k]: v });
+  const setOption = (i: number, text: string) => {
+    const opts = [...q.options];
+    opts[i] = { ...opts[i], text };
+    onChange({ ...q, options: opts });
+  };
+
+  return (
+    <div className="border border-gray-200 rounded-xl p-4 space-y-3 bg-gray-50/50">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+          Question {index + 1}
+        </span>
+        {showRemove && (
+          <button onClick={onRemove} className="text-xs text-red-500 hover:text-red-700 font-medium">
+            Remove
+          </button>
+        )}
+      </div>
+
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-1">
+          Question Text <span className="text-red-500">*</span>
+        </label>
+        <textarea
+          rows={2}
+          value={q.questionText}
+          onChange={e => set("questionText", e.target.value)}
+          className={textareaCls}
+          placeholder="Enter question..."
+        />
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-1">Type</label>
+          <select
+            value={q.questionType}
+            onChange={e => set("questionType", e.target.value)}
+            className={inputCls}
+          >
+            <option value="multiple_choice">Multiple Choice</option>
+            <option value="true_false">True / False</option>
+            <option value="short_answer">Short Answer</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-1">Points</label>
+          <input
+            type="number" min={1}
+            value={q.points}
+            onChange={e => set("points", Number(e.target.value))}
+            className={inputCls}
+          />
+        </div>
+      </div>
+
+      {q.questionType === "multiple_choice" && (
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-1.5">Options</label>
+          <div className="space-y-2">
+            {q.options.map((opt, i) => (
+              <div key={opt.id} className="flex items-center gap-2">
+                <span className="text-xs font-mono font-bold text-gray-400 w-4">
+                  {opt.id.toUpperCase()}
+                </span>
+                <input
+                  value={opt.text}
+                  onChange={e => setOption(i, e.target.value)}
+                  placeholder={`Option ${opt.id.toUpperCase()}`}
+                  className={inputCls}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {q.questionType === "true_false" && (
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-1">
+            Correct Answer <span className="text-red-500">*</span>
+          </label>
+          <select
+            value={q.correctAnswer}
+            onChange={e => set("correctAnswer", e.target.value)}
+            className={inputCls}
+          >
+            <option value="">Select…</option>
+            <option value="true">True</option>
+            <option value="false">False</option>
+          </select>
+        </div>
+      )}
+
+      {q.questionType === "multiple_choice" && (
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-1">
+            Correct Answer <span className="text-red-500">*</span>
+          </label>
+          <select
+            value={q.correctAnswer}
+            onChange={e => set("correctAnswer", e.target.value)}
+            className={inputCls}
+          >
+            <option value="">Select option…</option>
+            {q.options.map(opt => (
+              <option key={opt.id} value={opt.id}>
+                {opt.id.toUpperCase()} — {opt.text || "(empty)"}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {q.questionType === "short_answer" && (
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-1">
+            Correct Answer <span className="text-red-500">*</span>
+          </label>
+          <input
+            value={q.correctAnswer}
+            onChange={e => set("correctAnswer", e.target.value)}
+            className={inputCls}
+            placeholder="Expected answer"
+          />
+        </div>
+      )}
+
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-1">
+          Explanation <span className="text-gray-400">(optional)</span>
+        </label>
+        <input
+          value={q.explanation}
+          onChange={e => set("explanation", e.target.value)}
+          className={inputCls}
+          placeholder="Why this is the correct answer"
+        />
+      </div>
+
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-1">Order Index</label>
+        <input
+          type="number" min={0}
+          value={q.orderIndex}
+          onChange={e => set("orderIndex", Number(e.target.value))}
+          className={inputCls}
+        />
+      </div>
+    </div>
+  );
+}
+
+// ── Add Assessment Form (Track) ───────────────────────────────────────────────
+
+type AssessmentStep = 1 | 2;
+
+function AddAssessmentForm({
+  track,
+  onDone,
+  onCancel,
+}: {
+  track: Track;
+  onDone: () => void;
+  onCancel: () => void;
+}) {
+  const [step, setStep] = useState<AssessmentStep>(1);
+
+  // Step 1 — config
+  const [config, setConfig] = useState({
     title: "",
     description: "",
     passMarkPercent: 70,
@@ -353,55 +621,36 @@ function AddAssessmentForm({ track, onDone, onCancel }: {
     timeLimitMinutes: 30,
     isActive: false,
   });
-
-  const [questions, setQuestions] = useState<QuestionForm[]>([]);
-  const [newQ, setNewQ] = useState<QuestionForm>({
-    questionText: "",
-    questionType: "multiple_choice",
-    options: [
-      { id: "a", text: "" },
-      { id: "b", text: "" },
-      { id: "c", text: "" },
-      { id: "d", text: "" },
-    ],
-    correctAnswer: "",
-    explanation: "",
-    orderIndex: 0,
-    points: 1,
-  });
-
   const [configLoading, setConfigLoading] = useState(false);
-  const [questionLoading, setQuestionLoading] = useState(false);
-  const [configSaved, setConfigSaved] = useState(false);
-  const [savedAssessmentId, setSavedAssessmentId] = useState<number | null>(null);
-  const [error, setError] = useState("");
-  const [configErrors, setConfigErrors] = useState<Partial<Record<keyof AssessmentConfigForm, string>>>({});
-  const [qErrors, setQErrors] = useState<Partial<Record<keyof QuestionForm, string>>>({});
+  const [configError, setConfigError] = useState("");
+  const [configErrors, setConfigErrors] = useState<Record<string, string>>({});
+  const [assessmentId, setAssessmentId] = useState<number | null>(null);
 
-  const setC = (k: keyof AssessmentConfigForm, v: string | number | boolean) =>
+  // Step 2 — questions
+  const [mode, setMode] = useState<QuestionMode>("single");
+  const [questions, setQuestions] = useState<SingleQuestion[]>([emptyQuestion(0)]);
+  const [fileRef, setFileRef] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [qLoading, setQLoading] = useState(false);
+  const [qError, setQError] = useState("");
+  const [uploadingFile, setUploadingFile] = useState(false);
+
+  const setC = (k: keyof typeof config, v: any) =>
     setConfig(f => ({ ...f, [k]: v }));
 
-  const setQ = (k: keyof QuestionForm, v: any) =>
-    setNewQ(f => ({ ...f, [k]: v }));
-
-  const updateOption = (idx: number, text: string) => {
-    const opts = [...newQ.options];
-    opts[idx] = { ...opts[idx], text };
-    setQ("options", opts);
-  };
-
-  // STEP 1 — save assessment config
+  // ── Step 1: save track assessment config ────────────────────────────────────
   const handleSaveConfig = async () => {
-    const e: Partial<Record<keyof AssessmentConfigForm, string>> = {};
-    if (!config.title.trim()) e.title = "Title is required";
-    if (!config.description.trim()) e.description = "Description is required";
-    setConfigErrors(e);
-    if (Object.keys(e).length) return;
+    const errs: Record<string, string> = {};
+    if (!config.title.trim()) errs.title = "Title is required";
+    if (!config.description.trim()) errs.description = "Description is required";
+    setConfigErrors(errs);
+    if (Object.keys(errs).length) return;
 
+    setConfigError("");
     const token = localStorage.getItem("adminAccessToken");
-    if (!token) { setError("Not authenticated"); return; }
+    if (!token) { setConfigError("Not authenticated"); return; }
     setConfigLoading(true);
-    setError("");
+
     try {
       const res = await fetch(`${BASE}admin/tracks/${track.id}/assessment`, {
         method: "POST",
@@ -417,269 +666,392 @@ function AddAssessmentForm({ track, onDone, onCancel }: {
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Failed to save assessment config");
-      // grab the returned assessment id for linking questions
-      const assessmentId =
-        data.data?.id ?? data.id ?? data.data?.assessmentId ?? null;
-      setSavedAssessmentId(assessmentId);
-      setConfigSaved(true);
-      setTab("questions");
+      if (!res.ok) throw new Error(data.message || "Failed to create assessment config");
+      const id =
+        data?.data?.id ?? data?.id ?? data?.assessment?.id ?? data?.data?.assessmentId ?? null;
+      setAssessmentId(id);
+      setStep(2);
     } catch (err: any) {
-      setError(err.message);
+      setConfigError(err.message);
     } finally {
       setConfigLoading(false);
     }
   };
 
-  // STEP 2 — add individual question
-  const handleAddQuestion = async () => {
-    const e: Partial<Record<keyof QuestionForm, string>> = {};
-    if (!newQ.questionText.trim()) e.questionText = "Question text is required";
-    if (newQ.questionType === "multiple_choice" && newQ.options.some(o => !o.text.trim()))
-      e.options = "All options must be filled in";
-    if (!newQ.correctAnswer.trim()) e.correctAnswer = "Correct answer is required";
-    setQErrors(e);
-    if (Object.keys(e).length) return;
-
+  // ── Step 2: submit questions ─────────────────────────────────────────────────
+  const handleSubmitQuestions = async () => {
+    setQError("");
     const token = localStorage.getItem("adminAccessToken");
-    if (!token) { setError("Not authenticated"); return; }
-    setQuestionLoading(true);
-    setError("");
+    if (!token) { setQError("Not authenticated"); return; }
+
+    const parentId = assessmentId;
+    const parentType = "track_assessment";
+
+    setQLoading(true);
     try {
-      const res = await fetch(`${BASE}admin/assessment-items`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        credentials: "include",
-        body: JSON.stringify({
-          parentId: savedAssessmentId,
-          parentType: "track_assessment", // hidden from UI, always track_assessment
-          questionText: newQ.questionText,
-          questionType: newQ.questionType,
-          options: newQ.questionType === "multiple_choice" ? newQ.options : undefined,
-          correctAnswer: newQ.correctAnswer,
-          explanation: newQ.explanation || undefined,
-          orderIndex: questions.length,
-          points: newQ.points,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Failed to add question");
-      setQuestions(prev => [...prev, newQ]);
-      // reset question form
-      setNewQ({
-        questionText: "",
-        questionType: "multiple_choice",
-        options: [
-          { id: "a", text: "" },
-          { id: "b", text: "" },
-          { id: "c", text: "" },
-          { id: "d", text: "" },
-        ],
-        correctAnswer: "",
-        explanation: "",
-        orderIndex: 0,
-        points: 1,
-      });
-      setQErrors({});
+      if (mode === "single") {
+        const q = questions[0];
+        const res = await fetch(`${BASE}admin/assessment-items`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          credentials: "include",
+          body: JSON.stringify({
+            parentId,
+            parentType,
+            questionText: q.questionText,
+            questionType: q.questionType,
+            options:
+              q.questionType === "multiple_choice"
+                ? q.options.filter(o => o.text.trim())
+                : undefined,
+            correctAnswer: q.correctAnswer,
+            explanation: q.explanation || undefined,
+            orderIndex: q.orderIndex,
+            points: q.points,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || "Failed to add question");
+
+      } else if (mode === "bulk") {
+        const res = await fetch(`${BASE}admin/assessment-items/bulk`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          credentials: "include",
+          body: JSON.stringify({
+            parentId,
+            parentType,
+            questions: questions.map(q => ({
+              questionText: q.questionText,
+              questionType: q.questionType,
+              options:
+                q.questionType === "multiple_choice"
+                  ? q.options.filter(o => o.text.trim())
+                  : undefined,
+              correctAnswer: q.correctAnswer,
+              explanation: q.explanation || undefined,
+              orderIndex: q.orderIndex,
+              points: q.points,
+            })),
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || "Bulk submit failed");
+
+      } else if (mode === "file") {
+        if (!fileRef) { setQError("Please select a CSV or Excel file"); setQLoading(false); return; }
+        
+        setUploadingFile(true);
+        let cloudinaryUrl: string;
+        try {
+          cloudinaryUrl = await uploadFileToCloudinary(fileRef, "assessments");
+        } catch (err: any) {
+          setQError(err.message || "File upload to Cloudinary failed");
+          setUploadingFile(false);
+          setQLoading(false);
+          return;
+        }
+        setUploadingFile(false);
+
+        const res = await fetch(`${BASE}admin/assessment-items/bulk-upload`, {
+          method: "POST",
+          headers: { 
+            "Content-Type": "application/json", 
+            Authorization: `Bearer ${token}` 
+          },
+          credentials: "include",
+          body: JSON.stringify({
+            fileUrl: cloudinaryUrl,
+            parentId,
+            parentType,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || "File processing failed");
+      }
+
+      onDone();
     } catch (err: any) {
-      setError(err.message);
+      setQError(err.message);
     } finally {
-      setQuestionLoading(false);
+      setQLoading(false);
     }
   };
 
+  const addQuestion = () =>
+    setQuestions(qs => [...qs, emptyQuestion(qs.length)]);
+  const removeQuestion = (i: number) =>
+    setQuestions(qs => qs.filter((_, idx) => idx !== i));
+  const updateQuestion = (i: number, q: SingleQuestion) =>
+    setQuestions(qs => qs.map((old, idx) => (idx === i ? q : old)));
+
   return (
     <div className="space-y-5">
-      {/* Tabs */}
-      <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+
+      {/* Step tabs */}
+      <div className="flex gap-0 border border-gray-200 rounded-xl overflow-hidden">
         <button
-          onClick={() => setTab("config")}
-          className={`flex-1 py-2 rounded-md text-xs font-medium transition-colors ${
-            tab === "config" ? "bg-white text-[#004900] shadow-sm" : "text-gray-500 hover:text-gray-700"
+          onClick={() => step === 2 && setStep(1)}
+          className={`flex-1 py-2.5 text-sm font-medium transition-colors ${
+            step === 1
+              ? "bg-[#004900] text-white"
+              : "bg-white text-gray-400 hover:bg-gray-50 cursor-pointer"
           }`}
         >
           1 · Assessment Config
         </button>
         <button
-          onClick={() => { if (configSaved) setTab("questions"); }}
-          disabled={!configSaved}
-          className={`flex-1 py-2 rounded-md text-xs font-medium transition-colors ${
-            tab === "questions" ? "bg-white text-[#004900] shadow-sm" : "text-gray-500 hover:text-gray-700"
-          } disabled:opacity-40 disabled:cursor-not-allowed`}
+          disabled={!assessmentId}
+          className={`flex-1 py-2.5 text-sm font-medium transition-colors ${
+            step === 2
+              ? "bg-[#004900] text-white"
+              : "bg-white text-gray-400"
+          } disabled:cursor-not-allowed`}
         >
-          2 · Questions {questions.length > 0 && `(${questions.length})`}
+          2 · Questions
         </button>
       </div>
 
-      {/* ── Tab 1: Config ── */}
-      {tab === "config" && (
+      {/* ── STEP 1: Config ── */}
+      {step === 1 && (
         <div className="space-y-4">
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1.5">
               Title <span className="text-red-500">*</span>
             </label>
-            <input value={config.title} onChange={e => setC("title", e.target.value)}
-              className={inputCls} placeholder="e.g. Track Final Assessment" />
-            {configErrors.title && <p className="text-xs text-red-600 mt-1">{configErrors.title}</p>}
+            <input
+              value={config.title}
+              onChange={e => setC("title", e.target.value)}
+              placeholder="e.g. Track Final Assessment"
+              className={inputCls}
+            />
+            {configErrors.title && (
+              <p className="text-xs text-red-600 mt-1">{configErrors.title}</p>
+            )}
           </div>
+
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1.5">
               Description <span className="text-red-500">*</span>
             </label>
-            <textarea rows={3} value={config.description} onChange={e => setC("description", e.target.value)}
-              className={textareaCls} placeholder="What this assessment covers" />
-            {configErrors.description && <p className="text-xs text-red-600 mt-1">{configErrors.description}</p>}
+            <textarea
+              rows={3}
+              value={config.description}
+              onChange={e => setC("description", e.target.value)}
+              placeholder="What this assessment covers"
+              className={textareaCls}
+            />
+            {configErrors.description && (
+              <p className="text-xs text-red-600 mt-1">{configErrors.description}</p>
+            )}
           </div>
+
           <div className="grid grid-cols-3 gap-4">
             <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1.5">Pass Mark %</label>
+              <input
+                type="number" min={0} max={100}
+                value={config.passMarkPercent}
+                onChange={e => setC("passMarkPercent", Number(e.target.value))}
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1.5">Max Attempts</label>
+              <input
+                type="number" min={1}
+                value={config.maxAttempts}
+                onChange={e => setC("maxAttempts", Number(e.target.value))}
+                className={inputCls}
+              />
+            </div>
+            <div>
               <label className="block text-xs font-medium text-gray-700 mb-1.5">Time Limit (mins)</label>
-              <input type="number" min={0} value={config.timeLimitMinutes}
+              <input
+                type="number" min={0}
+                value={config.timeLimitMinutes}
                 onChange={e => setC("timeLimitMinutes", Number(e.target.value))}
-                className={inputCls} placeholder="0 = unlimited" />
+                className={inputCls}
+                placeholder="0 = unlimited"
+              />
             </div>
           </div>
-          <label className="flex items-center gap-2.5 text-sm cursor-pointer">
-            <input type="checkbox" checked={config.isActive}
+
+          <label className="flex items-center gap-2.5 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={config.isActive}
               onChange={e => setC("isActive", e.target.checked)}
-              className="w-4 h-4 accent-[#004900]" />
-            <span className="text-gray-700">Active immediately</span>
+              className="w-4 h-4 rounded border-gray-300 accent-[#004900]"
+            />
+            <span className="text-sm text-gray-700">Active immediately</span>
           </label>
 
-          {error && <p className="text-xs text-red-600">{error}</p>}
+          {configError && <p className="text-xs text-red-600">{configError}</p>}
 
-          <div className="flex gap-3 pt-1">
-            <button onClick={handleSaveConfig} disabled={configLoading}
-              className="bg-[#004900] text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-[#003700] disabled:opacity-60">
-              {configLoading ? "Saving..." : "Save & Add Questions →"}
+          <div className="flex gap-3 pt-2">
+            <button
+              onClick={handleSaveConfig}
+              disabled={configLoading}
+              className="bg-[#004900] text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-[#003700] disabled:opacity-60 flex items-center gap-2"
+            >
+              {configLoading ? "Saving…" : "Save & Add Questions →"}
             </button>
-            <button onClick={onCancel}
-              className="px-5 py-2.5 rounded-lg text-sm font-medium border border-gray-300 text-gray-600 hover:bg-gray-50">
+            <button
+              onClick={onCancel}
+              className="px-5 py-2.5 rounded-lg text-sm border border-gray-300 text-gray-600 hover:bg-gray-50"
+            >
               Cancel
             </button>
           </div>
         </div>
       )}
 
-      {/* ── Tab 2: Questions ── */}
-      {tab === "questions" && (
+      {/* ── STEP 2: Questions ── */}
+      {step === 2 && (
         <div className="space-y-5">
-          {/* Added questions list */}
-          {questions.length > 0 && (
-            <div className="bg-gray-50 rounded-xl p-4 space-y-2">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
-                Added Questions ({questions.length})
-              </p>
-              {questions.map((q, i) => (
-                <div key={i} className="flex items-start gap-2.5 bg-white rounded-lg px-3.5 py-2.5 border border-gray-100">
-                  <span className="text-xs font-mono text-gray-400 mt-0.5 shrink-0">Q{i + 1}</span>
-                  <p className="text-xs text-gray-700 line-clamp-2">{q.questionText}</p>
-                  <span className="ml-auto text-xs text-gray-400 shrink-0">{q.points}pt</span>
-                </div>
+
+          {/* Mode selector */}
+          <div>
+            <p className="text-xs font-medium text-gray-700 mb-2">
+              How do you want to add questions?
+            </p>
+            <div className="grid grid-cols-3 gap-2">
+              {(["single", "bulk", "file"] as QuestionMode[]).map(m => (
+                <button
+                  key={m}
+                  onClick={() => {
+                    setMode(m);
+                    if (m !== "file") setQuestions([emptyQuestion(0)]);
+                    setFileRef(null);
+                    setQError("");
+                  }}
+                  className={`py-2.5 px-3 rounded-xl text-xs font-medium border transition-all ${
+                    mode === m
+                      ? "border-[#004900] bg-[#004900]/5 text-[#004900]"
+                      : "border-gray-200 text-gray-500 hover:border-gray-300"
+                  }`}
+                >
+                  {m === "single" && "Single Question"}
+                  {m === "bulk" && "Multiple Questions"}
+                  {m === "file" && "Upload File (CSV/Excel)"}
+                </button>
               ))}
-            </div>
-          )}
-
-          {/* New question form */}
-          <div className="border border-gray-200 rounded-xl p-4 space-y-4">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">New Question</p>
-
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1.5">
-                Question Text <span className="text-red-500">*</span>
-              </label>
-              <textarea rows={2} value={newQ.questionText}
-                onChange={e => setQ("questionText", e.target.value)}
-                className={textareaCls} placeholder="Enter the question..." />
-              {qErrors.questionText && <p className="text-xs text-red-600 mt-1">{qErrors.questionText}</p>}
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">Question Type</label>
-                <select value={newQ.questionType}
-                  onChange={e => setQ("questionType", e.target.value)}
-                  className={inputCls} aria-label="select">
-                  <option value="multiple_choice">Multiple Choice</option>
-                  <option value="true_false">True / False</option>
-                  <option value="short_answer">Short Answer</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">Points</label>
-                <input type="number" min={1} value={newQ.points}
-                  onChange={e => setQ("points", Number(e.target.value))}
-                  className={inputCls} />
-              </div>
-            </div>
-
-            {newQ.questionType === "multiple_choice" && (
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-2">Options</label>
-                <div className="space-y-2">
-                  {newQ.options.map((opt, idx) => (
-                    <div key={opt.id} className="flex items-center gap-2">
-                      <span className="text-xs font-mono text-gray-400 w-4 shrink-0">
-                        {opt.id.toUpperCase()}
-                      </span>
-                      <input value={opt.text} onChange={e => updateOption(idx, e.target.value)}
-                        className={inputCls} placeholder={`Option ${opt.id.toUpperCase()}`} />
-                    </div>
-                  ))}
-                </div>
-                {qErrors.options && <p className="text-xs text-red-600 mt-1">{qErrors.options}</p>}
-              </div>
-            )}
-
-            {newQ.questionType === "true_false" && (
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">
-                  Correct Answer <span className="text-red-500">*</span>
-                </label>
-                <select value={newQ.correctAnswer}
-                  onChange={e => setQ("correctAnswer", e.target.value)}
-                  className={inputCls} aria-label="select">
-                  <option value="">Select…</option>
-                  <option value="true">True</option>
-                  <option value="false">False</option>
-                </select>
-                {qErrors.correctAnswer && <p className="text-xs text-red-600 mt-1">{qErrors.correctAnswer}</p>}
-              </div>
-            )}
-
-            {newQ.questionType !== "true_false" && (
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">
-                  Correct Answer <span className="text-red-500">*</span>
-                </label>
-                <input value={newQ.correctAnswer}
-                  onChange={e => setQ("correctAnswer", e.target.value)}
-                  className={inputCls}
-                  placeholder={newQ.questionType === "multiple_choice" ? "e.g. A or the option text" : "Expected answer"} />
-                {qErrors.correctAnswer && <p className="text-xs text-red-600 mt-1">{qErrors.correctAnswer}</p>}
-              </div>
-            )}
-
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1.5">Explanation (optional)</label>
-              <input value={newQ.explanation}
-                onChange={e => setQ("explanation", e.target.value)}
-                className={inputCls} placeholder="Why this answer is correct" />
             </div>
           </div>
 
-          {error && <p className="text-xs text-red-600">{error}</p>}
+          {/* Single / Bulk — question editors */}
+          {(mode === "single" || mode === "bulk") && (
+            <div className="space-y-4">
+              {questions.map((q, i) => (
+                <QuestionEditor
+                  key={i}
+                  q={q}
+                  index={i}
+                  onChange={updated => updateQuestion(i, updated)}
+                  onRemove={() => removeQuestion(i)}
+                  showRemove={questions.length > 1}
+                />
+              ))}
+              {mode === "bulk" && (
+                <button
+                  onClick={addQuestion}
+                  className="w-full py-2.5 border-2 border-dashed border-gray-200 rounded-xl text-xs font-medium text-gray-400 hover:border-[#004900]/40 hover:text-[#004900] transition-colors"
+                >
+                  + Add Another Question
+                </button>
+              )}
+            </div>
+          )}
 
-          <div className="flex gap-3 pt-1">
-            <button onClick={handleAddQuestion} disabled={questionLoading}
-              className="bg-[#004900] text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-[#003700] disabled:opacity-60">
-              {questionLoading ? "Adding..." : "Add Question →"}
+          {/* File upload mode — goes to Cloudinary */}
+          {mode === "file" && (
+            <div className="space-y-4">
+              <div className="border-2 border-dashed border-gray-200 rounded-xl p-6 text-center hover:border-[#004900]/30 transition-colors">
+                <svg
+                  className="mx-auto mb-3 text-gray-300"
+                  width="40" height="40"
+                  viewBox="0 0 24 24"
+                  fill="none" stroke="currentColor" strokeWidth="1.5"
+                >
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <polyline points="14 2 14 8 20 8" />
+                  <line x1="12" y1="11" x2="12" y2="17" />
+                  <polyline points="9 14 12 11 15 14" />
+                </svg>
+                <p className="text-sm text-gray-500 mb-1">
+                  {fileRef ? fileRef.name : "Drop a CSV or Excel file here, or click to browse"}
+                </p>
+                <p className="text-xs text-gray-400 mb-3">Max 5 MB · .csv, .xlsx · Uploads to Cloudinary</p>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploadingFile}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium bg-[#004900] text-white hover:bg-[#003700] disabled:opacity-60"
+                >
+                  {uploadingFile ? "Uploading…" : "Choose File"}
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".csv,.xlsx,.xls"
+                  className="hidden"
+                  onChange={e => setFileRef(e.target.files?.[0] ?? null)}
+                />
+              </div>
+
+              {/* Column reference */}
+              <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
+                <p className="text-xs font-semibold text-blue-700 mb-1.5">Required columns</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {["question_text", "question_type", "correct_answer"].map(col => (
+                    <code key={col} className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-xs">
+                      {col}
+                    </code>
+                  ))}
+                </div>
+                <p className="text-xs font-semibold text-blue-700 mt-2.5 mb-1.5">Optional columns</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {["option_a", "option_b", "option_c", "option_d", "explanation", "points"].map(col => (
+                    <code key={col} className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-xs">
+                      {col}
+                    </code>
+                  ))}
+                </div>
+                <p className="text-xs text-blue-600 mt-2 leading-relaxed">
+                  <strong>question_type</strong>: multiple_choice, true_false, short_answer
+                  <br />
+                  <strong>correct_answer</strong>: a / b / c / d for MCQ; true / false for true_false
+                </p>
+              </div>
+            </div>
+          )}
+
+          {qError && <p className="text-xs text-red-600">{qError}</p>}
+
+          <div className="flex gap-3 pt-2">
+            <button
+              onClick={handleSubmitQuestions}
+              disabled={qLoading || uploadingFile}
+              className="bg-[#004900] text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-[#003700] disabled:opacity-60"
+            >
+              {qLoading || uploadingFile
+                ? "Submitting…"
+                : mode === "file"
+                ? "Upload & Save"
+                : mode === "bulk"
+                ? `Save ${questions.length} Question${questions.length !== 1 ? "s" : ""}`
+                : "Save Question"}
             </button>
-            <button onClick={onDone}
-              className="px-5 py-2.5 rounded-lg text-sm font-medium border border-[#004900] text-[#004900] hover:bg-green-50">
-              Done ({questions.length} question{questions.length !== 1 ? "s" : ""})
+            <button
+              onClick={() => setStep(1)}
+              className="px-5 py-2.5 rounded-lg text-sm border border-gray-300 text-gray-600 hover:bg-gray-50"
+            >
+              ← Back
             </button>
-            <button onClick={onCancel}
-              className="px-5 py-2.5 rounded-lg text-sm font-medium border border-gray-300 text-gray-600 hover:bg-gray-50">
+            <button
+              onClick={onCancel}
+              className="px-5 py-2.5 rounded-lg text-sm border border-gray-300 text-gray-600 hover:bg-gray-50"
+            >
               Cancel
             </button>
           </div>
@@ -811,12 +1183,19 @@ export default function ManageTracks() {
                       <td className="px-6 py-4 text-gray-400 font-mono text-xs">{track.id}</td>
 
                       <td className="px-6 py-4">
-                        <div className="font-medium text-gray-900">{track.title}</div>
-                        {track.shortDescription && (
-                          <div className="text-xs text-gray-400 mt-0.5 line-clamp-1 max-w-xs">
-                            {track.shortDescription}
+                        <div className="flex items-center gap-3">
+                          {track.thumbnail && (
+                            <img src={track.thumbnail} alt="" className="w-8 h-8 rounded-lg object-cover" />
+                          )}
+                          <div>
+                            <div className="font-medium text-gray-900">{track.title}</div>
+                            {track.shortDescription && (
+                              <div className="text-xs text-gray-400 mt-0.5 line-clamp-1 max-w-xs">
+                                {track.shortDescription}
+                              </div>
+                            )}
                           </div>
-                        )}
+                        </div>
                       </td>
 
                       <td className="px-6 py-4">
@@ -838,15 +1217,16 @@ export default function ManageTracks() {
                       </td>
 
                       <td className="px-6 py-4">
-                        <div className="flex items-center justify-end gap-2">
+                        <div className="flex items-center justify-end gap-2 flex-wrap">
 
-                          {/* Add Module — opens embedded modal */}
+                          {/* Add Module */}
                           <button
                             onClick={() => setModal({ type: "addModule", track })}
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-[#004900] text-white hover:bg-[#003700] transition-colors"
                           >
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                              <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+                              <line x1="12" y1="5" x2="12" y2="19" />
+                              <line x1="5" y1="12" x2="19" y2="12" />
                             </svg>
                             Add Module
                           </button>
@@ -857,7 +1237,10 @@ export default function ManageTracks() {
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-purple-600 text-white hover:bg-purple-700 transition-colors"
                           >
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                              <path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+                              <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
+                              <rect x="9" y="3" width="6" height="4" rx="1" />
+                              <line x1="9" y1="12" x2="15" y2="12" />
+                              <line x1="9" y1="16" x2="13" y2="16" />
                             </svg>
                             Add Assessment
                           </button>
@@ -929,12 +1312,16 @@ export default function ManageTracks() {
 
       {/* ── Add Assessment Modal ── */}
       {modal.type === "addAssessment" && (
-        <Modal title={`Add Assessment to "${modal.track.title}"`} onClose={() => setModal({ type: "none" })}>
+        <Modal
+          title={`Add Assessment to "${modal.track.title}"`}
+          onClose={() => setModal({ type: "none" })}
+          wide
+        >
           <AddAssessmentForm
             track={modal.track}
             onDone={() => {
               setModal({ type: "none" });
-              showToast("Assessment saved successfully");
+              showToast("Assessment and questions saved successfully");
             }}
             onCancel={() => setModal({ type: "none" })}
           />

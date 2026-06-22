@@ -4,7 +4,7 @@ import TrackCreate from "./TrackCreate";
 const BASE = import.meta.env.VITE_BASE_URL;
 const CLOUDINARY_CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
 const CLOUDINARY_API_KEY = import.meta.env.VITE_CLOUDINARY_API_KEY;
-const CLOUDINARY_UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
+const CLOUDINARY_API_SECRET = import.meta.env.VITE_API_SECRET_KEY;
 
 type CourseStatus = "draft" | "published" | "archived";
 
@@ -297,16 +297,30 @@ function QuestionEditor({
   );
 }
 
-async function uploadToCloudinary(file: File): Promise<string> {
+async function uploadToCloudinary(file: File, folder: string = "assessments"): Promise<string> {
+  if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_API_KEY || !CLOUDINARY_API_SECRET) {
+    throw new Error("Cloudinary credentials missing");
+  }
+
+  const timestamp = Math.round(new Date().getTime() / 1000);
+  const signatureString = `folder=${folder}&timestamp=${timestamp}${CLOUDINARY_API_SECRET}`;
+  const signature = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(signatureString));
+  const signatureHex = Array.from(new Uint8Array(signature))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+
   const formData = new FormData();
   formData.append("file", file);
-  formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET || "unsigned_preset");
-  formData.append("api_key", CLOUDINARY_API_KEY || "");
+  formData.append("api_key", CLOUDINARY_API_KEY);
+  formData.append("timestamp", timestamp.toString());
+  formData.append("signature", signatureHex);
+  formData.append("folder", folder);
 
   const res = await fetch(
     `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/raw/upload`,
     { method: "POST", body: formData }
   );
+
   const data = await res.json();
   if (!res.ok) throw new Error(data.error?.message || "Cloudinary upload failed");
   return data.secure_url as string;
