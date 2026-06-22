@@ -80,13 +80,34 @@ export default function ModuleAssessments() {
     setLoading(true);
     setError(null);
     try {
-      const modulesRes = await fetch(`${API_BASE}admin/modules`, {
+      // Step 1: There is no "/admin/modules" list endpoint in the API.
+      // Modules only exist nested under tracks, so we fetch all tracks first.
+      const tracksRes = await fetch(`${API_BASE}admin/tracks`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!modulesRes.ok) throw new Error("Failed to load modules");
-      const modules = await modulesRes.json();
-      const moduleList = Array.isArray(modules) ? modules : modules.data || [];
+      if (!tracksRes.ok) throw new Error("Failed to load tracks");
+      const tracksData = await tracksRes.json();
+      const trackList = Array.isArray(tracksData) ? tracksData : tracksData.data || [];
 
+      // Step 2: Fetch modules for each track in parallel, then flatten.
+      const moduleListsNested = await Promise.all(
+        trackList.map(async (track: any) => {
+          try {
+            const res = await fetch(
+              `${API_BASE}admin/tracks/${track.id}/modules`,
+              { headers: { Authorization: `Bearer ${token}` } }
+            );
+            if (!res.ok) return [];
+            const data = await res.json();
+            return Array.isArray(data) ? data : data.data || [];
+          } catch {
+            return [];
+          }
+        })
+      );
+      const moduleList = moduleListsNested.flat();
+
+      // Step 3: For each module, fetch its assessment config (if any).
       const results: ModuleAssessmentRow[] = [];
       await Promise.all(
         moduleList.map(async (mod: any) => {
@@ -181,14 +202,14 @@ export default function ModuleAssessments() {
 
       if (editFile) {
         const cloudinaryUrl = await uploadFileToCloudinary(editFile);
-        
+
         const uploadRes = await fetch(
           `${API_BASE}admin/assessment-items/bulk-upload`,
           {
             method: "POST",
-            headers: { 
+            headers: {
               "Content-Type": "application/json",
-              Authorization: `Bearer ${token}` 
+              Authorization: `Bearer ${token}`,
             },
             body: JSON.stringify({
               fileUrl: cloudinaryUrl,
