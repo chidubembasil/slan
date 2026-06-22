@@ -74,7 +74,7 @@ export default function TrackAssessments() {
   const [editFile, setEditFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const token = localStorage.getItem("adminToken") || "";
+  const token = localStorage.getItem("adminAccessToken") || "";
 
   async function fetchTrackAssessments() {
     setLoading(true);

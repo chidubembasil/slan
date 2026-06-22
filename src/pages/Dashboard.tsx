@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { Users, BookOpen, ClipboardCheck, CreditCard } from "lucide-react";
 import { useAuthGuard } from "../hooks/useAuthGuard"
 
-const BASE = import.meta.env.VITE_API_BASE_URL?? "";
+const BASE = import.meta.env.VITE_BASE_URL?? "";
 
 interface Stats {
   totalLearners: number;

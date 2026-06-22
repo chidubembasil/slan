@@ -36,7 +36,7 @@ interface SupportStats {
 
 // ── API ───────────────────────────────────────────────────────────────────────
 
-const BASE = import.meta.env.VITE_API_BASE_URL ?? "";
+const BASE = import.meta.env.VITE_BASE_URL ?? "";
 
 async function getTickets(): Promise<Ticket[]> {
   const res = await fetch(`${BASE}/api/support/tickets`, { credentials: "include" });

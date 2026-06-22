@@ -74,7 +74,7 @@ export default function CourseAssessments() {
   const [editFile, setEditFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const token = localStorage.getItem("adminToken") || "";
+  const token = localStorage.getItem("adminAccessToken") || "";
 
   async function fetchCourseAssessments() {
     setLoading(true);
