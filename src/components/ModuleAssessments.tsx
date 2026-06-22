@@ -80,7 +80,7 @@ export default function ModuleAssessments() {
     setLoading(true);
     setError(null);
     try {
-      const modulesRes = await fetch(`${API_BASE}/admin/modules`, {
+      const modulesRes = await fetch(`${API_BASE}admin/modules`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!modulesRes.ok) throw new Error("Failed to load modules");
@@ -92,7 +92,7 @@ export default function ModuleAssessments() {
         moduleList.map(async (mod: any) => {
           try {
             const res = await fetch(
-              `${API_BASE}/admin/modules/${mod.id}/assessment`,
+              `${API_BASE}admin/modules/${mod.id}/assessment`,
               { headers: { Authorization: `Bearer ${token}` } }
             );
             if (!res.ok) return;
@@ -167,7 +167,7 @@ export default function ModuleAssessments() {
     setSaving(true);
     try {
       const res = await fetch(
-        `${API_BASE}/admin/modules/${editingRow.moduleId}/assessment`,
+        `${API_BASE}admin/modules/${editingRow.moduleId}/assessment`,
         {
           method: "PUT",
           headers: {
@@ -183,7 +183,7 @@ export default function ModuleAssessments() {
         const cloudinaryUrl = await uploadFileToCloudinary(editFile);
         
         const uploadRes = await fetch(
-          `${API_BASE}/admin/assessment-items/bulk-upload`,
+          `${API_BASE}admin/assessment-items/bulk-upload`,
           {
             method: "POST",
             headers: { 
@@ -213,7 +213,7 @@ export default function ModuleAssessments() {
     if (!confirm(`Delete assessment "${row.title}" for ${row.moduleName}?`)) return;
     try {
       const res = await fetch(
-        `${API_BASE}/admin/modules/${row.moduleId}/assessment`,
+        `${API_BASE}admin/modules/${row.moduleId}/assessment`,
         {
           method: "DELETE",
           headers: { Authorization: `Bearer ${token}` },

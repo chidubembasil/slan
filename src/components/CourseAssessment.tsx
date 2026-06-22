@@ -80,7 +80,7 @@ export default function CourseAssessments() {
     setLoading(true);
     setError(null);
     try {
-      const coursesRes = await fetch(`${API_BASE}/admin/courses`, {
+      const coursesRes = await fetch(`${API_BASE}admin/courses`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!coursesRes.ok) throw new Error("Failed to load courses");
@@ -92,7 +92,7 @@ export default function CourseAssessments() {
         courseList.map(async (course: any) => {
           try {
             const res = await fetch(
-              `${API_BASE}/admin/courses/${course.id}/assessment`,
+              `${API_BASE}admin/courses/${course.id}/assessment`,
               { headers: { Authorization: `Bearer ${token}` } }
             );
             if (!res.ok) return;
@@ -167,7 +167,7 @@ export default function CourseAssessments() {
     setSaving(true);
     try {
       const res = await fetch(
-        `${API_BASE}/admin/courses/${editingRow.courseId}/assessment`,
+        `${API_BASE}admin/courses/${editingRow.courseId}/assessment`,
         {
           method: "PUT",
           headers: {
@@ -183,7 +183,7 @@ export default function CourseAssessments() {
         const cloudinaryUrl = await uploadFileToCloudinary(editFile);
         
         const uploadRes = await fetch(
-          `${API_BASE}/admin/assessment-items/bulk-upload`,
+          `${API_BASE}admin/assessment-items/bulk-upload`,
           {
             method: "POST",
             headers: { 
@@ -213,7 +213,7 @@ export default function CourseAssessments() {
     if (!confirm(`Delete assessment "${row.title}" for ${row.courseName}?`)) return;
     try {
       const res = await fetch(
-        `${API_BASE}/admin/courses/${row.courseId}/assessment`,
+        `${API_BASE}admin/courses/${row.courseId}/assessment`,
         {
           method: "DELETE",
           headers: { Authorization: `Bearer ${token}` },

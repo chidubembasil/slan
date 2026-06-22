@@ -80,7 +80,7 @@ export default function TrackAssessments() {
     setLoading(true);
     setError(null);
     try {
-      const tracksRes = await fetch(`${API_BASE}/admin/tracks`, {
+      const tracksRes = await fetch(`${API_BASE}admin/tracks`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!tracksRes.ok) throw new Error("Failed to load tracks");
@@ -92,7 +92,7 @@ export default function TrackAssessments() {
         trackList.map(async (track: any) => {
           try {
             const res = await fetch(
-              `${API_BASE}/admin/tracks/${track.id}/assessment`,
+              `${API_BASE}admin/tracks/${track.id}/assessment`,
               { headers: { Authorization: `Bearer ${token}` } }
             );
             if (!res.ok) return;
@@ -167,7 +167,7 @@ export default function TrackAssessments() {
     setSaving(true);
     try {
       const res = await fetch(
-        `${API_BASE}/admin/tracks/${editingRow.trackId}/assessment`,
+        `${API_BASE}admin/tracks/${editingRow.trackId}/assessment`,
         {
           method: "PUT",
           headers: {
@@ -183,7 +183,7 @@ export default function TrackAssessments() {
         const cloudinaryUrl = await uploadFileToCloudinary(editFile);
 
         const uploadRes = await fetch(
-          `${API_BASE}/admin/assessment-items/bulk-upload`,
+          `${API_BASE}admin/assessment-items/bulk-upload`,
           {
             method: "POST",
             headers: {
@@ -213,7 +213,7 @@ export default function TrackAssessments() {
     if (!confirm(`Delete assessment "${row.title}" for ${row.trackName}?`)) return;
     try {
       const res = await fetch(
-        `${API_BASE}/admin/tracks/${row.trackId}/assessment`,
+        `${API_BASE}admin/tracks/${row.trackId}/assessment`,
         {
           method: "DELETE",
           headers: { Authorization: `Bearer ${token}` },
