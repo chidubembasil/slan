@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 
+
 const BASE = import.meta.env.VITE_BASE_URL;
 
 const CLOUDINARY_CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
@@ -214,6 +215,7 @@ function EditTrackForm({ track, onDone }: { track: Track; onDone: () => void }) 
               accept="image/*"
               className="hidden"
               onChange={handleThumbnailSelect}
+              title="input"
             />
             <p className="text-xs text-gray-400 mt-1">JPG, PNG, WebP. Max 5MB.</p>
           </div>
@@ -225,15 +227,15 @@ function EditTrackForm({ track, onDone }: { track: Track; onDone: () => void }) 
         <label className="block text-xs font-medium text-gray-700 mb-1.5">
           Title <span className="text-red-500">*</span>
         </label>
-        <input value={form.title} onChange={e => set("title", e.target.value)} className={inputCls} />
+        <input value={form.title} onChange={e => set("title", e.target.value)} className={inputCls} title="input"/>
       </div>
       <div>
         <label className="block text-xs font-medium text-gray-700 mb-1.5">Short Description</label>
-        <input value={form.shortDescription} onChange={e => set("shortDescription", e.target.value)} className={inputCls} />
+        <input value={form.shortDescription} onChange={e => set("shortDescription", e.target.value)} className={inputCls} title="input"/>
       </div>
       <div>
         <label className="block text-xs font-medium text-gray-700 mb-1.5">Description</label>
-        <textarea rows={3} value={form.description} onChange={e => set("description", e.target.value)} className={textareaCls} />
+        <textarea rows={3} value={form.description} onChange={e => set("description", e.target.value)} className={textareaCls} title="textarea"/>
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div>
@@ -272,8 +274,6 @@ type ModuleForm = {
   description: string;
   content: string;
   estimatedReadMinutes: number;
-  passMarkPercent: number;
-  maxAttempts: number;
   status: "draft" | "published" | "archived";
 };
 
@@ -285,8 +285,6 @@ function AddModuleForm({ trackId, onDone, onCancel }: {
     description: "",
     content: "",
     estimatedReadMinutes: 0,
-    passMarkPercent: 65,
-    maxAttempts: 2,
     status: "draft",
   });
   const [loading, setLoading] = useState(false);
@@ -320,8 +318,6 @@ function AddModuleForm({ trackId, onDone, onCancel }: {
           description: form.description,
           content: form.content || undefined,
           estimatedReadMinutes: form.estimatedReadMinutes,
-          passMarkPercent: form.passMarkPercent,
-          maxAttempts: form.maxAttempts,
           status: form.status,
         }),
       });
@@ -358,31 +354,21 @@ function AddModuleForm({ trackId, onDone, onCancel }: {
         <textarea rows={4} value={form.content} onChange={e => set("content", e.target.value)}
           className={textareaCls} placeholder="Module content (optional)" />
       </div>
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="block text-xs font-medium text-gray-700 mb-1.5">Est. Read (mins)</label>
           <input type="number" min={0} value={form.estimatedReadMinutes}
-            onChange={e => set("estimatedReadMinutes", Number(e.target.value))} className={inputCls} />
+            onChange={e => set("estimatedReadMinutes", Number(e.target.value))} className={inputCls} title="input"/>
         </div>
         <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1.5">Pass Mark %</label>
-          <input type="number" min={0} max={100} value={form.passMarkPercent}
-            onChange={e => set("passMarkPercent", Number(e.target.value))} className={inputCls} />
+          <label className="block text-xs font-medium text-gray-700 mb-1.5">Status</label>
+          <select value={form.status} onChange={e => set("status", e.target.value)}
+            className={inputCls} aria-label="select">
+            {statusOptions.map(s => (
+              <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
+            ))}
+          </select>
         </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1.5">Max Attempts</label>
-          <input type="number" min={1} value={form.maxAttempts}
-            onChange={e => set("maxAttempts", Number(e.target.value))} className={inputCls} />
-        </div>
-      </div>
-      <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1.5">Status</label>
-        <select value={form.status} onChange={e => set("status", e.target.value)}
-          className={inputCls} aria-label="select">
-          {statusOptions.map(s => (
-            <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
-          ))}
-        </select>
       </div>
       {error && <p className="text-xs text-red-600">{error}</p>}
       <div className="flex gap-3 pt-1">
@@ -483,6 +469,7 @@ function QuestionEditor({
             value={q.questionType}
             onChange={e => set("questionType", e.target.value)}
             className={inputCls}
+            title="select"
           >
             <option value="multiple_choice">Multiple Choice</option>
             <option value="true_false">True / False</option>
@@ -496,6 +483,7 @@ function QuestionEditor({
             value={q.points}
             onChange={e => set("points", Number(e.target.value))}
             className={inputCls}
+            title="input"
           />
         </div>
       </div>
@@ -530,6 +518,7 @@ function QuestionEditor({
             value={q.correctAnswer}
             onChange={e => set("correctAnswer", e.target.value)}
             className={inputCls}
+            title="select"
           >
             <option value="">Select…</option>
             <option value="true">True</option>
@@ -547,6 +536,7 @@ function QuestionEditor({
             value={q.correctAnswer}
             onChange={e => set("correctAnswer", e.target.value)}
             className={inputCls}
+            title="select"
           >
             <option value="">Select option…</option>
             {q.options.map(opt => (
@@ -591,6 +581,7 @@ function QuestionEditor({
           value={q.orderIndex}
           onChange={e => set("orderIndex", Number(e.target.value))}
           className={inputCls}
+          title="input"
         />
       </div>
     </div>
@@ -854,6 +845,7 @@ function AddAssessmentForm({
                 value={config.passMarkPercent}
                 onChange={e => setC("passMarkPercent", Number(e.target.value))}
                 className={inputCls}
+                title="input"
               />
             </div>
             <div>
@@ -863,6 +855,7 @@ function AddAssessmentForm({
                 value={config.maxAttempts}
                 onChange={e => setC("maxAttempts", Number(e.target.value))}
                 className={inputCls}
+                title="input"
               />
             </div>
             <div>
@@ -996,6 +989,7 @@ function AddAssessmentForm({
                   accept=".csv,.xlsx,.xls"
                   className="hidden"
                   onChange={e => setFileRef(e.target.files?.[0] ?? null)}
+                  title="input"
                 />
               </div>
 

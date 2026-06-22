@@ -40,8 +40,6 @@ type UnitForm = {
   videoUrl: string;
   pdfUrl: string;
   estimatedReadMinutes: string;
-  passMarkPercent: string;
-  maxAttempts: string;
   status: "draft" | "published" | "archived";
 };
 
@@ -190,15 +188,15 @@ function EditModuleForm({ module, onDone }: { module: Module; onDone: () => void
       <div className="grid grid-cols-3 gap-4">
         <div>
           <label className="block text-xs font-medium text-gray-700 mb-1.5">Est. Read (mins)</label>
-          <input type="number" min={0} value={form.estimatedReadMinutes} onChange={(e) => set("estimatedReadMinutes", Number(e.target.value))} className={inputCls} />
+          <input type="number" min={0} value={form.estimatedReadMinutes} onChange={(e) => set("estimatedReadMinutes", Number(e.target.value))} className={inputCls} title="input"/>
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-700 mb-1.5">Pass Mark %</label>
-          <input type="number" min={0} max={100} value={form.passMarkPercent} onChange={(e) => set("passMarkPercent", Number(e.target.value))} className={inputCls} />
+          <input type="number" min={0} max={100} value={form.passMarkPercent} onChange={(e) => set("passMarkPercent", Number(e.target.value))} className={inputCls} title="input"/>
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-700 mb-1.5">Max Attempts</label>
-          <input type="number" min={1} value={form.maxAttempts} onChange={(e) => set("maxAttempts", Number(e.target.value))} className={inputCls} />
+          <input type="number" min={1} value={form.maxAttempts} onChange={(e) => set("maxAttempts", Number(e.target.value))} className={inputCls} title="input"/>
         </div>
       </div>
       <div>
@@ -287,8 +285,6 @@ function UnitCreateModal({
     videoUrl: "",
     pdfUrl: "",
     estimatedReadMinutes: "0",
-    passMarkPercent: "60",
-    maxAttempts: "3",
     status: "draft",
   });
 
@@ -307,10 +303,6 @@ function UnitCreateModal({
     if (!form.description.trim()) e.description = "Description is required";
     if (form.estimatedReadMinutes === "" || isNaN(Number(form.estimatedReadMinutes)))
       e.estimatedReadMinutes = "Must be a valid number";
-    const pmp = Number(form.passMarkPercent);
-    if (isNaN(pmp) || pmp < 0 || pmp > 100) e.passMarkPercent = "Must be 0–100";
-    const ma = Number(form.maxAttempts);
-    if (isNaN(ma) || ma < 1) e.maxAttempts = "Must be at least 1";
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -341,8 +333,6 @@ function UnitCreateModal({
           videoUrl: finalVideoUrl || undefined,
           pdfUrl: finalPdfUrl || undefined,
           estimatedReadMinutes: Number(form.estimatedReadMinutes),
-          passMarkPercent: Number(form.passMarkPercent),
-          maxAttempts: Number(form.maxAttempts),
           status: form.status,
         }),
       });
@@ -412,27 +402,19 @@ function UnitCreateModal({
           {pdfFile && <p className="text-xs text-gray-500 mt-1">Selected: {pdfFile.name}</p>}
         </Field>
       </div>
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 gap-4">
         <Field label="Est. Read (mins)" error={errors.estimatedReadMinutes}>
           <input type="number" min="0" value={form.estimatedReadMinutes}
             onChange={(e) => set("estimatedReadMinutes", e.target.value)} className={inputCls} aria-label="Estimated read minutes" />
         </Field>
-        <Field label="Pass Mark (%)" error={errors.passMarkPercent}>
-          <input type="number" min="0" max="100" value={form.passMarkPercent}
-            onChange={(e) => set("passMarkPercent", e.target.value)} className={inputCls} aria-label="Pass mark percent" />
-        </Field>
-        <Field label="Max Attempts" error={errors.maxAttempts}>
-          <input type="number" min="1" value={form.maxAttempts}
-            onChange={(e) => set("maxAttempts", e.target.value)} className={inputCls} aria-label="Max attempts" />
+        <Field label="Status" required>
+          <select value={form.status} onChange={(e) => set("status", e.target.value)} className={inputCls} aria-label="Status">
+            {statusOptions.map((s) => (
+              <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
+            ))}
+          </select>
         </Field>
       </div>
-      <Field label="Status" required>
-        <select value={form.status} onChange={(e) => set("status", e.target.value)} className={inputCls} aria-label="Status">
-          {statusOptions.map((s) => (
-            <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
-          ))}
-        </select>
-      </Field>
       {submitError && (
         <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">
           {submitError}
@@ -532,7 +514,7 @@ function QuestionEditor({
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="block text-xs font-medium text-gray-700 mb-1">Type</label>
-          <select value={q.questionType} onChange={e => set("questionType", e.target.value)} className={inputCls}>
+          <select value={q.questionType} onChange={e => set("questionType", e.target.value)} className={inputCls} title="select">
             <option value="multiple_choice">Multiple Choice</option>
             <option value="true_false">True / False</option>
             <option value="short_answer">Short Answer</option>
@@ -545,6 +527,7 @@ function QuestionEditor({
             value={q.points}
             onChange={e => set("points", Number(e.target.value))}
             className={inputCls}
+            title="input"
           />
         </div>
       </div>
@@ -579,6 +562,7 @@ function QuestionEditor({
             value={q.correctAnswer}
             onChange={e => set("correctAnswer", e.target.value)}
             className={inputCls}
+            title="select"
           >
             <option value="">Select…</option>
             <option value="true">True</option>
@@ -596,6 +580,7 @@ function QuestionEditor({
             value={q.correctAnswer}
             onChange={e => set("correctAnswer", e.target.value)}
             className={inputCls}
+            title="select"
           >
             <option value="">Select option…</option>
             {q.options.map(opt => (
@@ -640,6 +625,7 @@ function QuestionEditor({
           value={q.orderIndex}
           onChange={e => set("orderIndex", Number(e.target.value))}
           className={inputCls}
+          title="input"
         />
       </div>
     </div>
@@ -906,6 +892,7 @@ function AddAssessmentForm({
                 value={config.passMarkPercent}
                 onChange={e => setC("passMarkPercent", Number(e.target.value))}
                 className={inputCls}
+                title="input"
               />
             </div>
             <div>
@@ -915,6 +902,7 @@ function AddAssessmentForm({
                 value={config.maxAttempts}
                 onChange={e => setC("maxAttempts", Number(e.target.value))}
                 className={inputCls}
+                title="input"
               />
             </div>
             <div>
@@ -1047,6 +1035,7 @@ function AddAssessmentForm({
                   accept=".csv,.xlsx,.xls"
                   className="hidden"
                   onChange={e => setFileRef(e.target.files?.[0] ?? null)}
+                  title="input"
                 />
               </div>
 

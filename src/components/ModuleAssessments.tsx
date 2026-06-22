@@ -312,6 +312,7 @@ export default function ModuleAssessments() {
             <button
               onClick={() => setEditingRow(null)}
               className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+              title="x"
             >
               <X className="w-5 h-5" />
             </button>
@@ -325,6 +326,7 @@ export default function ModuleAssessments() {
                   value={editForm.title}
                   onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
                   className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                  title="input"
                 />
               </div>
               <div>
@@ -334,6 +336,7 @@ export default function ModuleAssessments() {
                   onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
                   className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
                   rows={2}
+                  title="textarea"
                 />
               </div>
               <div className="grid grid-cols-3 gap-3">
@@ -346,6 +349,7 @@ export default function ModuleAssessments() {
                       setEditForm({ ...editForm, passMarkPercent: Number(e.target.value) })
                     }
                     className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                    title="textarea"
                   />
                 </div>
                 <div>
@@ -357,6 +361,7 @@ export default function ModuleAssessments() {
                       setEditForm({ ...editForm, maxAttempts: Number(e.target.value) })
                     }
                     className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                    title="input"
                   />
                 </div>
                 <div>
@@ -368,6 +373,7 @@ export default function ModuleAssessments() {
                       setEditForm({ ...editForm, timeLimitMinutes: Number(e.target.value) })
                     }
                     className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                    title="input"
                   />
                 </div>
               </div>

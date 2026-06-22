@@ -223,7 +223,7 @@ function QuestionEditor({
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="block text-xs font-medium text-gray-700 mb-1">Type</label>
-          <select value={q.questionType} onChange={e => set("questionType", e.target.value)} className={inputCls}>
+          <select value={q.questionType} onChange={e => set("questionType", e.target.value)} className={inputCls} title="select">
             <option value="multiple_choice">Multiple Choice</option>
             <option value="true_false">True / False</option>
             <option value="short_answer">Short Answer</option>
@@ -231,7 +231,7 @@ function QuestionEditor({
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-700 mb-1">Points</label>
-          <input type="number" min={1} value={q.points} onChange={e => set("points", Number(e.target.value))} className={inputCls} />
+          <input type="number" min={1} value={q.points} onChange={e => set("points", Number(e.target.value))} className={inputCls} title="input"/>
         </div>
       </div>
 
@@ -257,7 +257,7 @@ function QuestionEditor({
       {q.questionType === "true_false" && (
         <div>
           <label className="block text-xs font-medium text-gray-700 mb-1">Correct Answer</label>
-          <select value={q.correctAnswer} onChange={e => set("correctAnswer", e.target.value)} className={inputCls}>
+          <select value={q.correctAnswer} onChange={e => set("correctAnswer", e.target.value)} className={inputCls} title="select">
             <option value="">Select…</option>
             <option value="true">True</option>
             <option value="false">False</option>
@@ -268,7 +268,7 @@ function QuestionEditor({
       {q.questionType === "multiple_choice" && (
         <div>
           <label className="block text-xs font-medium text-gray-700 mb-1">Correct Answer</label>
-          <select value={q.correctAnswer} onChange={e => set("correctAnswer", e.target.value)} className={inputCls}>
+          <select value={q.correctAnswer} onChange={e => set("correctAnswer", e.target.value)} className={inputCls} title="select">
             <option value="">Select option…</option>
             {q.options.map(opt => (
               <option key={opt.id} value={opt.id}>{opt.id.toUpperCase()} — {opt.text || "(empty)"}</option>
@@ -291,7 +291,7 @@ function QuestionEditor({
 
       <div>
         <label className="block text-xs font-medium text-gray-700 mb-1">Order Index</label>
-        <input type="number" min={0} value={q.orderIndex} onChange={e => set("orderIndex", Number(e.target.value))} className={inputCls} />
+        <input type="number" min={0} value={q.orderIndex} onChange={e => set("orderIndex", Number(e.target.value))} className={inputCls} title="input"/>
       </div>
     </div>
   );
@@ -539,6 +539,7 @@ function AddAssessmentModal({
                 value={config.passMarkPercent}
                 onChange={e => setC("passMarkPercent", Number(e.target.value))}
                 className={inputCls}
+                title="input"
               />
             </div>
             <div>
@@ -548,6 +549,7 @@ function AddAssessmentModal({
                 value={config.maxAttempts}
                 onChange={e => setC("maxAttempts", Number(e.target.value))}
                 className={inputCls}
+                title="input"
               />
             </div>
             <div>
@@ -557,6 +559,7 @@ function AddAssessmentModal({
                 value={config.timeLimitMinutes}
                 onChange={e => setC("timeLimitMinutes", Number(e.target.value))}
                 className={inputCls}
+                title="input"
               />
             </div>
           </div>
@@ -666,6 +669,7 @@ function AddAssessmentModal({
                   accept=".csv,.xlsx,.xls"
                   className="hidden"
                   onChange={e => setFileRef(e.target.files?.[0] ?? null)}
+                  title="input"
                 />
               </div>
 

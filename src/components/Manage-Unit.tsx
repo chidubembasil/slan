@@ -500,6 +500,7 @@ function EditUnitForm({
             value={form.estimatedReadMinutes}
             onChange={(e) => set("estimatedReadMinutes", Number(e.target.value))}
             className={inputCls}
+            title="input"
           />
         </div>
       </div>
