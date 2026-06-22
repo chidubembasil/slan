@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Pencil, Trash2, Search, Upload, X } from "lucide-react";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "https://slan-backend-brrk.onrender.com";
+const API_BASE = import.meta.env.VITE_BASE_URL;
 
 const CLOUDINARY_CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
 const CLOUDINARY_API_KEY = import.meta.env.VITE_API_KEY;
