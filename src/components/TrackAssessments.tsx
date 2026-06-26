@@ -163,17 +163,44 @@ export default function TrackAssessments() {
   async function openEdit(row: TrackAssessmentRow) {
     setEditingRow(row);
     setUploadFile(null);
-    setEditForm({
-      title: row.title,
-      description: "",
-      passMarkPercent: 70,
-      maxAttempts: 2,
-      timeLimitMinutes: 0,
-      isActive: false,
-    });
+
+    try {
+      const configRes = await fetch(`${API_BASE}admin/tracks/${row.trackId}/assessment`, {
+        headers: authHeaders(false),
+      });
+      if (configRes.ok) {
+        const configData = await configRes.json();
+        const cfg = configData?.data || configData;
+        setEditForm({
+          title: cfg.title || row.title,
+          description: cfg.description || "",
+          passMarkPercent: cfg.passMarkPercent ?? 70,
+          maxAttempts: cfg.maxAttempts ?? 2,
+          timeLimitMinutes: cfg.timeLimitMinutes ?? 0,
+          isActive: cfg.isActive ?? false,
+        });
+      } else {
+        setEditForm({
+          title: row.title,
+          description: "",
+          passMarkPercent: 70,
+          maxAttempts: 2,
+          timeLimitMinutes: 0,
+          isActive: false,
+        });
+      }
+    } catch {
+      setEditForm({
+        title: row.title,
+        description: "",
+        passMarkPercent: 70,
+        maxAttempts: 2,
+        timeLimitMinutes: 0,
+        isActive: false,
+      });
+    }
 
     if (row.questionType === "upload") {
-      // nothing to preload, the user just drops a fresh file
       return;
     }
 
@@ -230,7 +257,21 @@ export default function TrackAssessments() {
       headers: authHeaders(),
       body: JSON.stringify(editForm),
     });
-    if (!res.ok) throw new Error("Failed to update assessment");
+    if (!res.ok) {
+      let message = "Failed to update assessment";
+      try {
+        const errData = await res.json();
+        message = errData?.message || errData?.error || message;
+      } catch {
+        try {
+          const text = await res.text();
+          if (text) message = text;
+        } catch {
+          // keep the fallback message
+        }
+      }
+      throw new Error(message);
+    }
   }
 
   async function handleSaveEdit() {
@@ -355,19 +396,34 @@ export default function TrackAssessments() {
   async function handleDelete(row: TrackAssessmentRow) {
     if (!confirm(`Delete assessment "${row.title}" for ${row.trackName}?`)) return;
     try {
+      const itemsRes = await fetch(
+        `${API_BASE}admin/assessment-items?parentId=${row.id}&parentType=${PARENT_TYPE}`,
+        { headers: authHeaders(false) }
+      );
+      if (itemsRes.ok) {
+        const itemsData = await itemsRes.json();
+        const items = Array.isArray(itemsData) ? itemsData : itemsData.data || [];
+        await Promise.all(
+          items.map((item: any) =>
+            fetch(`${API_BASE}admin/assessment-items/${item.id}`, {
+              method: "DELETE",
+              headers: authHeaders(false),
+            })
+          )
+        );
+      }
+
       const res = await fetch(`${API_BASE}admin/tracks/${row.trackId}/assessment`, {
         method: "DELETE",
         headers: authHeaders(false),
       });
 
       if (!res.ok) {
-        // Try to read the backend's actual error message
         let message = "Failed to delete assessment";
         try {
           const errData = await res.json();
           message = errData?.message || errData?.error || message;
         } catch {
-          // If JSON parsing fails, try text
           try {
             const text = await res.text();
             if (text) message = text;

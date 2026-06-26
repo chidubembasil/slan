@@ -12,7 +12,7 @@ const QUESTION_TYPE_LABEL: Record<QuestionType, string> = {
 };
 
 interface ModuleAssessmentRow {
-  id: number; // assessment config id (parentId for assessment-items)
+  id: number;
   title: string;
   moduleId: number;
   moduleName: string;
@@ -64,7 +64,6 @@ export default function ModuleAssessments() {
     isActive: false,
   });
 
-  // type-specific state
   const [singleItem, setSingleItem] = useState<AssessmentItem>(emptyItem());
   const [multipleItems, setMultipleItems] = useState<AssessmentItem[]>([emptyItem()]);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
@@ -84,8 +83,6 @@ export default function ModuleAssessments() {
     setLoading(true);
     setError(null);
     try {
-      // There is no "/admin/modules" list endpoint. Modules only exist nested
-      // under tracks, so we fetch all tracks first, then each track's modules.
       const tracksRes = await fetch(`${API_BASE}admin/tracks`, {
         headers: authHeaders(false),
       });
@@ -121,7 +118,6 @@ export default function ModuleAssessments() {
             const assessment = data?.data || data;
             if (!assessment || !assessment.id) return;
 
-            // Pull the actual item count for this assessment to decide the type.
             let questionCount = 0;
             try {
               const itemsRes = await fetch(
@@ -181,19 +177,45 @@ export default function ModuleAssessments() {
   async function openEdit(row: ModuleAssessmentRow) {
     setEditingRow(row);
     setUploadFile(null);
-    setEditForm({
-      title: row.title,
-      description: "",
-      passMarkPercent: 70,
-      maxAttempts: 2,
-      timeLimitMinutes: 0,
-      isActive: false,
-    });
 
-    if (row.questionType === "upload") {
-      // nothing to preload, the user just drops a fresh file
-      return;
+    // FIX: fetch the real assessment config so description and all fields are populated
+    try {
+      const configRes = await fetch(`${API_BASE}admin/modules/${row.moduleId}/assessment`, {
+        headers: authHeaders(false),
+      });
+      if (configRes.ok) {
+        const configData = await configRes.json();
+        const cfg = configData?.data || configData;
+        setEditForm({
+          title: cfg.title || row.title,
+          description: cfg.description || "",
+          passMarkPercent: cfg.passMarkPercent ?? 70,
+          maxAttempts: cfg.maxAttempts ?? 2,
+          timeLimitMinutes: cfg.timeLimitMinutes ?? 0,
+          isActive: cfg.isActive ?? false,
+        });
+      } else {
+        setEditForm({
+          title: row.title,
+          description: "",
+          passMarkPercent: 70,
+          maxAttempts: 2,
+          timeLimitMinutes: 0,
+          isActive: false,
+        });
+      }
+    } catch {
+      setEditForm({
+        title: row.title,
+        description: "",
+        passMarkPercent: 70,
+        maxAttempts: 2,
+        timeLimitMinutes: 0,
+        isActive: false,
+      });
     }
+
+    if (row.questionType === "upload") return;
 
     setLoadingItems(true);
     try {
@@ -248,7 +270,14 @@ export default function ModuleAssessments() {
       headers: authHeaders(),
       body: JSON.stringify(editForm),
     });
-    if (!res.ok) throw new Error("Failed to update assessment");
+    if (!res.ok) {
+      let message = "Failed to update assessment";
+      try {
+        const errData = await res.json();
+        message = errData?.message || errData?.error || message;
+      } catch {}
+      throw new Error(message);
+    }
   }
 
   async function handleSaveEdit() {
@@ -294,14 +323,22 @@ export default function ModuleAssessments() {
         headers: authHeaders(),
         body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error("Failed to update question");
+      if (!res.ok) {
+        let message = "Failed to update question";
+        try { const d = await res.json(); message = d?.message || d?.error || message; } catch {}
+        throw new Error(message);
+      }
     } else {
       const res = await fetch(`${API_BASE}admin/assessment-items`, {
         method: "POST",
         headers: authHeaders(),
         body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error("Failed to create question");
+      if (!res.ok) {
+        let message = "Failed to create question";
+        try { const d = await res.json(); message = d?.message || d?.error || message; } catch {}
+        throw new Error(message);
+      }
     }
   }
 
@@ -309,7 +346,6 @@ export default function ModuleAssessments() {
     const existing = items.filter((i) => i.id);
     const fresh = items.filter((i) => !i.id);
 
-    // Update existing ones individually.
     await Promise.all(
       existing.map((item) =>
         fetch(`${API_BASE}admin/assessment-items/${item.id}`, {
@@ -331,7 +367,6 @@ export default function ModuleAssessments() {
       )
     );
 
-    // Bulk add any brand new ones.
     if (fresh.length) {
       const res = await fetch(`${API_BASE}admin/assessment-items/bulk`, {
         method: "POST",
@@ -361,7 +396,7 @@ export default function ModuleAssessments() {
 
     const res = await fetch(`${API_BASE}admin/assessment-items/bulk-upload`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}` }, // no Content-Type, browser sets multipart boundary
+      headers: { Authorization: `Bearer ${token}` },
       body: formData,
     });
     if (!res.ok) {
@@ -373,7 +408,7 @@ export default function ModuleAssessments() {
   async function handleDelete(row: ModuleAssessmentRow) {
     if (!confirm(`Delete assessment "${row.title}" for ${row.moduleName}?`)) return;
     try {
-      // 1. Fetch and delete all assessment items first
+      // FIX: Delete all assessment items first before deleting the config
       const itemsRes = await fetch(
         `${API_BASE}admin/assessment-items?parentId=${row.id}&parentType=${PARENT_TYPE}`,
         { headers: authHeaders(false) }
@@ -391,19 +426,27 @@ export default function ModuleAssessments() {
         );
       }
 
-      // 2. Delete the assessment config
+      // Now delete the assessment config
       const res = await fetch(`${API_BASE}admin/modules/${row.moduleId}/assessment`, {
         method: "DELETE",
         headers: authHeaders(false),
       });
-      if (!res.ok) throw new Error("Failed to delete assessment");
+      if (!res.ok) {
+        let message = "Failed to delete assessment";
+        try {
+          const errData = await res.json();
+          message = errData?.message || errData?.error || message;
+        } catch {
+          try { const text = await res.text(); if (text) message = text; } catch {}
+        }
+        throw new Error(message);
+      }
       setRows((prev) => prev.filter((r) => r.id !== row.id));
     } catch (e: any) {
       alert(e.message || "Failed to delete");
     }
   }
 
-  // ---- multiple-questions helpers ----
   function updateMultipleItem(index: number, patch: Partial<AssessmentItem>) {
     setMultipleItems((prev) =>
       prev.map((item, i) => (i === index ? { ...item, ...patch } : item))
@@ -414,10 +457,7 @@ export default function ModuleAssessments() {
     setMultipleItems((prev) =>
       prev.map((item, i) =>
         i === index
-          ? {
-              ...item,
-              options: item.options.map((o) => (o.id === optionId ? { ...o, text } : o)),
-            }
+          ? { ...item, options: item.options.map((o) => (o.id === optionId ? { ...o, text } : o)) }
           : item
       )
     );
@@ -550,7 +590,6 @@ export default function ModuleAssessments() {
               </span>
             </div>
 
-            {/* --- common assessment config fields --- */}
             <div className="space-y-3">
               <div>
                 <label className="text-xs font-medium text-gray-600">Title</label>
@@ -609,7 +648,6 @@ export default function ModuleAssessments() {
                   />
                 </div>
               </div>
-
               <label className="flex items-center gap-2 text-sm text-gray-700">
                 <input
                   type="checkbox"
@@ -622,7 +660,6 @@ export default function ModuleAssessments() {
 
             <hr className="my-5 border-gray-100" />
 
-            {/* --- type-specific section --- */}
             {loadingItems && (
               <p className="text-sm text-gray-400 text-center py-6">Loading questions...</p>
             )}

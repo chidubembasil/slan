@@ -12,7 +12,7 @@ const QUESTION_TYPE_LABEL: Record<QuestionType, string> = {
 };
 
 interface CourseAssessmentRow {
-  id: number; // assessment config id (parentId for assessment-items)
+  id: number;
   title: string;
   courseId: number;
   courseName: string;
@@ -64,7 +64,6 @@ export default function CourseAssessments() {
     isActive: false,
   });
 
-  // type-specific state
   const [singleItem, setSingleItem] = useState<AssessmentItem>(emptyItem());
   const [multipleItems, setMultipleItems] = useState<AssessmentItem[]>([emptyItem()]);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
@@ -103,7 +102,6 @@ export default function CourseAssessments() {
             const assessment = data?.data || data;
             if (!assessment || !assessment.id) return;
 
-            // Pull the actual item count for this assessment to decide the type.
             let questionCount = 0;
             try {
               const itemsRes = await fetch(
@@ -131,7 +129,7 @@ export default function CourseAssessments() {
               questionCount,
             });
           } catch {
-            // skip course on error
+            // skip
           }
         })
       );
@@ -163,19 +161,45 @@ export default function CourseAssessments() {
   async function openEdit(row: CourseAssessmentRow) {
     setEditingRow(row);
     setUploadFile(null);
-    setEditForm({
-      title: row.title,
-      description: "",
-      passMarkPercent: 70,
-      maxAttempts: 2,
-      timeLimitMinutes: 0,
-      isActive: false,
-    });
 
-    if (row.questionType === "upload") {
-      // nothing to preload, the user just drops a fresh file
-      return;
+    // FIX: fetch the real assessment config so description and all fields are populated
+    try {
+      const configRes = await fetch(`${API_BASE}admin/courses/${row.courseId}/assessment`, {
+        headers: authHeaders(false),
+      });
+      if (configRes.ok) {
+        const configData = await configRes.json();
+        const cfg = configData?.data || configData;
+        setEditForm({
+          title: cfg.title || row.title,
+          description: cfg.description || "",
+          passMarkPercent: cfg.passMarkPercent ?? 70,
+          maxAttempts: cfg.maxAttempts ?? 2,
+          timeLimitMinutes: cfg.timeLimitMinutes ?? 0,
+          isActive: cfg.isActive ?? false,
+        });
+      } else {
+        setEditForm({
+          title: row.title,
+          description: "",
+          passMarkPercent: 70,
+          maxAttempts: 2,
+          timeLimitMinutes: 0,
+          isActive: false,
+        });
+      }
+    } catch {
+      setEditForm({
+        title: row.title,
+        description: "",
+        passMarkPercent: 70,
+        maxAttempts: 2,
+        timeLimitMinutes: 0,
+        isActive: false,
+      });
     }
+
+    if (row.questionType === "upload") return;
 
     setLoadingItems(true);
     try {
@@ -230,7 +254,14 @@ export default function CourseAssessments() {
       headers: authHeaders(),
       body: JSON.stringify(editForm),
     });
-    if (!res.ok) throw new Error("Failed to update assessment");
+    if (!res.ok) {
+      let message = "Failed to update assessment";
+      try {
+        const errData = await res.json();
+        message = errData?.message || errData?.error || message;
+      } catch {}
+      throw new Error(message);
+    }
   }
 
   async function handleSaveEdit() {
@@ -276,14 +307,22 @@ export default function CourseAssessments() {
         headers: authHeaders(),
         body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error("Failed to update question");
+      if (!res.ok) {
+        let message = "Failed to update question";
+        try { const d = await res.json(); message = d?.message || d?.error || message; } catch {}
+        throw new Error(message);
+      }
     } else {
       const res = await fetch(`${API_BASE}admin/assessment-items`, {
         method: "POST",
         headers: authHeaders(),
         body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error("Failed to create question");
+      if (!res.ok) {
+        let message = "Failed to create question";
+        try { const d = await res.json(); message = d?.message || d?.error || message; } catch {}
+        throw new Error(message);
+      }
     }
   }
 
@@ -291,7 +330,6 @@ export default function CourseAssessments() {
     const existing = items.filter((i) => i.id);
     const fresh = items.filter((i) => !i.id);
 
-    // Update existing ones individually.
     await Promise.all(
       existing.map((item) =>
         fetch(`${API_BASE}admin/assessment-items/${item.id}`, {
@@ -313,7 +351,6 @@ export default function CourseAssessments() {
       )
     );
 
-    // Bulk add any brand new ones.
     if (fresh.length) {
       const res = await fetch(`${API_BASE}admin/assessment-items/bulk`, {
         method: "POST",
@@ -343,7 +380,7 @@ export default function CourseAssessments() {
 
     const res = await fetch(`${API_BASE}admin/assessment-items/bulk-upload`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}` }, // no Content-Type, browser sets multipart boundary
+      headers: { Authorization: `Bearer ${token}` },
       body: formData,
     });
     if (!res.ok) {
@@ -378,14 +415,22 @@ export default function CourseAssessments() {
         method: "DELETE",
         headers: authHeaders(false),
       });
-      if (!res.ok) throw new Error("Failed to delete assessment");
+      if (!res.ok) {
+        let message = "Failed to delete assessment";
+        try {
+          const errData = await res.json();
+          message = errData?.message || errData?.error || message;
+        } catch {
+          try { const text = await res.text(); if (text) message = text; } catch {}
+        }
+        throw new Error(message);
+      }
       setRows((prev) => prev.filter((r) => r.id !== row.id));
     } catch (e: any) {
       alert(e.message || "Failed to delete");
     }
   }
 
-  // ---- multiple-questions helpers ----
   function updateMultipleItem(index: number, patch: Partial<AssessmentItem>) {
     setMultipleItems((prev) =>
       prev.map((item, i) => (i === index ? { ...item, ...patch } : item))
@@ -396,10 +441,7 @@ export default function CourseAssessments() {
     setMultipleItems((prev) =>
       prev.map((item, i) =>
         i === index
-          ? {
-              ...item,
-              options: item.options.map((o) => (o.id === optionId ? { ...o, text } : o)),
-            }
+          ? { ...item, options: item.options.map((o) => (o.id === optionId ? { ...o, text } : o)) }
           : item
       )
     );
@@ -532,7 +574,6 @@ export default function CourseAssessments() {
               </span>
             </div>
 
-            {/* --- common assessment config fields --- */}
             <div className="space-y-3">
               <div>
                 <label className="text-xs font-medium text-gray-600">Title</label>
@@ -591,7 +632,6 @@ export default function CourseAssessments() {
                   />
                 </div>
               </div>
-
               <label className="flex items-center gap-2 text-sm text-gray-700">
                 <input
                   type="checkbox"
@@ -604,7 +644,6 @@ export default function CourseAssessments() {
 
             <hr className="my-5 border-gray-100" />
 
-            {/* --- type-specific section --- */}
             {loadingItems && (
               <p className="text-sm text-gray-400 text-center py-6">Loading questions...</p>
             )}
