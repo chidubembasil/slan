@@ -164,7 +164,6 @@ export default function CourseAssessments() {
     setEditingRow(row);
     setUploadFile(null);
 
-    // FIX: fetch the real assessment config so description and all fields are populated
     try {
       const configRes = await fetch(`${API_BASE}admin/courses/${row.courseId}/assessment`, {
         headers: authHeaders(false),
@@ -213,7 +212,7 @@ export default function CourseAssessments() {
       const data = await res.json();
       const items: AssessmentItem[] = Array.isArray(data) ? data : data.data || [];
 
-      const normalized = items.map((it) => ({
+      const normalized = items.map((it: any) => ({
         id: it.id,
         questionText: it.questionText || "",
         questionType: it.questionType || "multiple_choice",
@@ -315,7 +314,10 @@ export default function CourseAssessments() {
       });
       if (!res.ok) {
         let message = "Failed to update question";
-        try { const d = await res.json(); message = d?.message || d?.error || message; } catch {}
+        try {
+          const d = await res.json();
+          message = d?.message || d?.error || message;
+        } catch {}
         throw new Error(message);
       }
     } else {
@@ -326,7 +328,10 @@ export default function CourseAssessments() {
       });
       if (!res.ok) {
         let message = "Failed to create question";
-        try { const d = await res.json(); message = d?.message || d?.error || message; } catch {}
+        try {
+          const d = await res.json();
+          message = d?.message || d?.error || message;
+        } catch {}
         throw new Error(message);
       }
     }
@@ -406,7 +411,7 @@ export default function CourseAssessments() {
   async function handleDelete(row: CourseAssessmentRow) {
     if (!confirm(`Delete assessment "${row.title}" for ${row.courseName}?`)) return;
     try {
-      // 1. Fetch and delete all assessment items first
+      // Step 1: Delete all assessment items
       const itemsRes = await fetch(
         `${API_BASE}admin/assessment-items?parentId=${row.id}&parentType=${PARENT_TYPE}`,
         { headers: authHeaders(false) }
@@ -424,29 +429,15 @@ export default function CourseAssessments() {
         );
       }
 
-      // 2. Delete the assessment config
-      let res = await fetch(`${API_BASE}admin/courses/${row.courseId}/assessment`, {
-        method: "DELETE",
-        headers: authHeaders(false),
+      // Step 2: The backend has no DELETE endpoint for assessment configs.
+      // Deactivate it instead by setting isActive: false via PUT.
+      await fetch(`${API_BASE}admin/courses/${row.courseId}/assessment`, {
+        method: "PUT",
+        headers: authHeaders(),
+        body: JSON.stringify({ isActive: false }),
       });
 
-      if (!res.ok && res.status === 404) {
-        res = await fetch(`${API_BASE}admin/assessments/${row.id}`, {
-          method: "DELETE",
-          headers: authHeaders(false),
-        });
-      }
-
-      if (!res.ok) {
-        let message = "Failed to delete assessment";
-        try {
-          const errData = await res.json();
-          message = errData?.message || errData?.error || message;
-        } catch {
-          try { const text = await res.text(); if (text) message = text; } catch {}
-        }
-        throw new Error(message);
-      }
+      // Remove from local UI state
       setRows((prev) => prev.filter((r) => r.id !== row.id));
     } catch (e: any) {
       alert(e.message || "Failed to delete");
@@ -463,7 +454,10 @@ export default function CourseAssessments() {
     setMultipleItems((prev) =>
       prev.map((item, i) =>
         i === index
-          ? { ...item, options: item.options.map((o) => (o.id === optionId ? { ...o, text } : o)) }
+          ? {
+              ...item,
+              options: item.options.map((o) => (o.id === optionId ? { ...o, text } : o)),
+            }
           : item
       )
     );
@@ -697,7 +691,10 @@ export default function CourseAssessments() {
                   </button>
                 </div>
                 {multipleItems.map((item, idx) => (
-                  <div key={item.id ?? `new-${idx}`} className="border border-gray-200 rounded-lg p-3 relative">
+                  <div
+                    key={item.id ?? `new-${idx}`}
+                    className="border border-gray-200 rounded-lg p-3 relative"
+                  >
                     <button
                       onClick={() => removeMultipleItem(idx)}
                       className="absolute top-2 right-2 text-gray-400 hover:text-red-500"
@@ -788,7 +785,9 @@ function SingleQuestionEditor({
         <label className="text-xs font-medium text-gray-600">Question Type</label>
         <select
           value={item.questionType}
-          onChange={(e) => onChange({ questionType: e.target.value as AssessmentItem["questionType"] })}
+          onChange={(e) =>
+            onChange({ questionType: e.target.value as AssessmentItem["questionType"] })
+          }
           className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
           title="question type select"
         >
@@ -802,7 +801,9 @@ function SingleQuestionEditor({
         <div className="grid grid-cols-2 gap-2">
           {item.options.map((opt) => (
             <div key={opt.id}>
-              <label className="text-xs font-medium text-gray-600">Option {opt.id.toUpperCase()}</label>
+              <label className="text-xs font-medium text-gray-600">
+                Option {opt.id.toUpperCase()}
+              </label>
               <input
                 value={opt.text}
                 onChange={(e) => onOptionChange(opt.id, e.target.value)}

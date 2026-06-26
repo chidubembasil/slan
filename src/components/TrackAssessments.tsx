@@ -12,7 +12,7 @@ const QUESTION_TYPE_LABEL: Record<QuestionType, string> = {
 };
 
 interface TrackAssessmentRow {
-  id: number; // assessment config id (parentId for assessment-items)
+  id: number;
   title: string;
   trackId: number;
   trackName: string;
@@ -66,7 +66,6 @@ export default function TrackAssessments() {
     isActive: false,
   });
 
-  // type-specific state
   const [singleItem, setSingleItem] = useState<AssessmentItem>(emptyItem());
   const [multipleItems, setMultipleItems] = useState<AssessmentItem[]>([emptyItem()]);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
@@ -105,7 +104,6 @@ export default function TrackAssessments() {
             const assessment = data?.data || data;
             if (!assessment || !assessment.id) return;
 
-            // Pull the actual item count for this assessment to decide the type.
             let questionCount = 0;
             try {
               const itemsRes = await fetch(
@@ -202,9 +200,7 @@ export default function TrackAssessments() {
       });
     }
 
-    if (row.questionType === "upload") {
-      return;
-    }
+    if (row.questionType === "upload") return;
 
     setLoadingItems(true);
     try {
@@ -269,9 +265,7 @@ export default function TrackAssessments() {
         try {
           const text = await res.text();
           if (text) message = text;
-        } catch {
-          // keep the fallback message
-        }
+        } catch {}
       }
       throw new Error(message);
     }
@@ -339,7 +333,6 @@ export default function TrackAssessments() {
     const existing = items.filter((i) => i.id);
     const fresh = items.filter((i) => !i.id);
 
-    // Update existing ones individually.
     await Promise.all(
       existing.map((item) =>
         fetch(`${API_BASE}admin/assessment-items/${item.id}`, {
@@ -365,7 +358,6 @@ export default function TrackAssessments() {
       )
     );
 
-    // Bulk add any brand new ones.
     if (fresh.length) {
       const res = await fetch(`${API_BASE}admin/assessment-items/bulk`, {
         method: "POST",
@@ -399,7 +391,7 @@ export default function TrackAssessments() {
 
     const res = await fetch(`${API_BASE}admin/assessment-items/bulk-upload`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}` }, // no Content-Type, browser sets multipart boundary
+      headers: { Authorization: `Bearer ${token}` },
       body: formData,
     });
     if (!res.ok) {
@@ -411,6 +403,7 @@ export default function TrackAssessments() {
   async function handleDelete(row: TrackAssessmentRow) {
     if (!confirm(`Delete assessment "${row.title}" for ${row.trackName}?`)) return;
     try {
+      // Step 1: Delete all assessment items
       const itemsRes = await fetch(
         `${API_BASE}admin/assessment-items?parentId=${row.id}&parentType=${PARENT_TYPE}`,
         { headers: authHeaders(false) }
@@ -428,41 +421,21 @@ export default function TrackAssessments() {
         );
       }
 
-      let res = await fetch(`${API_BASE}admin/tracks/${row.trackId}/assessment`, {
-        method: "DELETE",
-        headers: authHeaders(false),
+      // Step 2: The backend has no DELETE endpoint for assessment configs.
+      // Deactivate it instead by setting isActive: false via PUT.
+      await fetch(`${API_BASE}admin/tracks/${row.trackId}/assessment`, {
+        method: "PUT",
+        headers: authHeaders(),
+        body: JSON.stringify({ isActive: false }),
       });
 
-      if (!res.ok && res.status === 404) {
-        res = await fetch(`${API_BASE}admin/assessments/${row.id}`, {
-          method: "DELETE",
-          headers: authHeaders(false),
-        });
-      }
-
-      if (!res.ok) {
-        let message = "Failed to delete assessment";
-        try {
-          const errData = await res.json();
-          message = errData?.message || errData?.error || message;
-        } catch {
-          try {
-            const text = await res.text();
-            if (text) message = text;
-          } catch {
-            // fallback already set
-          }
-        }
-        throw new Error(message);
-      }
-
+      // Remove from local UI state
       setRows((prev) => prev.filter((r) => r.id !== row.id));
     } catch (e: any) {
       alert(e.message || "Failed to delete");
     }
   }
 
-  // ---- multiple-questions helpers ----
   function updateMultipleItem(index: number, patch: Partial<AssessmentItem>) {
     setMultipleItems((prev) =>
       prev.map((item, i) => (i === index ? { ...item, ...patch } : item))
@@ -609,7 +582,6 @@ export default function TrackAssessments() {
               </span>
             </div>
 
-            {/* --- common assessment config fields --- */}
             <div className="space-y-3">
               <div>
                 <label className="text-xs font-medium text-gray-600">Title</label>
@@ -668,7 +640,6 @@ export default function TrackAssessments() {
                   />
                 </div>
               </div>
-
               <label className="flex items-center gap-2 text-sm text-gray-700">
                 <input
                   type="checkbox"
@@ -681,7 +652,6 @@ export default function TrackAssessments() {
 
             <hr className="my-5 border-gray-100" />
 
-            {/* --- type-specific section --- */}
             {loadingItems && (
               <p className="text-sm text-gray-400 text-center py-6">Loading questions...</p>
             )}
@@ -713,7 +683,10 @@ export default function TrackAssessments() {
                   </button>
                 </div>
                 {multipleItems.map((item, idx) => (
-                  <div key={item.id ?? `new-${idx}`} className="border border-gray-200 rounded-lg p-3 relative">
+                  <div
+                    key={item.id ?? `new-${idx}`}
+                    className="border border-gray-200 rounded-lg p-3 relative"
+                  >
                     <button
                       onClick={() => removeMultipleItem(idx)}
                       className="absolute top-2 right-2 text-gray-400 hover:text-red-500"
@@ -804,7 +777,9 @@ function SingleQuestionEditor({
         <label className="text-xs font-medium text-gray-600">Question Type</label>
         <select
           value={item.questionType}
-          onChange={(e) => onChange({ questionType: e.target.value as AssessmentItem["questionType"] })}
+          onChange={(e) =>
+            onChange({ questionType: e.target.value as AssessmentItem["questionType"] })
+          }
           className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
           title="question type select"
         >
@@ -818,7 +793,9 @@ function SingleQuestionEditor({
         <div className="grid grid-cols-2 gap-2">
           {item.options.map((opt) => (
             <div key={opt.id}>
-              <label className="text-xs font-medium text-gray-600">Option {opt.id.toUpperCase()}</label>
+              <label className="text-xs font-medium text-gray-600">
+                Option {opt.id.toUpperCase()}
+              </label>
               <input
                 value={opt.text}
                 onChange={(e) => onOptionChange(opt.id, e.target.value)}

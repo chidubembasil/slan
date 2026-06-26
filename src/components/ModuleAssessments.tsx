@@ -180,7 +180,6 @@ export default function ModuleAssessments() {
     setEditingRow(row);
     setUploadFile(null);
 
-    // FIX: fetch the real assessment config so description and all fields are populated
     try {
       const configRes = await fetch(`${API_BASE}admin/modules/${row.moduleId}/assessment`, {
         headers: authHeaders(false),
@@ -423,15 +422,18 @@ export default function ModuleAssessments() {
   async function handleDelete(row: ModuleAssessmentRow) {
     if (!confirm(`Delete assessment "${row.title}" for ${row.moduleName}?`)) return;
     try {
-      // FIX: Delete all assessment items first before deleting the config
+      // Step 1: Delete all assessment items first
       const itemsRes = await fetch(
         `${API_BASE}admin/assessment-items?parentId=${row.id}&parentType=${PARENT_TYPE}`,
         { headers: authHeaders(false) }
       );
+      
       if (itemsRes.ok) {
         const itemsData = await itemsRes.json();
         const items = Array.isArray(itemsData) ? itemsData : itemsData.data || [];
-        await Promise.all(
+        
+        // Delete items one by one and handle errors gracefully
+        const deleteResults = await Promise.allSettled(
           items.map((item: any) =>
             fetch(`${API_BASE}admin/assessment-items/${item.id}`, {
               method: "DELETE",
@@ -439,19 +441,55 @@ export default function ModuleAssessments() {
             })
           )
         );
+        
+        // Log any failures but don't stop
+        deleteResults.forEach((result, idx) => {
+          if (result.status === "rejected") {
+            console.warn(`Failed to delete item ${items[idx]?.id}:`, result.reason);
+          }
+        });
       }
 
-      // Now delete the assessment config
+      // Step 2: Try to delete the assessment config via the module endpoint
       let res = await fetch(`${API_BASE}admin/modules/${row.moduleId}/assessment`, {
         method: "DELETE",
         headers: authHeaders(false),
       });
+
+      // If that fails with 404, try alternative endpoints
       if (!res.ok && res.status === 404) {
+        // Try /admin/assessments/{id} as fallback
         res = await fetch(`${API_BASE}admin/assessments/${row.id}`, {
           method: "DELETE",
           headers: authHeaders(false),
         });
       }
+
+      // If still 404, try soft delete by deactivating
+      if (!res.ok && res.status === 404) {
+        console.warn("DELETE endpoint not found, attempting soft delete by deactivating");
+        const softDeleteRes = await fetch(`${API_BASE}admin/modules/${row.moduleId}/assessment`, {
+          method: "PUT",
+          headers: authHeaders(),
+          body: JSON.stringify({
+            title: row.title,
+            description: "",
+            passMarkPercent: 70,
+            maxAttempts: 2,
+            timeLimitMinutes: 0,
+            isActive: false,
+          }),
+        });
+        
+        if (!softDeleteRes.ok) {
+          throw new Error("Assessment delete endpoint not found. Please check your API configuration.");
+        }
+        
+        // Soft delete succeeded, remove from UI
+        setRows((prev) => prev.filter((r) => r.id !== row.id));
+        return;
+      }
+
       if (!res.ok) {
         let message = "Failed to delete assessment";
         try {
@@ -462,9 +500,12 @@ export default function ModuleAssessments() {
         }
         throw new Error(message);
       }
+
+      // Success - remove from local state
       setRows((prev) => prev.filter((r) => r.id !== row.id));
     } catch (e: any) {
-      alert(e.message || "Failed to delete");
+      console.error("Delete error:", e);
+      alert(e.message || "Failed to delete assessment");
     }
   }
 
