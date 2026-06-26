@@ -573,17 +573,6 @@ function QuestionEditor({
           placeholder="Why this is the correct answer"
         />
       </div>
-
-      <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1">Order Index</label>
-        <input
-          type="number" min={0}
-          value={q.orderIndex}
-          onChange={e => set("orderIndex", Number(e.target.value))}
-          className={inputCls}
-          title="input"
-        />
-      </div>
     </div>
   );
 }
@@ -789,7 +778,7 @@ function AddAssessmentForm({
               : "bg-white text-gray-400 hover:bg-gray-50 cursor-pointer"
           }`}
         >
-          1 · Assessment Config
+          1 · Assessment Details
         </button>
         <button
           disabled={!assessmentId}
@@ -925,8 +914,8 @@ function AddAssessmentForm({
                       : "border-gray-200 text-gray-500 hover:border-gray-300"
                   }`}
                 >
-                  {m === "single" && "Single Question"}
-                  {m === "bulk" && "Multiple Questions"}
+                  {m === "single" && "Single  Choice"}
+                  {m === "bulk" && "Multiple  Choices"}
                   {m === "file" && "Upload File (CSV/Excel)"}
                 </button>
               ))}

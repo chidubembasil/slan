@@ -288,11 +288,6 @@ function QuestionEditor({
         <label className="block text-xs font-medium text-gray-700 mb-1">Explanation <span className="text-gray-400">(optional)</span></label>
         <input value={q.explanation} onChange={e => set("explanation", e.target.value)} className={inputCls} placeholder="Why this is the correct answer" />
       </div>
-
-      <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1">Order Index</label>
-        <input type="number" min={0} value={q.orderIndex} onChange={e => set("orderIndex", Number(e.target.value))} className={inputCls} title="input"/>
-      </div>
     </div>
   );
 }
@@ -499,7 +494,7 @@ function AddAssessmentModal({
           onClick={() => step === 2 && setStep(1)}
           className={`flex-1 py-2.5 text-sm font-medium transition-colors ${step === 1 ? "bg-[#004900] text-white" : "bg-white text-gray-400 cursor-pointer hover:bg-gray-50"}`}
         >
-          1 · Assessment Config
+          1 · Assessment Details
         </button>
         <button
           disabled={step === 1 && !assessmentId}
@@ -611,8 +606,8 @@ function AddAssessmentModal({
                       : "border-gray-200 text-gray-500 hover:border-gray-300"
                   }`}
                 >
-                  {m === "single" && "Single Question"}
-                  {m === "bulk" && "Multiple Questions"}
+                  {m === "single" && "Single Choice"}
+                  {m === "bulk" && "Multiple Choices"}
                   {m === "file" && "Upload File (CSV/Excel)"}
                 </button>
               ))}

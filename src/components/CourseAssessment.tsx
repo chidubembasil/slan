@@ -1,60 +1,52 @@
 import { useEffect, useMemo, useState } from "react";
-import { Pencil, Trash2, Search, Upload, X } from "lucide-react";
+import { Pencil, Trash2, Search, Upload, X, Plus, Trash } from "lucide-react";
 
 const API_BASE = import.meta.env.VITE_BASE_URL;
 
-const CLOUDINARY_CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
-const CLOUDINARY_API_KEY = import.meta.env.VITE_API_KEY;
-const CLOUDINARY_API_SECRET = import.meta.env.VITE_API_SECRET_KEY;
-
-async function uploadFileToCloudinary(file: File, folder: string = "assessments"): Promise<string> {
-  if (!CLOUDINARY_API_KEY || !CLOUDINARY_API_SECRET || !CLOUDINARY_CLOUD_NAME) {
-    throw new Error("Cloudinary credentials missing");
-  }
-
-  const timestamp = Math.round(new Date().getTime() / 1000);
-  const signatureString = `folder=${folder}&timestamp=${timestamp}${CLOUDINARY_API_SECRET}`;
-  const signature = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(signatureString));
-  const signatureHex = Array.from(new Uint8Array(signature))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-
-  const formData = new FormData();
-  formData.append("file", file);
-  formData.append("api_key", CLOUDINARY_API_KEY);
-  formData.append("timestamp", timestamp.toString());
-  formData.append("signature", signatureHex);
-  formData.append("folder", folder);
-
-  const res = await fetch(
-    `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/raw/upload`,
-    { method: "POST", body: formData }
-  );
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err?.error?.message || "Cloudinary upload failed");
-  }
-
-  const data = await res.json();
-  return data.secure_url as string;
-}
-
 type QuestionType = "single" | "multiple" | "upload";
-
-interface CourseAssessmentRow {
-  id: number;
-  title: string;
-  courseId: number;
-  courseName: string;
-  questionType: QuestionType;
-}
 
 const QUESTION_TYPE_LABEL: Record<QuestionType, string> = {
   single: "Single Choice",
   multiple: "Multiple Choice",
   upload: "Upload (CSV/Excel)",
 };
+
+interface CourseAssessmentRow {
+  id: number; // assessment config id (parentId for assessment-items)
+  title: string;
+  courseId: number;
+  courseName: string;
+  questionType: QuestionType;
+  questionCount: number;
+}
+
+interface AssessmentItem {
+  id?: number;
+  questionText: string;
+  questionType: "multiple_choice" | "true_false" | "short_answer";
+  options: { id: string; text: string }[];
+  correctAnswer: string;
+  explanation?: string;
+  points: number;
+}
+
+const PARENT_TYPE = "course_assessment";
+
+function emptyItem(): AssessmentItem {
+  return {
+    questionText: "",
+    questionType: "multiple_choice",
+    options: [
+      { id: "a", text: "" },
+      { id: "b", text: "" },
+      { id: "c", text: "" },
+      { id: "d", text: "" },
+    ],
+    correctAnswer: "",
+    explanation: "",
+    points: 1,
+  };
+}
 
 export default function CourseAssessments() {
   const [rows, setRows] = useState<CourseAssessmentRow[]>([]);
@@ -71,17 +63,29 @@ export default function CourseAssessments() {
     timeLimitMinutes: 0,
     isActive: false,
   });
-  const [editFile, setEditFile] = useState<File | null>(null);
+
+  // type-specific state
+  const [singleItem, setSingleItem] = useState<AssessmentItem>(emptyItem());
+  const [multipleItems, setMultipleItems] = useState<AssessmentItem[]>([emptyItem()]);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+
+  const [loadingItems, setLoadingItems] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const token = localStorage.getItem("adminAccessToken") || "";
+
+  function authHeaders(json = true) {
+    const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
+    if (json) headers["Content-Type"] = "application/json";
+    return headers;
+  }
 
   async function fetchCourseAssessments() {
     setLoading(true);
     setError(null);
     try {
       const coursesRes = await fetch(`${API_BASE}admin/courses`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: authHeaders(false),
       });
       if (!coursesRes.ok) throw new Error("Failed to load courses");
       const courses = await coursesRes.json();
@@ -91,26 +95,32 @@ export default function CourseAssessments() {
       await Promise.all(
         courseList.map(async (course: any) => {
           try {
-            const res = await fetch(
-              `${API_BASE}admin/courses/${course.id}/assessment`,
-              { headers: { Authorization: `Bearer ${token}` } }
-            );
+            const res = await fetch(`${API_BASE}admin/courses/${course.id}/assessment`, {
+              headers: authHeaders(false),
+            });
             if (!res.ok) return;
             const data = await res.json();
             const assessment = data?.data || data;
             if (!assessment || !assessment.id) return;
 
-            const questions = assessment.questions || [];
-            const questionType: QuestionType = questions.some(
-              (q: any) =>
-                q.questionType === "multiple_choice" &&
-                Array.isArray(q.options) &&
-                q.options.length > 0
-            )
-              ? "multiple"
-              : questions.length > 0
-              ? "single"
-              : "upload";
+            // Pull the actual item count for this assessment to decide the type.
+            let questionCount = 0;
+            try {
+              const itemsRes = await fetch(
+                `${API_BASE}admin/assessment-items?parentId=${assessment.id}&parentType=${PARENT_TYPE}`,
+                { headers: authHeaders(false) }
+              );
+              if (itemsRes.ok) {
+                const itemsData = await itemsRes.json();
+                const items = Array.isArray(itemsData) ? itemsData : itemsData.data || [];
+                questionCount = items.length;
+              }
+            } catch {
+              // leave at 0
+            }
+
+            const questionType: QuestionType =
+              questionCount === 1 ? "single" : questionCount > 1 ? "multiple" : "upload";
 
             results.push({
               id: assessment.id,
@@ -118,6 +128,7 @@ export default function CourseAssessments() {
               courseId: course.id,
               courseName: course.title || course.name || `Course #${course.id}`,
               questionType,
+              questionCount,
             });
           } catch {
             // skip course on error
@@ -149,9 +160,9 @@ export default function CourseAssessments() {
     );
   }, [rows, query]);
 
-  function openEdit(row: CourseAssessmentRow) {
+  async function openEdit(row: CourseAssessmentRow) {
     setEditingRow(row);
-    setEditFile(null);
+    setUploadFile(null);
     setEditForm({
       title: row.title,
       description: "",
@@ -160,47 +171,85 @@ export default function CourseAssessments() {
       timeLimitMinutes: 0,
       isActive: false,
     });
+
+    if (row.questionType === "upload") {
+      // nothing to preload, the user just drops a fresh file
+      return;
+    }
+
+    setLoadingItems(true);
+    try {
+      const res = await fetch(
+        `${API_BASE}admin/assessment-items?parentId=${row.id}&parentType=${PARENT_TYPE}`,
+        { headers: authHeaders(false) }
+      );
+      if (!res.ok) throw new Error("Failed to load questions");
+      const data = await res.json();
+      const items: AssessmentItem[] = Array.isArray(data) ? data : data.data || [];
+
+      const normalized = items.map((it) => ({
+        id: it.id,
+        questionText: it.questionText || "",
+        questionType: it.questionType || "multiple_choice",
+        options:
+          it.options && it.options.length
+            ? it.options
+            : [
+                { id: "a", text: "" },
+                { id: "b", text: "" },
+                { id: "c", text: "" },
+                { id: "d", text: "" },
+              ],
+        correctAnswer: it.correctAnswer || "",
+        explanation: it.explanation || "",
+        points: it.points ?? 1,
+      }));
+
+      if (row.questionType === "single") {
+        setSingleItem(normalized[0] || emptyItem());
+      } else {
+        setMultipleItems(normalized.length ? normalized : [emptyItem()]);
+      }
+    } catch (e: any) {
+      alert(e.message || "Failed to load existing questions");
+    } finally {
+      setLoadingItems(false);
+    }
+  }
+
+  function closeEdit() {
+    setEditingRow(null);
+    setSingleItem(emptyItem());
+    setMultipleItems([emptyItem()]);
+    setUploadFile(null);
+  }
+
+  async function saveAssessmentConfig(courseId: number) {
+    const res = await fetch(`${API_BASE}admin/courses/${courseId}/assessment`, {
+      method: "PUT",
+      headers: authHeaders(),
+      body: JSON.stringify(editForm),
+    });
+    if (!res.ok) throw new Error("Failed to update assessment");
   }
 
   async function handleSaveEdit() {
     if (!editingRow) return;
     setSaving(true);
     try {
-      const res = await fetch(
-        `${API_BASE}admin/courses/${editingRow.courseId}/assessment`,
-        {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify(editForm),
-        }
-      );
-      if (!res.ok) throw new Error("Failed to update assessment");
+      await saveAssessmentConfig(editingRow.courseId);
 
-      if (editFile) {
-        const cloudinaryUrl = await uploadFileToCloudinary(editFile);
-        
-        const uploadRes = await fetch(
-          `${API_BASE}admin/assessment-items/bulk-upload`,
-          {
-            method: "POST",
-            headers: { 
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}` 
-            },
-            body: JSON.stringify({
-              fileUrl: cloudinaryUrl,
-              parentId: editingRow.id,
-              parentType: "course_assessment",
-            }),
-          }
-        );
-        if (!uploadRes.ok) throw new Error("Failed to process questions file");
+      if (editingRow.questionType === "single") {
+        await saveSingleQuestion(editingRow.id, singleItem);
+      } else if (editingRow.questionType === "multiple") {
+        await saveMultipleQuestions(editingRow.id, multipleItems);
+      } else if (editingRow.questionType === "upload") {
+        if (uploadFile) {
+          await uploadQuestionsFile(editingRow.id, uploadFile);
+        }
       }
 
-      setEditingRow(null);
+      closeEdit();
       fetchCourseAssessments();
     } catch (e: any) {
       alert(e.message || "Failed to save changes");
@@ -209,21 +258,180 @@ export default function CourseAssessments() {
     }
   }
 
+  async function saveSingleQuestion(parentId: number, item: AssessmentItem) {
+    const payload = {
+      parentId,
+      parentType: PARENT_TYPE,
+      questionText: item.questionText,
+      questionType: item.questionType,
+      options: item.options,
+      correctAnswer: item.correctAnswer,
+      explanation: item.explanation,
+      points: item.points,
+    };
+
+    if (item.id) {
+      const res = await fetch(`${API_BASE}admin/assessment-items/${item.id}`, {
+        method: "PUT",
+        headers: authHeaders(),
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error("Failed to update question");
+    } else {
+      const res = await fetch(`${API_BASE}admin/assessment-items`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error("Failed to create question");
+    }
+  }
+
+  async function saveMultipleQuestions(parentId: number, items: AssessmentItem[]) {
+    const existing = items.filter((i) => i.id);
+    const fresh = items.filter((i) => !i.id);
+
+    // Update existing ones individually.
+    await Promise.all(
+      existing.map((item) =>
+        fetch(`${API_BASE}admin/assessment-items/${item.id}`, {
+          method: "PUT",
+          headers: authHeaders(),
+          body: JSON.stringify({
+            parentId,
+            parentType: PARENT_TYPE,
+            questionText: item.questionText,
+            questionType: item.questionType,
+            options: item.options,
+            correctAnswer: item.correctAnswer,
+            explanation: item.explanation,
+            points: item.points,
+          }),
+        }).then((res) => {
+          if (!res.ok) throw new Error("Failed to update one of the questions");
+        })
+      )
+    );
+
+    // Bulk add any brand new ones.
+    if (fresh.length) {
+      const res = await fetch(`${API_BASE}admin/assessment-items/bulk`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({
+          parentId,
+          parentType: PARENT_TYPE,
+          questions: fresh.map((item) => ({
+            questionText: item.questionText,
+            questionType: item.questionType,
+            options: item.options,
+            correctAnswer: item.correctAnswer,
+            explanation: item.explanation,
+            points: item.points,
+          })),
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to add new questions");
+    }
+  }
+
+  async function uploadQuestionsFile(parentId: number, file: File) {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("parentId", String(parentId));
+    formData.append("parentType", PARENT_TYPE);
+
+    const res = await fetch(`${API_BASE}admin/assessment-items/bulk-upload`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` }, // no Content-Type, browser sets multipart boundary
+      body: formData,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err?.message || "Failed to process questions file");
+    }
+  }
+
   async function handleDelete(row: CourseAssessmentRow) {
     if (!confirm(`Delete assessment "${row.title}" for ${row.courseName}?`)) return;
     try {
-      const res = await fetch(
-        `${API_BASE}admin/courses/${row.courseId}/assessment`,
-        {
-          method: "DELETE",
-          headers: { Authorization: `Bearer ${token}` },
-        }
+      // 1. Fetch and delete all assessment items first
+      const itemsRes = await fetch(
+        `${API_BASE}admin/assessment-items?parentId=${row.id}&parentType=${PARENT_TYPE}`,
+        { headers: authHeaders(false) }
       );
+      if (itemsRes.ok) {
+        const itemsData = await itemsRes.json();
+        const items = Array.isArray(itemsData) ? itemsData : itemsData.data || [];
+        await Promise.all(
+          items.map((item: any) =>
+            fetch(`${API_BASE}admin/assessment-items/${item.id}`, {
+              method: "DELETE",
+              headers: authHeaders(false),
+            })
+          )
+        );
+      }
+
+      // 2. Delete the assessment config
+      const res = await fetch(`${API_BASE}admin/courses/${row.courseId}/assessment`, {
+        method: "DELETE",
+        headers: authHeaders(false),
+      });
       if (!res.ok) throw new Error("Failed to delete assessment");
       setRows((prev) => prev.filter((r) => r.id !== row.id));
     } catch (e: any) {
       alert(e.message || "Failed to delete");
     }
+  }
+
+  // ---- multiple-questions helpers ----
+  function updateMultipleItem(index: number, patch: Partial<AssessmentItem>) {
+    setMultipleItems((prev) =>
+      prev.map((item, i) => (i === index ? { ...item, ...patch } : item))
+    );
+  }
+
+  function updateMultipleItemOption(index: number, optionId: string, text: string) {
+    setMultipleItems((prev) =>
+      prev.map((item, i) =>
+        i === index
+          ? {
+              ...item,
+              options: item.options.map((o) => (o.id === optionId ? { ...o, text } : o)),
+            }
+          : item
+      )
+    );
+  }
+
+  function addMultipleItem() {
+    setMultipleItems((prev) => [...prev, emptyItem()]);
+  }
+
+  async function removeMultipleItem(index: number) {
+    const item = multipleItems[index];
+    if (item.id) {
+      if (!confirm("Delete this question?")) return;
+      try {
+        const res = await fetch(`${API_BASE}admin/assessment-items/${item.id}`, {
+          method: "DELETE",
+          headers: authHeaders(false),
+        });
+        if (!res.ok) throw new Error("Failed to delete question");
+      } catch (e: any) {
+        alert(e.message || "Failed to delete question");
+        return;
+      }
+    }
+    setMultipleItems((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function updateSingleOption(optionId: string, text: string) {
+    setSingleItem((prev) => ({
+      ...prev,
+      options: prev.options.map((o) => (o.id === optionId ? { ...o, text } : o)),
+    }));
   }
 
   return (
@@ -308,17 +516,23 @@ export default function CourseAssessments() {
 
       {editingRow && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl w-full max-w-lg p-6 relative">
+          <div className="bg-white rounded-xl w-full max-w-2xl p-6 relative max-h-[90vh] overflow-y-auto">
             <button
-              onClick={() => setEditingRow(null)}
+              onClick={closeEdit}
               className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
-              title="button"
+              title="cancel"
             >
               <X className="w-5 h-5" />
             </button>
             <h3 className="text-lg font-semibold mb-1">Edit Course Assessment</h3>
-            <p className="text-sm text-gray-500 mb-4">{editingRow.courseName}</p>
+            <div className="flex items-center gap-2 mb-4">
+              <p className="text-sm text-gray-500">{editingRow.courseName}</p>
+              <span className="inline-flex px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-700">
+                {QUESTION_TYPE_LABEL[editingRow.questionType]}
+              </span>
+            </div>
 
+            {/* --- common assessment config fields --- */}
             <div className="space-y-3">
               <div>
                 <label className="text-xs font-medium text-gray-600">Title</label>
@@ -326,7 +540,7 @@ export default function CourseAssessments() {
                   value={editForm.title}
                   onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
                   className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
-                  title="input"
+                  title="title"
                 />
               </div>
               <div>
@@ -336,7 +550,7 @@ export default function CourseAssessments() {
                   onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
                   className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
                   rows={2}
-                  title="textarea"
+                  title="description"
                 />
               </div>
               <div className="grid grid-cols-3 gap-3">
@@ -349,7 +563,7 @@ export default function CourseAssessments() {
                       setEditForm({ ...editForm, passMarkPercent: Number(e.target.value) })
                     }
                     className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
-                    title="input"
+                    title="pass mark"
                   />
                 </div>
                 <div>
@@ -361,7 +575,7 @@ export default function CourseAssessments() {
                       setEditForm({ ...editForm, maxAttempts: Number(e.target.value) })
                     }
                     className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
-                    title="input"
+                    title="max attempts"
                   />
                 </div>
                 <div>
@@ -373,7 +587,7 @@ export default function CourseAssessments() {
                       setEditForm({ ...editForm, timeLimitMinutes: Number(e.target.value) })
                     }
                     className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
-                    title="input"
+                    title="time limit"
                   />
                 </div>
               </div>
@@ -386,34 +600,95 @@ export default function CourseAssessments() {
                 />
                 Active
               </label>
+            </div>
 
+            <hr className="my-5 border-gray-100" />
+
+            {/* --- type-specific section --- */}
+            {loadingItems && (
+              <p className="text-sm text-gray-400 text-center py-6">Loading questions...</p>
+            )}
+
+            {!loadingItems && editingRow.questionType === "single" && (
+              <div className="space-y-3">
+                <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                  Single Question
+                </p>
+                <SingleQuestionEditor
+                  item={singleItem}
+                  onChange={(patch) => setSingleItem((prev) => ({ ...prev, ...patch }))}
+                  onOptionChange={updateSingleOption}
+                />
+              </div>
+            )}
+
+            {!loadingItems && editingRow.questionType === "multiple" && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                    Questions ({multipleItems.length})
+                  </p>
+                  <button
+                    onClick={addMultipleItem}
+                    className="inline-flex items-center gap-1 text-xs text-[#004900] hover:underline"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Add question
+                  </button>
+                </div>
+                {multipleItems.map((item, idx) => (
+                  <div key={item.id ?? `new-${idx}`} className="border border-gray-200 rounded-lg p-3 relative">
+                    <button
+                      onClick={() => removeMultipleItem(idx)}
+                      className="absolute top-2 right-2 text-gray-400 hover:text-red-500"
+                      title="remove question"
+                    >
+                      <Trash className="w-3.5 h-3.5" />
+                    </button>
+                    <p className="text-xs text-gray-400 mb-2">Question {idx + 1}</p>
+                    <SingleQuestionEditor
+                      item={item}
+                      onChange={(patch) => updateMultipleItem(idx, patch)}
+                      onOptionChange={(optionId, text) =>
+                        updateMultipleItemOption(idx, optionId, text)
+                      }
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {!loadingItems && editingRow.questionType === "upload" && (
               <div>
-                <label className="text-xs font-medium text-gray-600">
+                <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">
                   Replace Questions (CSV / Excel)
-                </label>
+                </p>
                 <label className="mt-1 flex items-center gap-2 px-3 py-2 border border-dashed border-gray-300 rounded-lg text-sm text-gray-500 cursor-pointer hover:border-[#004900]">
                   <Upload className="w-4 h-4" />
-                  {editFile ? editFile.name : "Choose .csv or .xlsx file"}
+                  {uploadFile ? uploadFile.name : "Choose .csv or .xlsx file"}
                   <input
                     type="file"
                     accept=".csv,.xlsx,.xls"
                     className="hidden"
-                    onChange={(e) => setEditFile(e.target.files?.[0] || null)}
+                    onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
                   />
                 </label>
+                <p className="text-xs text-gray-400 mt-2">
+                  Required columns: question_text, question_type, correct_answer. Optional:
+                  option_a–d, explanation, points. Max 5MB.
+                </p>
               </div>
-            </div>
+            )}
 
             <div className="flex justify-end gap-2 mt-6">
               <button
-                onClick={() => setEditingRow(null)}
+                onClick={closeEdit}
                 className="px-4 py-2 text-sm rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSaveEdit}
-                disabled={saving}
+                disabled={saving || loadingItems}
                 className="px-4 py-2 text-sm rounded-lg bg-[#004900] text-white hover:bg-[#003600] disabled:opacity-50"
               >
                 {saving ? "Saving..." : "Save Changes"}
@@ -422,6 +697,121 @@ export default function CourseAssessments() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function SingleQuestionEditor({
+  item,
+  onChange,
+  onOptionChange,
+}: {
+  item: AssessmentItem;
+  onChange: (patch: Partial<AssessmentItem>) => void;
+  onOptionChange: (optionId: string, text: string) => void;
+}) {
+  return (
+    <div className="space-y-3">
+      <div>
+        <label className="text-xs font-medium text-gray-600">Question Text</label>
+        <textarea
+          value={item.questionText}
+          onChange={(e) => onChange({ questionText: e.target.value })}
+          className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+          rows={2}
+          title="question text"
+        />
+      </div>
+
+      <div>
+        <label className="text-xs font-medium text-gray-600">Question Type</label>
+        <select
+          value={item.questionType}
+          onChange={(e) => onChange({ questionType: e.target.value as AssessmentItem["questionType"] })}
+          className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+          title="question type select"
+        >
+          <option value="multiple_choice">Multiple Choice</option>
+          <option value="true_false">True / False</option>
+          <option value="short_answer">Short Answer</option>
+        </select>
+      </div>
+
+      {item.questionType === "multiple_choice" && (
+        <div className="grid grid-cols-2 gap-2">
+          {item.options.map((opt) => (
+            <div key={opt.id}>
+              <label className="text-xs font-medium text-gray-600">Option {opt.id.toUpperCase()}</label>
+              <input
+                value={opt.text}
+                onChange={(e) => onOptionChange(opt.id, e.target.value)}
+                className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                title={`option ${opt.id}`}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="text-xs font-medium text-gray-600">Correct Answer</label>
+          {item.questionType === "multiple_choice" ? (
+            <select
+              value={item.correctAnswer}
+              onChange={(e) => onChange({ correctAnswer: e.target.value })}
+              className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+              title="correct answer select"
+            >
+              <option value="">Select...</option>
+              {item.options.map((opt) => (
+                <option key={opt.id} value={opt.id}>
+                  {opt.id.toUpperCase()}
+                </option>
+              ))}
+            </select>
+          ) : item.questionType === "true_false" ? (
+            <select
+              value={item.correctAnswer}
+              onChange={(e) => onChange({ correctAnswer: e.target.value })}
+              className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+              title="correct answer select"
+            >
+              <option value="">Select...</option>
+              <option value="true">True</option>
+              <option value="false">False</option>
+            </select>
+          ) : (
+            <input
+              value={item.correctAnswer}
+              onChange={(e) => onChange({ correctAnswer: e.target.value })}
+              className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+              title="correct answer"
+            />
+          )}
+        </div>
+        <div>
+          <label className="text-xs font-medium text-gray-600">Points</label>
+          <input
+            type="number"
+            value={item.points}
+            onChange={(e) => onChange({ points: Number(e.target.value) })}
+            className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+            title="points"
+          />
+        </div>
+      </div>
+
+      <div>
+        <label className="text-xs font-medium text-gray-600">Explanation (optional)</label>
+        <textarea
+          value={item.explanation}
+          onChange={(e) => onChange({ explanation: e.target.value })}
+          className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+          rows={2}
+          title="explanation"
+        />
+      </div>
     </div>
   );
 }
