@@ -27,6 +27,7 @@ interface AssessmentItem {
   options: { id: string; text: string }[];
   correctAnswer: string;
   explanation?: string;
+  orderIndex?: number;
   points: number;
 }
 
@@ -44,6 +45,7 @@ function emptyItem(): AssessmentItem {
     ],
     correctAnswer: "",
     explanation: "",
+    orderIndex: 0,
     points: 1,
   };
 }
@@ -295,9 +297,13 @@ export default function CourseAssessments() {
       parentType: PARENT_TYPE,
       questionText: item.questionText,
       questionType: item.questionType,
-      options: item.options,
+      options:
+        item.questionType === "multiple_choice"
+          ? item.options.filter((o) => o.text.trim())
+          : undefined,
       correctAnswer: item.correctAnswer,
-      explanation: item.explanation,
+      explanation: item.explanation || undefined,
+      orderIndex: item.orderIndex ?? 0,
       points: item.points,
     };
 
@@ -340,9 +346,13 @@ export default function CourseAssessments() {
             parentType: PARENT_TYPE,
             questionText: item.questionText,
             questionType: item.questionType,
-            options: item.options,
+            options:
+              item.questionType === "multiple_choice"
+                ? item.options.filter((o) => o.text.trim())
+                : undefined,
             correctAnswer: item.correctAnswer,
-            explanation: item.explanation,
+            explanation: item.explanation || undefined,
+            orderIndex: item.orderIndex ?? 0,
             points: item.points,
           }),
         }).then((res) => {
@@ -358,12 +368,16 @@ export default function CourseAssessments() {
         body: JSON.stringify({
           parentId,
           parentType: PARENT_TYPE,
-          questions: fresh.map((item) => ({
+          questions: fresh.map((item, idx) => ({
             questionText: item.questionText,
             questionType: item.questionType,
-            options: item.options,
+            options:
+              item.questionType === "multiple_choice"
+                ? item.options.filter((o) => o.text.trim())
+                : undefined,
             correctAnswer: item.correctAnswer,
-            explanation: item.explanation,
+            explanation: item.explanation || undefined,
+            orderIndex: item.orderIndex ?? idx,
             points: item.points,
           })),
         }),
@@ -411,10 +425,18 @@ export default function CourseAssessments() {
       }
 
       // 2. Delete the assessment config
-      const res = await fetch(`${API_BASE}admin/courses/${row.courseId}/assessment`, {
+      let res = await fetch(`${API_BASE}admin/courses/${row.courseId}/assessment`, {
         method: "DELETE",
         headers: authHeaders(false),
       });
+
+      if (!res.ok && res.status === 404) {
+        res = await fetch(`${API_BASE}admin/assessments/${row.id}`, {
+          method: "DELETE",
+          headers: authHeaders(false),
+        });
+      }
+
       if (!res.ok) {
         let message = "Failed to delete assessment";
         try {
