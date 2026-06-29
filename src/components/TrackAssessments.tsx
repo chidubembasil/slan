@@ -739,7 +739,7 @@ export default function TrackAssessments() {
               <button
                 onClick={handleSaveEdit}
                 disabled={saving || loadingItems}
-                className="px-4 py-2 text-sm rounded-lg slan-btn-primary disabled:opacity-50"
+                className="px-4 py-2 text-sm rounded-lg bg-[#004900] text-white hover:bg-[#003600] disabled:opacity-50"
               >
                 {saving ? "Saving..." : "Save Changes"}
               </button>

@@ -38,14 +38,14 @@ export default function ExecutiveOverview() {
 
   if (loading) {
     return <div className="grid grid-cols-4 gap-4">{[...Array(4)].map((_,i) => 
-      <div key={i} className="h-28 slan-card animate-pulse" />)}</div>;
+      <div key={i} className="h-28 bg-white rounded-lg animate-pulse" />)}</div>;
   }
 
   return (
     <div>
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
         {stats.map((s) => (
-          <div key={s.id} className="slan-card">
+          <div key={s.id} className="bg-white rounded-lg border border-gray-200 p-5 shadow-sm">
             <div className="flex justify-between items-start">
               <span className="text-xs font-medium text-gray-500 tracking-wider">{s.label}</span>
               {s.trend !== "alert" && (s.change || s.changeLabel) && (

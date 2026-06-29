@@ -15,12 +15,12 @@ export default function ManageAssessments() {
   const [activeTab, setActiveTab] = useState<Tab>("course");
 
   return (
-    <div className="admin-main bg-background min-h-screen">
-      <div className="container py-6">
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-5 sm:py-8">
         {/* Page header */}
         <div className="mb-5 sm:mb-6">
-          <h1 className="text-xl sm:text-2xl font-bold text-foreground">Manage Assessments</h1>
-          <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Manage Assessments</h1>
+          <p className="text-xs sm:text-sm text-gray-500 mt-0.5">
             View, edit and delete assessments across courses, tracks and modules
           </p>
         </div>

@@ -362,8 +362,7 @@ export default function Support() {
   }
 
   return (
-    <div className="admin-main bg-background min-h-screen">
-      <div className="container py-6 font-sans">
+    <div className="p-4 md:p-6 font-sans min-h-screen bg-gray-50">
       {/* Stats */}
       <div className="flex flex-wrap gap-3 mb-6">
         <StatCard label="Open Tickets"  value={stats?.open ?? 0}     color="text-red-500"   loading={loading} />
@@ -474,7 +473,6 @@ export default function Support() {
           </div>
         )}
       </div>
-    </div>
     </div>
   );
 }

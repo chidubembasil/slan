@@ -46,26 +46,27 @@ export default function SideBar({ isOpen, onClose }: Props) {
       )}
 
       <div className={`
-        fixed top-0 left-0 h-screen w-64 admin-sidebar flex flex-col z-40
+        fixed top-0 left-0 h-screen w-60 bg-[#004900] flex flex-col z-40
         transform transition-transform duration-300 ease-in-out
         ${isOpen? "translate-x-0" : "-translate-x-full"}
         md:translate-x-0
       `}>
-        <div className="admin-sidebar-header flex items-center justify-between">
-          <p className="text-lg font-semibold text-sidebar-foreground">SLAN ADMIN</p>
-          <button className="md:hidden text-sidebar-foreground p-1" onClick={onClose} aria-label="Close menu">
+        <div className="h-16 flex items-center justify-between px-4 shrink-0">
+          <p className="text-2xl text-white">SLAN ADMIN</p>
+          <button className="md:hidden text-white p-1" onClick={onClose} aria-label="Close menu">
             <X size={20} />
           </button>
         </div>
 
-        <nav className="admin-sidebar-menu flex-1 overflow-y-auto px-2 py-2">
+        <nav className="flex-1 overflow-y-auto px-2 py-2">
           {navItems.map((item) => (
             <NavLink
               key={item.path}
               to={item.path}
               onClick={onClose}
               className={({ isActive }) =>
-                `admin-sidebar-item ${isActive? 'active' : ''}`
+                `flex items-center gap-3 px-3 py-2.5 text-sm rounded
+                 ${isActive? "bg-[rgba(255,255,255,0.1)] text-white font-bold border-l-4 border-[#FACC15]" : "text-white/80 hover:bg-[#005A00] hover:text-white"}`
               }
             >
               <item.icon size={20} />
@@ -74,8 +75,8 @@ export default function SideBar({ isOpen, onClose }: Props) {
           ))}
         </nav>
 
-        <div className="admin-sidebar-footer h-14 flex items-center px-3">
-          <button onClick={handleLogout} className="flex items-center gap-3 text-sidebar-foreground hover:text-white text-sm w-full">
+        <div className="h-14 border-t border-[#3f4864] flex items-center px-3">
+          <button onClick={handleLogout} className="flex items-center gap-3 text-white/80 hover:text-white text-sm w-full">
             <LogOut size={20} /> Logout
           </button>
         </div>

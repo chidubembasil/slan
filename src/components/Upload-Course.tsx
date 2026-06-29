@@ -241,7 +241,7 @@ export default function CourseCreate({ onComplete }: { onComplete?: () => void }
             <button
               type="submit"
               disabled={loading}
-              className="slan-btn-primary"
+              className="bg-[#004900] text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-[#003700] disabled:opacity-60"
             >
               {loading ? "Creating course..." : "Create Course →"}
             </button>

@@ -131,8 +131,8 @@ export default function Community() {
   const getStatusColor = (s: string) => s === "Pending Review"? "text-red-600 bg-red-50 border-red-200" : s === "Under Review"? "text-amber-600 bg-amber-50 border-amber-200" : "text-green-700 bg-green-50 border-green-200";
 
   return (
-    <div className="admin-main bg-background min-h-screen">
-      <div className="container py-6">
+    <div className="min-h-screen bg-gray-50 p-4 lg:p-6">
+      <div className="max-w- mx-auto">
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           {[

@@ -151,10 +151,8 @@ export default function Users() {
   };
 
   return (
-    <div className="admin-main bg-background min-h-screen">
-      <div className="container py-6">
-
-      <div className="slan-card w-full">
+    
+    <div className="bg-white p-6 shadow-sm rounded-xl w-full border border-gray-100">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-semibold text-slate-900">Users Management</h1>
         <span className="text-sm text-gray-500">{filteredUsers.length} of {users.length} users</span>
@@ -162,14 +160,14 @@ export default function Users() {
 
       {/* Search + Filter */}
       <div className="flex gap-3 mb-5">
-          <div className="relative flex-1">
+        <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
           <input
             placeholder="Search by name, email, school, or state..."
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            className="w-full pl-10 pr-4 h-11 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-primary"
+            className="w-full pl-10 pr-4 h-11 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900]"
           />
         </div>
 
@@ -190,7 +188,7 @@ export default function Users() {
 
         <button
           onClick={handleSearch}
-          className="slan-btn-primary flex items-center gap-2 whitespace-nowrap"
+          className="bg-[#004900] hover:bg-[#003600] text-white px-5 h-11 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 whitespace-nowrap"
         >
           <Search size={16} />
           Search
@@ -217,7 +215,7 @@ export default function Users() {
       )}
 
       {/* TABLE - ALWAYS VISIBLE */}
-      <div className="overflow-x-auto border border-border rounded-lg">
+      <div className="overflow-x-auto border border-gray-200 rounded-lg">
         <table className="w-full">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
@@ -264,8 +262,6 @@ export default function Users() {
           </tbody>
         </table>
       </div>
-      </div>
-    </div>
     </div>
   );
 }
