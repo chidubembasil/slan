@@ -287,7 +287,8 @@ function UnitCreateModal({
   const validate = (): boolean => {
     const e: FormErrors<UnitForm> = {};
     if (!form.title.trim()) e.title = "Title is required";
-    if (!form.description.trim()) e.description = "Description is required";
+    /* if (!form.description.trim()) e.description = "Description is required"; */
+    if (!form.content.trim()) e.content = "Content is required";
     if (form.estimatedReadMinutes === "" || isNaN(Number(form.estimatedReadMinutes)))
       e.estimatedReadMinutes = "Must be a valid number";
     setErrors(e);
@@ -349,17 +350,22 @@ function UnitCreateModal({
         <input type="text" value={form.title} onChange={(e) => set("title", e.target.value)}
           placeholder="e.g. What is Instructional Leadership?" className={inputCls} />
       </Field>
-      <Field label="Description" required error={errors.description}>
+      {/* <Field label="Description" required error={errors.description}>
+        <textarea rows={3} value={form.description} onChange={(e) => set("description", e.target.value)}
+          placeholder="Brief description of this unit" className={textareaCls} />
+      </Field> */}
+      <Field label="Description" required>
         <textarea rows={3} value={form.description} onChange={(e) => set("description", e.target.value)}
           placeholder="Brief description of this unit" className={textareaCls} />
       </Field>
-       <Field label="Content">
-                    <RichTextEditor
-                      value={form.content}
-                      onChange={(html) => set("content", html)}
-                      placeholder="Main learning content for this unit"
-                    />
-                  </Field>
+      
+      <Field label="Content" required error={errors.content}>
+        <RichTextEditor
+          value={form.content}
+          onChange={(html) => set("content", html)}
+          placeholder="Main learning content for this unit"
+        />
+      </Field>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         <Field label="Summary">
           <textarea rows={3} value={form.summary} onChange={(e) => set("summary", e.target.value)}

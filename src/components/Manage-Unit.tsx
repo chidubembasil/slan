@@ -257,7 +257,8 @@ function EditUnitForm({
   const validate = () => {
     const e: Partial<Record<keyof typeof form, string>> = {};
     if (!form.title.trim()) e.title = "Title is required";
-    if (!form.description.trim()) e.description = "Description is required";
+    /* if (!form.description.trim()) e.description = "Description is required"; */
+    if (!form.content.trim()) e.content = "Content is required";
     setFormErrors((prev) => ({ ...prev, ...e }));
     return Object.keys(e).length === 0;
   };
@@ -334,7 +335,7 @@ function EditUnitForm({
         )}
       </div>
 
-      <div>
+      {/* <div>
         <label className="block text-xs font-medium text-gray-700 mb-1.5">
           Description <span className="text-red-500">*</span>
         </label>
@@ -348,18 +349,32 @@ function EditUnitForm({
         {formErrors.description && (
           <p className="text-xs text-red-600 mt-1">{formErrors.description}</p>
         )}
+      </div> */}
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-1.5">
+          Description <span className="text-red-500">*</span>
+        </label>
+        <textarea
+          rows={3}
+          value={form.description}
+          onChange={(e) => set("description", e.target.value)}
+          className={textareaCls}
+          placeholder="Full description of this unit"
+        />
       </div>
 
       <div>
         <label className="block text-xs font-medium text-gray-700 mb-1.5">
-          Content
+          Content <span className="text-red-500">*</span>
         </label>
-       <RichTextEditor
+        <RichTextEditor
           value={form.content}
           onChange={(html) => set("content", html)}
           placeholder="Main learning content for this unit"
         />
-        
+        {formErrors.content && (
+          <p className="text-xs text-red-600 mt-1">{formErrors.content}</p>
+        )}
       </div>
 
       <div>
