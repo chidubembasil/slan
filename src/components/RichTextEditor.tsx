@@ -1,6 +1,7 @@
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
+import { useEffect, useRef } from 'react'
 
 interface Props {
   value: string
@@ -10,21 +11,49 @@ interface Props {
 }
 
 export function RichTextEditor({ value, onChange, placeholder, className }: Props) {
+  const isInternalUpdate = useRef(false)
+
   const editor = useEditor({
     extensions: [
       StarterKit,
       Placeholder.configure({ placeholder }),
     ],
     content: value,
+    editorProps: {
+      transformPastedHTML(html) {
+        // Strip Word/WPS junk but keep real formatting (bold, headings, lists)
+        return html
+          .replace(/<o:p>.*?<\/o:p>/gi, '')
+          .replace(/<w:[^>]+>.*?<\/w:[^>]+>/gi, '')
+          .replace(/<m:[^>]+>.*?<\/m:[^>]+>/gi, '')
+          .replace(/style="[^"]*mso[^"]*"/gi, '')
+          .replace(/<span[^>]*mso[^>]*>(.*?)<\/span>/gi, '$1')
+          .replace(/class="Mso[^"]*"/gi, '')
+      },
+    },
     onUpdate({ editor }) {
+      isInternalUpdate.current = true
       onChange(editor.getHTML())
     },
   })
 
+  // Only sync external value changes (e.g. opening a different unit to edit)
+  // NOT on every keystroke
+  useEffect(() => {
+    if (!editor) return
+    if (isInternalUpdate.current) {
+      isInternalUpdate.current = false
+      return
+    }
+    // Only reset if value is meaningfully different (e.g. form reset or new record loaded)
+    if (value !== editor.getHTML()) {
+      editor.commands.setContent(value || '')
+    }
+  }, [value, editor])
+
   return (
     <div className={`border rounded-md overflow-hidden ${className}`}>
-      {/* Toolbar */}
-      <div className="flex gap-1 p-2 border-b bg-gray-50">
+      <div className="flex flex-wrap gap-1 p-2 border-b bg-gray-50">
         <ToolbarButton onClick={() => editor?.chain().focus().toggleBold().run()} active={editor?.isActive('bold')} title="Bold">
           <b>B</b>
         </ToolbarButton>
@@ -54,9 +83,15 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Prop
         <ToolbarButton onClick={() => editor?.chain().focus().toggleCodeBlock().run()} active={editor?.isActive('codeBlock')} title="Code block">
           {'</>'}
         </ToolbarButton>
+        <div className="w-px bg-gray-300 mx-1" />
+        <ToolbarButton onClick={() => editor?.chain().focus().undo().run()} active={false} title="Undo">
+          ↩
+        </ToolbarButton>
+        <ToolbarButton onClick={() => editor?.chain().focus().redo().run()} active={false} title="Redo">
+          ↪
+        </ToolbarButton>
       </div>
 
-      {/* Editor area */}
       <EditorContent
         editor={editor}
         className="prose max-w-none p-3 min-h-[150px] focus-within:outline-none"
