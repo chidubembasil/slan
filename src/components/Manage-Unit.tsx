@@ -352,7 +352,7 @@ function EditUnitForm({
       </div> */}
       <div>
         <label className="block text-xs font-medium text-gray-700 mb-1.5">
-          Description <span className="text-red-500">*</span>
+          Description {/* <span className="text-red-500">*</span> */}
         </label>
         <textarea
           rows={3}
