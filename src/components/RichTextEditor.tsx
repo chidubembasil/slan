@@ -108,7 +108,7 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Prop
 
       <div className={`border rounded-md overflow-hidden ${className}`}>
         {/* ── Toolbar ── */}
-        <div className="flex flex-wrap gap-1 p-2 border-b bg-gray-50">
+        <div className="flex flex-wrap gap-1 p-2 border-b bg-background">
           {/* Text formatting */}
           <ToolbarButton
             onClick={() => editor?.chain().focus().toggleBold().run()}

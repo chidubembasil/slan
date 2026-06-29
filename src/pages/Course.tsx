@@ -11,7 +11,8 @@ export default function Course() {
   const [activeTab, setActiveTab] = useState("manage");
 
   return (
-    <div className="w-[95%] flex flex-col gap-3">
+    <div className="admin-main bg-background min-h-screen">
+      <div className="container py-6">
       <ul className="w-full flex flex-row gap-5 border-b pt-2 pl-2 overflow-x-auto">
         <li>
           <button
@@ -89,7 +90,7 @@ export default function Course() {
         </li>
       </ul>
 
-      <div>
+      <div className="mt-4">
         {activeTab === "manage" && (
           <div>
             <Manage />
@@ -119,6 +120,7 @@ export default function Course() {
             <ManageUnits />
           </div>
         )}
+      </div>
       </div>
     </div>
   );

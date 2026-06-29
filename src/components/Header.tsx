@@ -12,27 +12,26 @@ export default function Header({ onMenuClick }: HeaderProps) {
   const page = location.pathname.split('/').filter(Boolean).pop() || 'home'
 
   return (
-    <ul className="w-full h- bg-card shadow-2xs flex flex-row p-4 justify-between items-center">
-      <li className="flex items-center gap-3">
-        {/* hamburger - mobile only */}
+    <header className="admin-topbar">
+      <div className="flex items-center gap-3">
         <button
-          className="md:hidden p-1 -ml-1 text-foreground"
+          className="md:hidden p-1 -ml-1 text-sidebar-foreground"
           onClick={onMenuClick}
           aria-label="Open menu"
         >
           <Menu size={24} />
         </button>
 
-        <span className="text-black text-2xl capitalize font-semibold">
+        <h1 className="text-sidebar-foreground text-xl sm:text-2xl capitalize font-semibold">
           {page} Page
-        </span>
-      </li>
+        </h1>
+      </div>
 
-      <li>
-        <Link to="/notification">
-          <Bell size={22} color="gray" />
+      <nav className="flex items-center gap-4">
+        <Link to="/notification" className="text-sidebar-foreground hover:text-accent transition-colors">
+          <Bell size={22} />
         </Link>
-      </li>
-    </ul>
+      </nav>
+    </header>
   )
 }

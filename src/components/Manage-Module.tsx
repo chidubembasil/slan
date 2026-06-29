@@ -195,9 +195,9 @@ function EditModuleForm({ module, onDone }: { module: Module; onDone: () => void
         </select>
       </div>
       {error && <p className="text-xs text-red-600">{error}</p>}
-      <div className="flex gap-3 pt-1">
+     <div className="flex gap-3 pt-1">
         <button onClick={handleSave} disabled={loading}
-          className="bg-[#004900] text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-[#003700] disabled:opacity-60">
+          className="slan-btn-primary">
           {loading ? "Saving..." : "Save Changes"}
         </button>
       </div>

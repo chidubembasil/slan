@@ -118,7 +118,8 @@ export default function Report() {
   const c = data.cards
 
   return (
-    <div className="p-4 md:p-6 bg-[#f8fafc] min-h-full">
+    <div className="admin-main bg-background min-h-screen">
+      <div className="container py-6">
       {/* Backend status banner */}
       {/* {usingMock && (
         <div className="flex items-center gap-2 mb-4 p-3 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl text-sm">
@@ -237,6 +238,7 @@ export default function Report() {
           <ExportBtn title="Learner Data" sub="Excel format" onClick={() => exportFile("learners","xlsx")} disabled={usingMock} />
           <ExportBtn title="Financial Report" sub="CSV format" onClick={() => exportFile("financial","csv")} disabled={usingMock} />
         </div>
+      </div>
       </div>
     </div>
   )

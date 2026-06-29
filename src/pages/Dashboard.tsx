@@ -102,10 +102,10 @@ export default function Dashboard() {
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w- mx-auto p-6">
+    <div className="admin-main bg-background min-h-screen">
+      <div className="container py-6">
         {/* Welcome Banner - no New Course button */}
-        <div className="relative overflow-hidden rounded-2xl bg-[#0f2a1f] text-white p-8 mb-6 h-70">
+        <div className="relative overflow-hidden rounded-2xl bg-primary text-primary-foreground p-8 mb-6 h-56">
           <div className="absolute inset-0 opacity-20">
             <img
               src="https://images.unsplash.com/photo-1523240795612-9a054b0db644?w=1600"
@@ -124,17 +124,17 @@ export default function Dashboard() {
           {statCards.map((card) => {
             const Icon = card.icon;
             return (
-              <div key={card.label} className={`${card.bg} rounded-xl p-5 border border-gray-100`}>
+              <div key={card.label} className={`rounded-xl p-5 border border-border bg-card`}>
                 <div className="flex items-start justify-between">
                   <div>
-                    <div className={`w-9 h-9 rounded-lg ${card.iconBg} flex items-center justify-center mb-3`}>
-                      <Icon size={18} />
+                    <div className={`w-9 h-9 rounded-lg bg-sidebar-accent flex items-center justify-center mb-3`}>
+                      <Icon size={18} className="text-sidebar-accent-foreground" />
                     </div>
-                    <div className="text-2xl font-bold text-slate-900">{loading? "—" : card.value}</div>
-                    <div className="text-xs text-slate-600 mt-1">{card.label}</div>
+                    <div className="text-2xl font-bold text-foreground">{loading? "—" : card.value}</div>
+                    <div className="text-xs text-muted-foreground mt-1">{card.label}</div>
                   </div>
                   {card.change!== undefined && (
-                    <span className={`text- px-2 py-0.5 rounded-full ${card.change >= 0? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${card.change >= 0? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
                       {card.change > 0? "+" : ""}{card.change}%
                     </span>
                   )}
