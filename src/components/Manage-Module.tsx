@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { RichTextEditor } from "./RichTextEditor"
 
 const BASE = import.meta.env.VITE_BASE_URL;
 
@@ -352,10 +353,13 @@ function UnitCreateModal({
         <textarea rows={3} value={form.description} onChange={(e) => set("description", e.target.value)}
           placeholder="Brief description of this unit" className={textareaCls} />
       </Field>
-      <Field label="Content">
-        <textarea rows={5} value={form.content} onChange={(e) => set("content", e.target.value)}
-          placeholder="Main learning content for this unit" className={textareaCls} />
-      </Field>
+       <Field label="Content">
+                    <RichTextEditor
+                      value={form.content}
+                      onChange={(html) => set("content", html)}
+                      placeholder="Main learning content for this unit"
+                    />
+                  </Field>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         <Field label="Summary">
           <textarea rows={3} value={form.summary} onChange={(e) => set("summary", e.target.value)}

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-
+import { RichTextEditor } from "./RichTextEditor"
 const BASE = import.meta.env.VITE_BASE_URL;
 
 type UnitStatus = "draft" | "published" | "archived";
@@ -354,13 +354,12 @@ function EditUnitForm({
         <label className="block text-xs font-medium text-gray-700 mb-1.5">
           Content
         </label>
-        <textarea
-          rows={4}
+       <RichTextEditor
           value={form.content}
-          onChange={(e) => set("content", e.target.value)}
-          className={textareaCls}
-          placeholder="Main body content of the unit"
+          onChange={(html) => set("content", html)}
+          placeholder="Main learning content for this unit"
         />
+        
       </div>
 
       <div>
