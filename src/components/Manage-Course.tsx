@@ -338,8 +338,6 @@ function AddAssessmentModal({
   const [config, setConfig] = useState({
     title: "",
     description: "",
-    passMarkPercent: 70,
-    maxAttempts: 2,
     timeLimitMinutes: 30,
     isActive: false,
   });
@@ -373,8 +371,6 @@ function AddAssessmentModal({
         body: JSON.stringify({
           title: config.title,
           description: config.description,
-          passMarkPercent: config.passMarkPercent,
-          maxAttempts: config.maxAttempts,
           timeLimitMinutes: config.timeLimitMinutes,
           isActive: config.isActive,
         }),
@@ -527,26 +523,6 @@ function AddAssessmentModal({
             />
           </div>
           <div className="grid grid-cols-3 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1.5">Pass Mark %</label>
-              <input
-                type="number" min={0} max={100}
-                value={config.passMarkPercent}
-                onChange={e => setC("passMarkPercent", Number(e.target.value))}
-                className={inputCls}
-                title="input"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1.5">Max Attempts</label>
-              <input
-                type="number" min={1}
-                value={config.maxAttempts}
-                onChange={e => setC("maxAttempts", Number(e.target.value))}
-                className={inputCls}
-                title="input"
-              />
-            </div>
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1.5">Time Limit (mins)</label>
               <input

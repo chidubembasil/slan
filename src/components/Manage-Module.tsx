@@ -23,8 +23,6 @@ type Module = {
   shortDescription?: string;
   status: ModuleStatus;
   estimatedReadMinutes?: number;
-  passMarkPercent?: number;
-  maxAttempts?: number;
   trackId: number;
   track?: { id: number; title: string };
 };
@@ -130,8 +128,6 @@ function EditModuleForm({ module, onDone }: { module: Module; onDone: () => void
     description: module.description ?? "",
     shortDescription: module.shortDescription ?? "",
     estimatedReadMinutes: module.estimatedReadMinutes ?? 0,
-    passMarkPercent: module.passMarkPercent ?? 65,
-    maxAttempts: module.maxAttempts ?? 2,
     status: module.status,
   });
   const [loading, setLoading] = useState(false);
@@ -156,9 +152,7 @@ function EditModuleForm({ module, onDone }: { module: Module; onDone: () => void
           description: form.description || undefined,
           shortDescription: form.shortDescription || undefined,
           estimatedReadMinutes: form.estimatedReadMinutes,
-          passMarkPercent: form.passMarkPercent,
-          maxAttempts: form.maxAttempts,
-          status: form.status,
+          status: form.status
         }),
       });
       const data = await res.json();
@@ -178,25 +172,17 @@ function EditModuleForm({ module, onDone }: { module: Module; onDone: () => void
         <input value={form.title} onChange={(e) => set("title", e.target.value)} className={inputCls} placeholder="Module title" />
       </div>
       <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1.5">Short Description</label>
+        <label className="block text-xs font-medium text-gray-700 mb-1.5">Description</label>
         <input value={form.shortDescription} onChange={(e) => set("shortDescription", e.target.value)} className={inputCls} placeholder="One-line summary" />
       </div>
       <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1.5">Description</label>
+        <label className="block text-xs font-medium text-gray-700 mb-1.5">Content</label>
         <textarea rows={3} value={form.description} onChange={(e) => set("description", e.target.value)} className={textareaCls} placeholder="Full description" />
       </div>
       <div className="grid grid-cols-3 gap-4">
         <div>
           <label className="block text-xs font-medium text-gray-700 mb-1.5">Est. Read (mins)</label>
           <input type="number" min={0} value={form.estimatedReadMinutes} onChange={(e) => set("estimatedReadMinutes", Number(e.target.value))} className={inputCls} title="input"/>
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1.5">Pass Mark %</label>
-          <input type="number" min={0} max={100} value={form.passMarkPercent} onChange={(e) => set("passMarkPercent", Number(e.target.value))} className={inputCls} title="input"/>
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1.5">Max Attempts</label>
-          <input type="number" min={1} value={form.maxAttempts} onChange={(e) => set("maxAttempts", Number(e.target.value))} className={inputCls} title="input"/>
         </div>
       </div>
       <div>
@@ -640,8 +626,6 @@ function AddAssessmentForm({
   const [config, setConfig] = useState({
     title: "",
     description: "",
-    passMarkPercent: 70,
-    maxAttempts: 2,
     timeLimitMinutes: 0,
     isActive: false,
   });
@@ -683,8 +667,6 @@ function AddAssessmentForm({
         body: JSON.stringify({
           title: config.title,
           description: config.description,
-          passMarkPercent: config.passMarkPercent,
-          maxAttempts: config.maxAttempts,
           timeLimitMinutes: config.timeLimitMinutes,
           isActive: config.isActive,
         }),
@@ -874,27 +856,7 @@ function AddAssessmentForm({
           </div>
 
           <div className="grid grid-cols-3 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1.5">Pass Mark %</label>
-              <input
-                type="number" min={0} max={100}
-                value={config.passMarkPercent}
-                onChange={e => setC("passMarkPercent", Number(e.target.value))}
-                className={inputCls}
-                title="input"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1.5">Max Attempts</label>
-              <input
-                type="number" min={1}
-                value={config.maxAttempts}
-                onChange={e => setC("maxAttempts", Number(e.target.value))}
-                className={inputCls}
-                title="input"
-              />
-            </div>
-            <div>
+           <div>
               <label className="block text-xs font-medium text-gray-700 mb-1.5">Time Limit (mins)</label>
               <input
                 type="number" min={0}

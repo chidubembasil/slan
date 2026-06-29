@@ -16,8 +16,6 @@ type Unit = {
   videoUrl?: string;
   pdfUrl?: string;
   estimatedReadMinutes?: number;
-  passMarkPercent?: number;
-  maxAttempts?: number;
   status: UnitStatus;
   moduleId: number;
   module?: { id: number; title: string };
@@ -193,8 +191,6 @@ function EditUnitForm({
     caseStudy: unit.caseStudy ?? "",
     discussionPrompt: unit.discussionPrompt ?? "",
     estimatedReadMinutes: unit.estimatedReadMinutes ?? 0,
-    passMarkPercent: unit.passMarkPercent ?? 60,
-    maxAttempts: unit.maxAttempts ?? 3,
     status: unit.status,
   });
 
@@ -307,8 +303,6 @@ function EditUnitForm({
           videoUrl,
           pdfUrl,
           estimatedReadMinutes: form.estimatedReadMinutes,
-          passMarkPercent: form.passMarkPercent,
-          maxAttempts: form.maxAttempts,
           status: form.status,
         }),
       });

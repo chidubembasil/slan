@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { RichTextEditor } from "./RichTextEditor"
 
 const BASE = import.meta.env.VITE_BASE_URL;
 
@@ -308,10 +309,9 @@ export default function UnitCreate({ onComplete }: { onComplete?: () => void }) 
             </Field>
 
             <Field label="Content">
-              <textarea
-                rows={6}
+              <RichTextEditor
                 value={form.content}
-                onChange={(e) => set("content", e.target.value)}
+                onChange={(html) => set("content", html)}
                 placeholder="Main learning content for this unit"
                 className={textareaCls}
               />
