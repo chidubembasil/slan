@@ -313,7 +313,6 @@ export default function UnitCreate({ onComplete }: { onComplete?: () => void }) 
                 value={form.content}
                 onChange={(html) => set("content", html)}
                 placeholder="Main learning content for this unit"
-                className={textareaCls}
               />
             </Field>
 
