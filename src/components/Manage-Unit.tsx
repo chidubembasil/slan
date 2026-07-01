@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { RichTextEditor } from "./RichTextEditor"
+import { FrameworkForm } from "./FrameworkForm"
 const BASE = import.meta.env.VITE_BASE_URL;
 
 type UnitStatus = "draft" | "published" | "archived";
@@ -335,24 +336,9 @@ function EditUnitForm({
         )}
       </div>
 
-      {/* <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1.5">
-          Description <span className="text-red-500">*</span>
-        </label>
-        <textarea
-          rows={3}
-          value={form.description}
-          onChange={(e) => set("description", e.target.value)}
-          className={textareaCls}
-          placeholder="Full description of this unit"
-        />
-        {formErrors.description && (
-          <p className="text-xs text-red-600 mt-1">{formErrors.description}</p>
-        )}
-      </div> */}
       <div>
         <label className="block text-xs font-medium text-gray-700 mb-1.5">
-          Description {/* <span className="text-red-500">*</span> */}
+          Description
         </label>
         <textarea
           rows={3}
@@ -550,7 +536,8 @@ function EditUnitForm({
 type ModalState =
   | { type: "none" }
   | { type: "edit"; unit: Unit }
-  | { type: "delete"; unit: Unit };
+  | { type: "delete"; unit: Unit }
+  | { type: "framework"; unit: Unit };
 
 export default function ManageUnits() {
   const [units, setUnits] = useState<Unit[]>([]);
@@ -899,6 +886,20 @@ export default function ManageUnits() {
                       <td className="px-6 py-4">
                         <div className="flex items-center justify-end gap-2">
 
+                          {/* Framework */}
+                          <button
+                            onClick={() => setModal({ type: "framework", unit })}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-purple-200 text-purple-600 hover:bg-purple-50 transition-colors"
+                          >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <rect x="3" y="3" width="7" height="7" rx="1" />
+                              <rect x="14" y="3" width="7" height="7" rx="1" />
+                              <rect x="14" y="14" width="7" height="7" rx="1" />
+                              <rect x="3" y="14" width="7" height="7" rx="1" />
+                            </svg>
+                            Framework
+                          </button>
+
                           {/* Edit */}
                           <button
                             onClick={() => setModal({ type: "edit", unit })}
@@ -949,6 +950,25 @@ export default function ManageUnits() {
               showToast("Unit updated successfully");
               fetchUnits();
             }}
+          />
+        </Modal>
+      )}
+
+      {/* ── Framework Modal ── */}
+      {modal.type === "framework" && (
+        <Modal
+          title={`Add Framework — ${modal.unit.title}`}
+          onClose={closeModal}
+        >
+          <FrameworkForm
+            modules={[]}
+            units={[]}
+            lockedUnit={{ id: modal.unit.id, title: modal.unit.title }}
+            onDone={() => {
+              closeModal();
+              showToast("Framework created successfully");
+            }}
+            onCancel={closeModal}
           />
         </Modal>
       )}
