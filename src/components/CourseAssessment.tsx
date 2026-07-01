@@ -207,17 +207,16 @@ export default function CourseAssessments() {
       const data = await res.json();
       const items: AssessmentItem[] = Array.isArray(data) ? data : data.data || [];
 
-      const normalized: AssessmentItem[] = items.map((it: any, idx: number) => ({
+      const normalized = items.map((it: any) => ({
         id: it.id,
         questionText: it.questionText || "",
         questionType: it.questionType || "multiple_choice",
-        options: it.options && it.options.length ? it.options : ["", "", "", ""],
+       options: it.options && it.options.length ? it.options : ["", "", "", ""],
         correctAnswer:
           it.correctAnswer !== undefined && it.correctAnswer !== null
             ? String(it.correctAnswer)
             : "",
         explanation: it.explanation || "",
-        orderIndex: it.orderIndex ?? idx,
         points: it.points ?? 1,
       }));
 
@@ -251,12 +250,7 @@ export default function CourseAssessments() {
       try {
         const errData = await res.json();
         message = errData?.message || errData?.error || message;
-      } catch {
-        try {
-          const text = await res.text();
-          if (text) message = text;
-        } catch {}
-      }
+      } catch {}
       throw new Error(message);
     }
   }
@@ -286,26 +280,22 @@ export default function CourseAssessments() {
     }
   }
 
-  function buildQuestionPayload(item: AssessmentItem, parentId: number, orderIndex: number) {
-    return {
+  async function saveSingleQuestion(parentId: number, item: AssessmentItem) {
+    const payload = {
       parentId,
       parentType: PARENT_TYPE,
       questionText: item.questionText,
       questionType: item.questionType,
-      options:
+     options:
         item.questionType === "multiple_choice"
           ? item.options.filter((o) => o.trim())
           : undefined,
       correctAnswer:
         item.questionType === "multiple_choice" ? Number(item.correctAnswer) : item.correctAnswer,
       explanation: item.explanation || undefined,
-      orderIndex: item.orderIndex ?? orderIndex,
+      orderIndex: item.orderIndex ?? 0,
       points: item.points,
     };
-  }
-
-  async function saveSingleQuestion(parentId: number, item: AssessmentItem) {
-    const payload = buildQuestionPayload(item, parentId, 0);
 
     if (item.id) {
       const res = await fetch(`${API_BASE}admin/assessment-items/${item.id}`, {
@@ -313,14 +303,28 @@ export default function CourseAssessments() {
         headers: authHeaders(),
         body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error("Failed to update question");
+      if (!res.ok) {
+        let message = "Failed to update question";
+        try {
+          const d = await res.json();
+          message = d?.message || d?.error || message;
+        } catch {}
+        throw new Error(message);
+      }
     } else {
       const res = await fetch(`${API_BASE}admin/assessment-items`, {
         method: "POST",
         headers: authHeaders(),
         body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error("Failed to create question");
+      if (!res.ok) {
+        let message = "Failed to create question";
+        try {
+          const d = await res.json();
+          message = d?.message || d?.error || message;
+        } catch {}
+        throw new Error(message);
+      }
     }
   }
 
@@ -329,11 +333,27 @@ export default function CourseAssessments() {
     const fresh = items.filter((i) => !i.id);
 
     await Promise.all(
-      existing.map((item, idx) =>
+      existing.map((item) =>
         fetch(`${API_BASE}admin/assessment-items/${item.id}`, {
           method: "PUT",
           headers: authHeaders(),
-          body: JSON.stringify(buildQuestionPayload(item, parentId, idx)),
+          body: JSON.stringify({
+            parentId,
+            parentType: PARENT_TYPE,
+            questionText: item.questionText,
+            questionType: item.questionType,
+           options:
+              item.questionType === "multiple_choice"
+                ? item.options.filter((o) => o.trim())
+                : undefined,
+            correctAnswer:
+              item.questionType === "multiple_choice"
+                ? Number(item.correctAnswer)
+                : item.correctAnswer,
+            explanation: item.explanation || undefined,
+            orderIndex: item.orderIndex ?? 0,
+            points: item.points,
+          }),
         }).then((res) => {
           if (!res.ok) throw new Error("Failed to update one of the questions");
         })
@@ -388,6 +408,7 @@ export default function CourseAssessments() {
   async function handleDelete(row: CourseAssessmentRow) {
     if (!confirm(`Delete assessment "${row.title}" for ${row.courseName}?`)) return;
     try {
+      // Step 1: Delete all assessment items
       const itemsRes = await fetch(
         `${API_BASE}admin/assessment-items?parentId=${row.id}&parentType=${PARENT_TYPE}`,
         { headers: authHeaders(false) }
@@ -405,7 +426,7 @@ export default function CourseAssessments() {
         );
       }
 
-      // The backend has no DELETE endpoint for assessment configs.
+      // Step 2: The backend has no DELETE endpoint for assessment configs.
       // Deactivate it instead by setting isActive: false via PUT.
       await fetch(`${API_BASE}admin/courses/${row.courseId}/assessment`, {
         method: "PUT",
@@ -413,6 +434,7 @@ export default function CourseAssessments() {
         body: JSON.stringify({ isActive: false }),
       });
 
+      // Remove from local UI state
       setRows((prev) => prev.filter((r) => r.id !== row.id));
     } catch (e: any) {
       alert(e.message || "Failed to delete");
@@ -425,7 +447,7 @@ export default function CourseAssessments() {
     );
   }
 
-  function updateMultipleItemOption(itemIndex: number, optionIndex: number, text: string) {
+    function updateMultipleItemOption(itemIndex: number, optionIndex: number, text: string) {
     setMultipleItems((prev) =>
       prev.map((item, i) =>
         i === itemIndex
@@ -460,7 +482,7 @@ export default function CourseAssessments() {
     setMultipleItems((prev) => prev.filter((_, i) => i !== index));
   }
 
-  function updateSingleOption(optionIndex: number, text: string) {
+   function updateSingleOption(optionIndex: number, text: string) {
     setSingleItem((prev) => ({
       ...prev,
       options: prev.options.map((o, oi) => (oi === optionIndex ? text : o)),
@@ -681,8 +703,8 @@ export default function CourseAssessments() {
                     <SingleQuestionEditor
                       item={item}
                       onChange={(patch) => updateMultipleItem(idx, patch)}
-                      onOptionChange={(optionIndex, text) =>
-                        updateMultipleItemOption(idx, optionIndex, text)
+                      onOptionChange={(optionId, text) =>
+                        updateMultipleItemOption(idx, optionId, text)
                       }
                     />
                   </div>
@@ -760,9 +782,7 @@ function SingleQuestionEditor({
         <label className="text-xs font-medium text-gray-600">Question Type</label>
         <select
           value={item.questionType}
-          onChange={(e) =>
-            onChange({ questionType: e.target.value as AssessmentItem["questionType"] })
-          }
+          onChange={(e) => onChange({ questionType: e.target.value as AssessmentItem["questionType"] })}
           className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
           title="question type select"
         >
@@ -776,9 +796,7 @@ function SingleQuestionEditor({
         <div className="grid grid-cols-2 gap-2">
           {item.options.map((opt, idx) => (
             <div key={idx}>
-              <label className="text-xs font-medium text-gray-600">
-                Option {String.fromCharCode(65 + idx)}
-              </label>
+              <label className="text-xs font-medium text-gray-600">Option {String.fromCharCode(65 + idx)}</label>
               <input
                 value={opt}
                 onChange={(e) => onOptionChange(idx, e.target.value)}

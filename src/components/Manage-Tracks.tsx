@@ -413,6 +413,24 @@ const emptyQuestion = (orderIndex = 0): SingleQuestion => ({
   orderIndex,
   points: 1,
 });
+// ── Payload helper ─────────────────────────────────────────────────────────
+// Converts the UI's {id, text}[] option shape + letter-based correctAnswer
+// into what the API expects: options as string[], correctAnswer as a
+// 0-based index (for multiple_choice). true_false / short_answer pass through.
+function buildOptionsAndAnswer(q: SingleQuestion): {
+  options: string[] | undefined;
+  correctAnswer: string | number;
+} {
+  if (q.questionType !== "multiple_choice") {
+    return { options: undefined, correctAnswer: q.correctAnswer };
+  }
+  const filledOptions = q.options.filter((o) => o.text.trim());
+  const correctIndex = filledOptions.findIndex((o) => o.id === q.correctAnswer);
+  return {
+    options: filledOptions.map((o) => o.text),
+    correctAnswer: correctIndex >= 0 ? correctIndex : 0,
+  };
+}
 
 // ── Question Editor ───────────────────────────────────────────────────────────
 
@@ -667,6 +685,7 @@ function AddAssessmentForm({
     try {
       if (mode === "single") {
         const q = questions[0];
+        const { options, correctAnswer } = buildOptionsAndAnswer(q);
         const res = await fetch(`${BASE}admin/assessment-items`, {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -676,11 +695,8 @@ function AddAssessmentForm({
             parentType,
             questionText: q.questionText,
             questionType: q.questionType,
-            options:
-              q.questionType === "multiple_choice"
-                ? q.options.filter(o => o.text.trim())
-                : undefined,
-            correctAnswer: q.correctAnswer,
+            options,
+            correctAnswer,
             explanation: q.explanation || undefined,
             orderIndex: q.orderIndex,
             points: q.points,
@@ -697,18 +713,18 @@ function AddAssessmentForm({
           body: JSON.stringify({
             parentId,
             parentType,
-            questions: questions.map(q => ({
-              questionText: q.questionText,
-              questionType: q.questionType,
-              options:
-                q.questionType === "multiple_choice"
-                  ? q.options.filter(o => o.text.trim())
-                  : undefined,
-              correctAnswer: q.correctAnswer,
-              explanation: q.explanation || undefined,
-              orderIndex: q.orderIndex,
-              points: q.points,
-            })),
+            questions: questions.map(q => {
+              const { options, correctAnswer } = buildOptionsAndAnswer(q);
+              return {
+                questionText: q.questionText,
+                questionType: q.questionType,
+                options,
+                correctAnswer,
+                explanation: q.explanation || undefined,
+                orderIndex: q.orderIndex,
+                points: q.points,
+              };
+            }),
           }),
         });
         const data = await res.json();

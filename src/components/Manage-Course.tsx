@@ -179,6 +179,17 @@ const emptyQuestion = (): SingleQuestion => ({
   orderIndex: 0,
   points: 1,
 });
+function buildOptionsAndAnswer(q: SingleQuestion) {
+  if (q.questionType !== "multiple_choice") {
+    return { options: undefined as string[] | undefined, correctAnswer: q.correctAnswer };
+  }
+  const filledOptions = q.options.filter(o => o.text.trim());
+  const correctIndex = filledOptions.findIndex(o => o.id === q.correctAnswer);
+  return {
+    options: filledOptions.map(o => o.text),
+    correctAnswer: correctIndex >= 0 ? correctIndex : 0,
+  };
+}
 
 function QuestionEditor({
   q,
@@ -401,7 +412,8 @@ function AddAssessmentModal({
     try {
       if (mode === "single") {
         // Single question
-        const q = questions[0];
+       const q = questions[0];
+        const { options, correctAnswer } = buildOptionsAndAnswer(q);
         const res = await fetch(`${BASE}admin/assessment-items`, {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -411,8 +423,8 @@ function AddAssessmentModal({
             parentType,
             questionText: q.questionText,
             questionType: q.questionType,
-            options: q.questionType === "multiple_choice" ? q.options.filter(o => o.text.trim()) : undefined,
-            correctAnswer: q.correctAnswer,
+            options,
+            correctAnswer,
             explanation: q.explanation || undefined,
             orderIndex: q.orderIndex,
             points: q.points,
@@ -424,23 +436,26 @@ function AddAssessmentModal({
       } else if (mode === "bulk") {
         // Bulk JSON
         const res = await fetch(`${BASE}admin/assessment-items/bulk`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          credentials: "include",
-          body: JSON.stringify({
-            parentId,
-            parentType,
-            questions: questions.map(q => ({
-              questionText: q.questionText,
-              questionType: q.questionType,
-              options: q.questionType === "multiple_choice" ? q.options.filter(o => o.text.trim()) : undefined,
-              correctAnswer: q.correctAnswer,
-              explanation: q.explanation || undefined,
-              orderIndex: q.orderIndex,
-              points: q.points,
-            })),
-          }),
-        });
+  method: "POST",
+  headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+  credentials: "include",
+  body: JSON.stringify({
+    parentId,
+    parentType,
+    questions: questions.map(q => {
+      const { options, correctAnswer } = buildOptionsAndAnswer(q);
+      return {
+        questionText: q.questionText,
+        questionType: q.questionType,
+        options,
+        correctAnswer,
+        explanation: q.explanation || undefined,
+        orderIndex: q.orderIndex,
+        points: q.points,
+      };
+    }),
+  }),
+});
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || "Bulk upload failed");
 
