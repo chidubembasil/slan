@@ -88,6 +88,20 @@ export default function Course() {
             Manage Units
           </button>
         </li>
+        <li>
+          <button
+            type="button"
+            onClick={() => setActiveTab("framework")}
+            className={`w-fit h-15 px-3 transition whitespace-nowrap
+            ${
+              activeTab === "framework"
+                ? "border-b-2 border-[#004900] text-[#004900] font-semibold"
+                : "text-gray-500"
+            }`}
+          >
+            Manage Units
+          </button>
+        </li>
       </ul>
 
       <div>

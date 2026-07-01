@@ -24,7 +24,7 @@ interface AssessmentItem {
   id?: number;
   questionText: string;
   questionType: "multiple_choice" | "true_false" | "short_answer";
-  options: { id: string; text: string }[];
+  options: string[];
   correctAnswer: string;
   explanation?: string;
   orderIndex?: number;
@@ -37,12 +37,7 @@ function emptyItem(): AssessmentItem {
   return {
     questionText: "",
     questionType: "multiple_choice",
-    options: [
-      { id: "a", text: "" },
-      { id: "b", text: "" },
-      { id: "c", text: "" },
-      { id: "d", text: "" },
-    ],
+    options: ["", "", "", ""],
     correctAnswer: "",
     explanation: "",
     orderIndex: 0,
@@ -228,20 +223,15 @@ export default function ModuleAssessments() {
       const data = await res.json();
       const items: AssessmentItem[] = Array.isArray(data) ? data : data.data || [];
 
-      const normalized = items.map((it: any, idx: number) => ({
+      const normalized: AssessmentItem[] = items.map((it: any, idx: number) => ({
         id: it.id,
         questionText: it.questionText || "",
         questionType: it.questionType || "multiple_choice",
-        options:
-          it.options && it.options.length
-            ? it.options
-            : [
-                { id: "a", text: "" },
-                { id: "b", text: "" },
-                { id: "c", text: "" },
-                { id: "d", text: "" },
-              ],
-        correctAnswer: it.correctAnswer || "",
+        options: it.options && it.options.length ? it.options : ["", "", "", ""],
+        correctAnswer:
+          it.correctAnswer !== undefined && it.correctAnswer !== null
+            ? String(it.correctAnswer)
+            : "",
         explanation: it.explanation || "",
         orderIndex: it.orderIndex ?? idx,
         points: it.points ?? 1,
@@ -307,21 +297,26 @@ export default function ModuleAssessments() {
     }
   }
 
-  async function saveSingleQuestion(parentId: number, item: AssessmentItem) {
-    const payload = {
+  function buildQuestionPayload(item: AssessmentItem, parentId: number, orderIndex: number) {
+    return {
       parentId,
       parentType: PARENT_TYPE,
       questionText: item.questionText,
       questionType: item.questionType,
       options:
         item.questionType === "multiple_choice"
-          ? item.options.filter((o) => o.text.trim())
+          ? item.options.filter((o) => o.trim())
           : undefined,
-      correctAnswer: item.correctAnswer,
+      correctAnswer:
+        item.questionType === "multiple_choice" ? Number(item.correctAnswer) : item.correctAnswer,
       explanation: item.explanation || undefined,
-      orderIndex: item.orderIndex ?? 0,
+      orderIndex: item.orderIndex ?? orderIndex,
       points: item.points,
     };
+  }
+
+  async function saveSingleQuestion(parentId: number, item: AssessmentItem) {
+    const payload = buildQuestionPayload(item, parentId, 0);
 
     if (item.id) {
       const res = await fetch(`${API_BASE}admin/assessment-items/${item.id}`, {
@@ -331,7 +326,10 @@ export default function ModuleAssessments() {
       });
       if (!res.ok) {
         let message = "Failed to update question";
-        try { const d = await res.json(); message = d?.message || d?.error || message; } catch {}
+        try {
+          const d = await res.json();
+          message = d?.message || d?.error || message;
+        } catch {}
         throw new Error(message);
       }
     } else {
@@ -342,7 +340,10 @@ export default function ModuleAssessments() {
       });
       if (!res.ok) {
         let message = "Failed to create question";
-        try { const d = await res.json(); message = d?.message || d?.error || message; } catch {}
+        try {
+          const d = await res.json();
+          message = d?.message || d?.error || message;
+        } catch {}
         throw new Error(message);
       }
     }
@@ -353,24 +354,11 @@ export default function ModuleAssessments() {
     const fresh = items.filter((i) => !i.id);
 
     await Promise.all(
-      existing.map((item) =>
+      existing.map((item, idx) =>
         fetch(`${API_BASE}admin/assessment-items/${item.id}`, {
           method: "PUT",
           headers: authHeaders(),
-          body: JSON.stringify({
-            parentId,
-            parentType: PARENT_TYPE,
-            questionText: item.questionText,
-            questionType: item.questionType,
-            options:
-              item.questionType === "multiple_choice"
-                ? item.options.filter((o) => o.text.trim())
-                : undefined,
-            correctAnswer: item.correctAnswer,
-            explanation: item.explanation || undefined,
-            orderIndex: item.orderIndex ?? 0,
-            points: item.points,
-          }),
+          body: JSON.stringify(buildQuestionPayload(item, parentId, idx)),
         }).then((res) => {
           if (!res.ok) throw new Error("Failed to update one of the questions");
         })
@@ -389,9 +377,12 @@ export default function ModuleAssessments() {
             questionType: item.questionType,
             options:
               item.questionType === "multiple_choice"
-                ? item.options.filter((o) => o.text.trim())
+                ? item.options.filter((o) => o.trim())
                 : undefined,
-            correctAnswer: item.correctAnswer,
+            correctAnswer:
+              item.questionType === "multiple_choice"
+                ? Number(item.correctAnswer)
+                : item.correctAnswer,
             explanation: item.explanation || undefined,
             orderIndex: item.orderIndex ?? idx,
             points: item.points,
@@ -427,12 +418,11 @@ export default function ModuleAssessments() {
         `${API_BASE}admin/assessment-items?parentId=${row.id}&parentType=${PARENT_TYPE}`,
         { headers: authHeaders(false) }
       );
-      
+
       if (itemsRes.ok) {
         const itemsData = await itemsRes.json();
         const items = Array.isArray(itemsData) ? itemsData : itemsData.data || [];
-        
-        // Delete items one by one and handle errors gracefully
+
         const deleteResults = await Promise.allSettled(
           items.map((item: any) =>
             fetch(`${API_BASE}admin/assessment-items/${item.id}`, {
@@ -441,8 +431,7 @@ export default function ModuleAssessments() {
             })
           )
         );
-        
-        // Log any failures but don't stop
+
         deleteResults.forEach((result, idx) => {
           if (result.status === "rejected") {
             console.warn(`Failed to delete item ${items[idx]?.id}:`, result.reason);
@@ -456,16 +445,13 @@ export default function ModuleAssessments() {
         headers: authHeaders(false),
       });
 
-      // If that fails with 404, try alternative endpoints
       if (!res.ok && res.status === 404) {
-        // Try /admin/assessments/{id} as fallback
         res = await fetch(`${API_BASE}admin/assessments/${row.id}`, {
           method: "DELETE",
           headers: authHeaders(false),
         });
       }
 
-      // If still 404, try soft delete by deactivating
       if (!res.ok && res.status === 404) {
         console.warn("DELETE endpoint not found, attempting soft delete by deactivating");
         const softDeleteRes = await fetch(`${API_BASE}admin/modules/${row.moduleId}/assessment`, {
@@ -480,12 +466,11 @@ export default function ModuleAssessments() {
             isActive: false,
           }),
         });
-        
+
         if (!softDeleteRes.ok) {
           throw new Error("Assessment delete endpoint not found. Please check your API configuration.");
         }
-        
-        // Soft delete succeeded, remove from UI
+
         setRows((prev) => prev.filter((r) => r.id !== row.id));
         return;
       }
@@ -496,12 +481,14 @@ export default function ModuleAssessments() {
           const errData = await res.json();
           message = errData?.message || errData?.error || message;
         } catch {
-          try { const text = await res.text(); if (text) message = text; } catch {}
+          try {
+            const text = await res.text();
+            if (text) message = text;
+          } catch {}
         }
         throw new Error(message);
       }
 
-      // Success - remove from local state
       setRows((prev) => prev.filter((r) => r.id !== row.id));
     } catch (e: any) {
       console.error("Delete error:", e);
@@ -515,11 +502,14 @@ export default function ModuleAssessments() {
     );
   }
 
-  function updateMultipleItemOption(index: number, optionId: string, text: string) {
+  function updateMultipleItemOption(itemIndex: number, optionIndex: number, text: string) {
     setMultipleItems((prev) =>
       prev.map((item, i) =>
-        i === index
-          ? { ...item, options: item.options.map((o) => (o.id === optionId ? { ...o, text } : o)) }
+        i === itemIndex
+          ? {
+              ...item,
+              options: item.options.map((o, oi) => (oi === optionIndex ? text : o)),
+            }
           : item
       )
     );
@@ -547,10 +537,10 @@ export default function ModuleAssessments() {
     setMultipleItems((prev) => prev.filter((_, i) => i !== index));
   }
 
-  function updateSingleOption(optionId: string, text: string) {
+  function updateSingleOption(optionIndex: number, text: string) {
     setSingleItem((prev) => ({
       ...prev,
-      options: prev.options.map((o) => (o.id === optionId ? { ...o, text } : o)),
+      options: prev.options.map((o, oi) => (oi === optionIndex ? text : o)),
     }));
   }
 
@@ -765,8 +755,8 @@ export default function ModuleAssessments() {
                     <SingleQuestionEditor
                       item={item}
                       onChange={(patch) => updateMultipleItem(idx, patch)}
-                      onOptionChange={(optionId, text) =>
-                        updateMultipleItemOption(idx, optionId, text)
+                      onOptionChange={(optionIndex, text) =>
+                        updateMultipleItemOption(idx, optionIndex, text)
                       }
                     />
                   </div>
@@ -825,7 +815,7 @@ function SingleQuestionEditor({
 }: {
   item: AssessmentItem;
   onChange: (patch: Partial<AssessmentItem>) => void;
-  onOptionChange: (optionId: string, text: string) => void;
+  onOptionChange: (optionIndex: number, text: string) => void;
 }) {
   return (
     <div className="space-y-3">
@@ -856,14 +846,14 @@ function SingleQuestionEditor({
 
       {item.questionType === "multiple_choice" && (
         <div className="grid grid-cols-2 gap-2">
-          {item.options.map((opt) => (
-            <div key={opt.id}>
-              <label className="text-xs font-medium text-gray-600">Option {opt.id.toUpperCase()}</label>
+          {item.options.map((opt, idx) => (
+            <div key={idx}>
+              <label className="text-xs font-medium text-gray-600">Option {String.fromCharCode(65 + idx)}</label>
               <input
-                value={opt.text}
-                onChange={(e) => onOptionChange(opt.id, e.target.value)}
+                value={opt}
+                onChange={(e) => onOptionChange(idx, e.target.value)}
                 className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
-                title={`option ${opt.id}`}
+                title={`option ${idx}`}
               />
             </div>
           ))}
@@ -881,9 +871,9 @@ function SingleQuestionEditor({
               title="correct answer select"
             >
               <option value="">Select...</option>
-              {item.options.map((opt) => (
-                <option key={opt.id} value={opt.id}>
-                  {opt.id.toUpperCase()}
+              {item.options.map((_, idx) => (
+                <option key={idx} value={idx}>
+                  {String.fromCharCode(65 + idx)}
                 </option>
               ))}
             </select>
