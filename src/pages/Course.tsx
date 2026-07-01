@@ -4,6 +4,7 @@ import Upload from "../components/Upload-Course";
 import ManageTracks from "../components/Manage-Tracks";
 import ManageModules from "../components/Manage-Module";
 import ManageUnits from "../components/Manage-Unit";
+import ManageFrameworks from "../components/Manage-Framework";
 import { useAuthGuard } from "../hooks/useAuthGuard"
 
 export default function Course() {
@@ -117,6 +118,11 @@ export default function Course() {
         {activeTab === "units" && (
           <div>
             <ManageUnits />
+          </div>
+        )}
+        {activeTab === "framework" && (
+          <div>
+            <ManageFrameworks />
           </div>
         )}
       </div>

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { RichTextEditor } from "./RichTextEditor"
 
 const BASE = import.meta.env.VITE_BASE_URL;
 
@@ -146,6 +147,7 @@ export function FrameworkForm({
   const validate = () => {
     const e: Record<string, string> = {};
     if (!form.title.trim()) e.title = "Title is required";
+    if (!form.content.trim()) e.content = "Content is required";
     if (!lockedUnit) {
       if (!selectedModuleId) e.module = "Select a module";
       if (!selectedUnitId) e.unit = "Select a unit";
@@ -291,14 +293,17 @@ export function FrameworkForm({
       </div>
 
       <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1.5">Content</label>
-        <textarea
-          rows={5}
+        <label className="block text-xs font-medium text-gray-700 mb-1.5">
+          Content <span className="text-red-500">*</span>
+        </label>
+        <RichTextEditor
           value={form.content}
-          onChange={(e) => set("content", e.target.value)}
-          className={textareaCls}
-          placeholder="Framework content"
+          onChange={(html) => set("content", html)}
+          placeholder="Main learning content for this unit"
         />
+        {formErrors.content && (
+          <p className="text-xs text-red-600 mt-1">{formErrors.content}</p>
+        )}
       </div>
 
       <div>
