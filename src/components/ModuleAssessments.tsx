@@ -1,23 +1,29 @@
 import { useEffect, useMemo, useState } from "react";
-import { Pencil, Trash2, Search, Upload, X, Plus, Trash } from "lucide-react";
+import {
+  Pencil,
+  Trash2,
+  Search,
+  Upload,
+  X,
+  Plus,
+  Trash,
+  History,
+  RotateCcw,
+} from "lucide-react";
 
 const API_BASE = import.meta.env.VITE_BASE_URL;
 
 type QuestionType = "single" | "multiple" | "upload";
-
-const QUESTION_TYPE_LABEL: Record<QuestionType, string> = {
-  single: "Single Choice",
-  multiple: "Multiple Choice",
-  upload: "Upload (CSV/Excel)",
-};
 
 interface ModuleAssessmentRow {
   id: number;
   title: string;
   moduleId: number;
   moduleName: string;
-  questionType: QuestionType;
+  questionType: QuestionType; // used to decide which editor UI to show
+  displayLabel: string; // used to render the actual badge in the table
   questionCount: number;
+  isActive: boolean;
 }
 
 interface AssessmentItem {
@@ -45,11 +51,52 @@ function emptyItem(): AssessmentItem {
   };
 }
 
+// Options sometimes come back from the API as objects (e.g. { text: "..." })
+// instead of plain strings. This normalizes any shape into a display string
+// so inputs never render "[object Object]".
+function optionLabel(opt: unknown): string {
+  if (typeof opt === "string") return opt;
+  if (opt && typeof opt === "object") {
+    const o = opt as Record<string, unknown>;
+    const val = o.text ?? o.label ?? o.value ?? o.option ?? "";
+    return typeof val === "string" ? val : String(val ?? "");
+  }
+  return opt === undefined || opt === null ? "" : String(opt);
+}
+
+function normalizeOptions(raw: unknown): string[] {
+  if (Array.isArray(raw) && raw.length) {
+    return raw.map(optionLabel);
+  }
+  return ["", "", "", ""];
+}
+
+// Derives the badge text from the assessment's actual question items,
+// instead of guessing from a count. "No question yet" when the assessment
+// has zero items; the real question type when there's one shared type
+// across items; "Mixed" when items have different types (e.g. from a
+// bulk file upload with varied question types).
+function getDisplayLabel(items: any[]): string {
+  if (!items || items.length === 0) return "No question yet";
+  const types = new Set(items.map((it) => it?.questionType).filter(Boolean));
+  if (types.size === 1) {
+    const t = [...types][0] as string;
+    const labels: Record<string, string> = {
+      multiple_choice: "Multiple Choice",
+      true_false: "True/False",
+      short_answer: "Short Answer",
+    };
+    return labels[t] || t;
+  }
+  return "Mixed";
+}
+
 export default function ModuleAssessments() {
   const [rows, setRows] = useState<ModuleAssessmentRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const [editingRow, setEditingRow] = useState<ModuleAssessmentRow | null>(null);
   const [editForm, setEditForm] = useState({
@@ -58,7 +105,7 @@ export default function ModuleAssessments() {
     passMarkPercent: 70,
     maxAttempts: 2,
     timeLimitMinutes: 0,
-    isActive: false,
+    isActive: true,
   });
 
   const [singleItem, setSingleItem] = useState<AssessmentItem>(emptyItem());
@@ -116,6 +163,7 @@ export default function ModuleAssessments() {
             if (!assessment || !assessment.id) return;
 
             let questionCount = 0;
+            let items: any[] = [];
             try {
               const itemsRes = await fetch(
                 `${API_BASE}admin/assessment-items?parentId=${assessment.id}&parentType=${PARENT_TYPE}`,
@@ -123,11 +171,11 @@ export default function ModuleAssessments() {
               );
               if (itemsRes.ok) {
                 const itemsData = await itemsRes.json();
-                const items = Array.isArray(itemsData) ? itemsData : itemsData.data || [];
+                items = Array.isArray(itemsData) ? itemsData : itemsData.data || [];
                 questionCount = items.length;
               }
             } catch {
-              // leave at 0
+              // leave at 0 / empty
             }
 
             const questionType: QuestionType =
@@ -139,7 +187,9 @@ export default function ModuleAssessments() {
               moduleId: mod.id,
               moduleName: mod.title || mod.name || `Module #${mod.id}`,
               questionType,
+              displayLabel: getDisplayLabel(items),
               questionCount,
+              isActive: assessment.isActive !== false,
             });
           } catch {
             // skip
@@ -159,17 +209,20 @@ export default function ModuleAssessments() {
     fetchModuleAssessments();
   }, []);
 
+  const activeRows = useMemo(() => rows.filter((r) => r.isActive), [rows]);
+  const historyRows = useMemo(() => rows.filter((r) => !r.isActive), [rows]);
+
   const filteredRows = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter(
+    if (!q) return activeRows;
+    return activeRows.filter(
       (r) =>
         r.title.toLowerCase().includes(q) ||
         r.moduleName.toLowerCase().includes(q) ||
-        QUESTION_TYPE_LABEL[r.questionType].toLowerCase().includes(q) ||
+        r.displayLabel.toLowerCase().includes(q) ||
         String(r.id).includes(q)
     );
-  }, [rows, query]);
+  }, [activeRows, query]);
 
   async function openEdit(row: ModuleAssessmentRow) {
     setEditingRow(row);
@@ -188,7 +241,7 @@ export default function ModuleAssessments() {
           passMarkPercent: cfg.passMarkPercent ?? 70,
           maxAttempts: cfg.maxAttempts ?? 2,
           timeLimitMinutes: cfg.timeLimitMinutes ?? 0,
-          isActive: cfg.isActive ?? false,
+          isActive: cfg.isActive ?? true,
         });
       } else {
         setEditForm({
@@ -197,7 +250,7 @@ export default function ModuleAssessments() {
           passMarkPercent: 70,
           maxAttempts: 2,
           timeLimitMinutes: 0,
-          isActive: false,
+          isActive: row.isActive,
         });
       }
     } catch {
@@ -207,7 +260,7 @@ export default function ModuleAssessments() {
         passMarkPercent: 70,
         maxAttempts: 2,
         timeLimitMinutes: 0,
-        isActive: false,
+        isActive: row.isActive,
       });
     }
 
@@ -227,7 +280,7 @@ export default function ModuleAssessments() {
         id: it.id,
         questionText: it.questionText || "",
         questionType: it.questionType || "multiple_choice",
-        options: it.options && it.options.length ? it.options : ["", "", "", ""],
+        options: normalizeOptions(it.options),
         correctAnswer:
           it.correctAnswer !== undefined && it.correctAnswer !== null
             ? String(it.correctAnswer)
@@ -410,10 +463,43 @@ export default function ModuleAssessments() {
     }
   }
 
-  async function handleDelete(row: ModuleAssessmentRow) {
-    if (!confirm(`Delete assessment "${row.title}" for ${row.moduleName}?`)) return;
+  // Sets a row's active status on the backend and mirrors it in local state.
+  // This is the shared mechanism behind Delete (-> false) and Restore (-> true).
+  async function setRowActive(row: ModuleAssessmentRow, isActive: boolean) {
     try {
-      // Step 1: Delete all assessment items first
+      const res = await fetch(`${API_BASE}admin/modules/${row.moduleId}/assessment`, {
+        method: "PUT",
+        headers: authHeaders(),
+        body: JSON.stringify({ isActive }),
+      });
+      if (!res.ok) {
+        throw new Error(
+          isActive ? "Failed to restore assessment" : "Failed to move assessment to history"
+        );
+      }
+      setRows((prev) => prev.map((r) => (r.id === row.id ? { ...r, isActive } : r)));
+    } catch (e: any) {
+      alert(e.message || "Something went wrong");
+    }
+  }
+
+  async function handleDelete(row: ModuleAssessmentRow) {
+    if (!confirm(`Move assessment "${row.title}" for ${row.moduleName} to history?`)) return;
+    await setRowActive(row, false);
+  }
+
+  async function handleRestore(row: ModuleAssessmentRow) {
+    await setRowActive(row, true);
+  }
+
+  async function handlePermanentDelete(row: ModuleAssessmentRow) {
+    if (
+      !confirm(
+        `Permanently delete assessment "${row.title}" for ${row.moduleName}? This cannot be undone.`
+      )
+    )
+      return;
+    try {
       const itemsRes = await fetch(
         `${API_BASE}admin/assessment-items?parentId=${row.id}&parentType=${PARENT_TYPE}`,
         { headers: authHeaders(false) }
@@ -439,7 +525,6 @@ export default function ModuleAssessments() {
         });
       }
 
-      // Step 2: Try to delete the assessment config via the module endpoint
       let res = await fetch(`${API_BASE}admin/modules/${row.moduleId}/assessment`, {
         method: "DELETE",
         headers: authHeaders(false),
@@ -452,31 +537,8 @@ export default function ModuleAssessments() {
         });
       }
 
-      if (!res.ok && res.status === 404) {
-        console.warn("DELETE endpoint not found, attempting soft delete by deactivating");
-        const softDeleteRes = await fetch(`${API_BASE}admin/modules/${row.moduleId}/assessment`, {
-          method: "PUT",
-          headers: authHeaders(),
-          body: JSON.stringify({
-            title: row.title,
-            description: "",
-            passMarkPercent: 70,
-            maxAttempts: 2,
-            timeLimitMinutes: 0,
-            isActive: false,
-          }),
-        });
-
-        if (!softDeleteRes.ok) {
-          throw new Error("Assessment delete endpoint not found. Please check your API configuration.");
-        }
-
-        setRows((prev) => prev.filter((r) => r.id !== row.id));
-        return;
-      }
-
       if (!res.ok) {
-        let message = "Failed to delete assessment";
+        let message = "Failed to permanently delete assessment";
         try {
           const errData = await res.json();
           message = errData?.message || errData?.error || message;
@@ -491,8 +553,8 @@ export default function ModuleAssessments() {
 
       setRows((prev) => prev.filter((r) => r.id !== row.id));
     } catch (e: any) {
-      console.error("Delete error:", e);
-      alert(e.message || "Failed to delete assessment");
+      console.error("Permanent delete error:", e);
+      alert(e.message || "Failed to permanently delete assessment");
     }
   }
 
@@ -546,15 +608,30 @@ export default function ModuleAssessments() {
 
   return (
     <div>
-      <div className="relative mb-4 max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-        <input
-          type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search by title, module or question type..."
-          className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#004900]/30 focus:border-[#004900]"
-        />
+      <div className="flex items-center gap-3 mb-4">
+        <div className="relative max-w-sm flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search by title, module or question type..."
+            className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#004900]/30 focus:border-[#004900]"
+          />
+        </div>
+        <button
+          onClick={() => setHistoryOpen(true)}
+          className="inline-flex items-center gap-2 px-3 py-2 text-sm border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50"
+          title="View history"
+        >
+          <History className="w-4 h-4" />
+          History
+          {historyRows.length > 0 && (
+            <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[11px] rounded-full bg-gray-200 text-gray-700">
+              {historyRows.length}
+            </span>
+          )}
+        </button>
       </div>
 
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
@@ -598,8 +675,14 @@ export default function ModuleAssessments() {
                   <td className="px-4 py-3 font-medium text-gray-900">{row.title}</td>
                   <td className="px-4 py-3 text-gray-700">{row.moduleName}</td>
                   <td className="px-4 py-3">
-                    <span className="inline-flex px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-700">
-                      {QUESTION_TYPE_LABEL[row.questionType]}
+                    <span
+                      className={`inline-flex px-2 py-0.5 rounded-full text-xs ${
+                        row.displayLabel === "No question yet"
+                          ? "bg-gray-100 text-gray-500"
+                          : "bg-purple-50 text-purple-700"
+                      }`}
+                    >
+                      {row.displayLabel}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right">
@@ -613,7 +696,7 @@ export default function ModuleAssessments() {
                     <button
                       onClick={() => handleDelete(row)}
                       className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-red-500 hover:bg-red-50"
-                      title="Delete"
+                      title="Move to history"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -638,7 +721,7 @@ export default function ModuleAssessments() {
             <div className="flex items-center gap-2 mb-4">
               <p className="text-sm text-gray-500">{editingRow.moduleName}</p>
               <span className="inline-flex px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-700">
-                {QUESTION_TYPE_LABEL[editingRow.questionType]}
+                {editingRow.displayLabel}
               </span>
             </div>
 
@@ -700,14 +783,11 @@ export default function ModuleAssessments() {
                   />
                 </div>
               </div>
-              <label className="flex items-center gap-2 text-sm text-gray-700">
-                <input
-                  type="checkbox"
-                  checked={editForm.isActive}
-                  onChange={(e) => setEditForm({ ...editForm, isActive: e.target.checked })}
-                />
-                Active
-              </label>
+              {/*
+                No "Active" checkbox here anymore. Active/inactive is now
+                controlled entirely by the Delete (-> history) and Restore
+                actions, so there's one clear way to do it instead of two.
+              */}
             </div>
 
             <hr className="my-5 border-gray-100" />
@@ -801,6 +881,72 @@ export default function ModuleAssessments() {
                 {saving ? "Saving..." : "Save Changes"}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {historyOpen && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl w-full max-w-3xl p-6 relative max-h-[85vh] overflow-y-auto">
+            <button
+              onClick={() => setHistoryOpen(false)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+              title="close"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <h3 className="text-lg font-semibold mb-1">Assessment History</h3>
+            <p className="text-sm text-gray-500 mb-4">
+              Deleted or deactivated module assessments. Restore them or remove them for good.
+            </p>
+
+            {historyRows.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-10">Nothing in history.</p>
+            ) : (
+              <div className="border border-gray-200 rounded-xl overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200 text-left text-gray-500">
+                      <th className="px-4 py-3 font-medium">ID</th>
+                      <th className="px-4 py-3 font-medium">Title</th>
+                      <th className="px-4 py-3 font-medium">Module Name</th>
+                      <th className="px-4 py-3 font-medium">Question Type</th>
+                      <th className="px-4 py-3 font-medium text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {historyRows.map((row) => (
+                      <tr key={row.id} className="border-b border-gray-100 hover:bg-gray-50">
+                        <td className="px-4 py-3 text-gray-700">{row.id}</td>
+                        <td className="px-4 py-3 font-medium text-gray-900">{row.title}</td>
+                        <td className="px-4 py-3 text-gray-700">{row.moduleName}</td>
+                        <td className="px-4 py-3">
+                          <span className="inline-flex px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-700">
+                            {row.displayLabel}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <button
+                            onClick={() => handleRestore(row)}
+                            className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-[#004900] hover:bg-green-50 mr-1"
+                            title="Restore"
+                          >
+                            <RotateCcw className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handlePermanentDelete(row)}
+                            className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-red-500 hover:bg-red-50"
+                            title="Delete permanently"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
       )}
