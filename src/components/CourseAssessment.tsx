@@ -395,7 +395,10 @@ export default function CourseAssessments() {
         item.questionType === "multiple_choice"
           ? item.options.filter((o) => o.trim())
           : [],
-      correctAnswer: item.correctAnswer,
+      correctAnswer:
+        item.questionType === "multiple_choice"
+          ? Number(item.correctAnswer)
+          : item.correctAnswer,
       explanation: item.explanation || undefined,
       orderIndex: item.orderIndex ?? orderIndex,
       points: item.points,
@@ -485,12 +488,15 @@ export default function CourseAssessments() {
             item.questionType === "multiple_choice"
               ? item.options.filter((o) => o.trim())
               : [],
-          correctAnswer: item.correctAnswer,
+          correctAnswer:
+            item.questionType === "multiple_choice"
+              ? Number(item.correctAnswer)
+              : item.correctAnswer,
           explanation: item.explanation || undefined,
           orderIndex: item.orderIndex ?? idx,
           points: item.points,
         })),
-      };
+            };
       const res = await fetch(`${API_BASE}admin/assessment-items/bulk`, {
         method: "POST",
         headers: authHeaders(),

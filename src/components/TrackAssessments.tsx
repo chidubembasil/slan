@@ -391,22 +391,24 @@ export default function TrackAssessments() {
   }
 
   function buildQuestionPayload(item: AssessmentItem, parentId: number, orderIndex: number) {
-    return {
-      parentId,
-      parentType: PARENT_TYPE,
-      questionText: item.questionText,
-      questionType: item.questionType,
-      options:
-        item.questionType === "multiple_choice"
-          ? item.options.filter((o) => o.trim())
-          : [],
-      correctAnswer: item.correctAnswer,
-      explanation: item.explanation || undefined,
-      orderIndex: item.orderIndex ?? orderIndex,
-      points: item.points,
-    };
-  }
-
+  return {
+    parentId,
+    parentType: PARENT_TYPE,
+    questionText: item.questionText,
+    questionType: item.questionType,
+    options:
+      item.questionType === "multiple_choice"
+        ? item.options.filter((o) => o.trim())
+        : [],
+    correctAnswer:
+      item.questionType === "multiple_choice"
+        ? Number(item.correctAnswer)
+        : item.correctAnswer,
+    explanation: item.explanation || undefined,
+    orderIndex: item.orderIndex ?? orderIndex,
+    points: item.points,
+  };
+}
   async function saveSingleQuestion(parentId: number, item: AssessmentItem) {
     const validationError = validateItem(item, "This question");
     if (validationError) throw new Error(validationError);
@@ -490,7 +492,10 @@ export default function TrackAssessments() {
             item.questionType === "multiple_choice"
               ? item.options.filter((o) => o.trim())
               : [],
-          correctAnswer: item.correctAnswer,
+          correctAnswer:
+            item.questionType === "multiple_choice"
+              ? Number(item.correctAnswer)
+              : item.correctAnswer,
           explanation: item.explanation || undefined,
           orderIndex: item.orderIndex ?? idx,
           points: item.points,
