@@ -135,6 +135,11 @@ function validateItem(item: AssessmentItem, label: string): string | null {
     if (item.correctAnswer === "") {
       return `${label}: please select the correct answer`;
     }
+    const validOptionCount = item.options.filter((o) => o.trim()).length;
+    const idx = Number(item.correctAnswer);
+    if (!Number.isInteger(idx) || idx < 0 || idx >= validOptionCount) {
+      return `${label}: correct answer is invalid — please reselect it from the dropdown`;
+    }
   } else if (item.questionType === "true_false") {
     if (item.correctAnswer !== "true" && item.correctAnswer !== "false") {
       return `${label}: please select True or False`;
