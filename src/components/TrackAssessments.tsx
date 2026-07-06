@@ -132,7 +132,7 @@ function normalizeCorrectAnswer(it: any): string {
 function validateItem(item: AssessmentItem, label: string): string | null {
   if (!item.questionText.trim()) return `${label}: question text is required`;
   if (item.questionType === "multiple_choice") {
-    if (item.correctAnswer === "" || Number.isNaN(Number(item.correctAnswer))) {
+    if (item.correctAnswer === "") {
       return `${label}: please select the correct answer`;
     }
   } else if (item.questionType === "true_false") {
@@ -400,8 +400,7 @@ export default function TrackAssessments() {
         item.questionType === "multiple_choice"
           ? item.options.filter((o) => o.trim())
           : [],
-      correctAnswer:
-        item.questionType === "multiple_choice" ? Number(item.correctAnswer) : item.correctAnswer,
+      correctAnswer: item.correctAnswer,
       explanation: item.explanation || undefined,
       orderIndex: item.orderIndex ?? orderIndex,
       points: item.points,
@@ -491,10 +490,7 @@ export default function TrackAssessments() {
             item.questionType === "multiple_choice"
               ? item.options.filter((o) => o.trim())
               : [],
-          correctAnswer:
-            item.questionType === "multiple_choice"
-              ? Number(item.correctAnswer)
-              : item.correctAnswer,
+          correctAnswer: item.correctAnswer,
           explanation: item.explanation || undefined,
           orderIndex: item.orderIndex ?? idx,
           points: item.points,
