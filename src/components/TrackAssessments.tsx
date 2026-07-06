@@ -87,6 +87,64 @@ function getDisplayLabel(items: any[]): string {
   return types.map((t) => labels[t] || t).join(", ");
 }
 
+// Pulls every bit of detail a backend validation error might carry
+// (message, error, errors[], details[], nested field errors) into one
+// readable string, instead of showing a bare "Validation error".
+function extractErrorMessage(d: any, fallback: string): string {
+  if (!d) return fallback;
+  const parts: string[] = [];
+  if (d.message && typeof d.message === "string") parts.push(d.message);
+  if (d.error && d.error !== d.message) {
+    parts.push(typeof d.error === "string" ? d.error : JSON.stringify(d.error));
+  }
+  const flatten = (val: any): string =>
+    Array.isArray(val)
+      ? val.map((e) => (typeof e === "string" ? e : e?.message || JSON.stringify(e))).join("; ")
+      : typeof val === "string"
+      ? val
+      : JSON.stringify(val);
+  if (d.errors) parts.push(flatten(d.errors));
+  if (d.details) parts.push(flatten(d.details));
+  const unique = [...new Set(parts.filter(Boolean))];
+  return unique.length ? unique.join(" — ") : fallback;
+}
+
+// Existing questions (especially ones created via CSV/Excel bulk upload)
+// sometimes store the multiple-choice correct answer as a letter ("a"-"d")
+// rather than the numeric option index the edit form's dropdown expects.
+// Without this, the dropdown shows blank ("Select...") for those questions,
+// and saving without touching it sends Number("b") -> NaN -> null over the
+// wire, which the backend rejects. This converts letters to the matching
+// numeric index so the dropdown pre-selects correctly.
+function normalizeCorrectAnswer(it: any): string {
+  if (it?.correctAnswer === undefined || it?.correctAnswer === null) return "";
+  if (typeof it.correctAnswer === "number") return String(it.correctAnswer);
+  const raw = String(it.correctAnswer).trim();
+  if (/^\d+$/.test(raw)) return raw;
+  if (it.questionType === "multiple_choice" && /^[a-dA-D]$/.test(raw)) {
+    return String(raw.toLowerCase().charCodeAt(0) - "a".charCodeAt(0));
+  }
+  return raw;
+}
+
+// Client-side guard so a question with no valid answer never gets sent to
+// the backend as null. Returns an error string, or null if the item is fine.
+function validateItem(item: AssessmentItem, label: string): string | null {
+  if (!item.questionText.trim()) return `${label}: question text is required`;
+  if (item.questionType === "multiple_choice") {
+    if (item.correctAnswer === "" || Number.isNaN(Number(item.correctAnswer))) {
+      return `${label}: please select the correct answer`;
+    }
+  } else if (item.questionType === "true_false") {
+    if (item.correctAnswer !== "true" && item.correctAnswer !== "false") {
+      return `${label}: please select True or False`;
+    }
+  } else if (item.questionType === "short_answer") {
+    if (!item.correctAnswer.trim()) return `${label}: please enter the expected answer`;
+  }
+  return null;
+}
+
 export default function TrackAssessments() {
   const [rows, setRows] = useState<TrackAssessmentRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -261,10 +319,7 @@ export default function TrackAssessments() {
         questionText: it.questionText || "",
         questionType: it.questionType || "multiple_choice",
         options: normalizeOptions(it.options),
-        correctAnswer:
-          it.correctAnswer !== undefined && it.correctAnswer !== null
-            ? String(it.correctAnswer)
-            : "",
+        correctAnswer: normalizeCorrectAnswer(it),
         explanation: it.explanation || "",
         orderIndex: it.orderIndex ?? idx,
         points: it.points ?? 1,
@@ -354,6 +409,9 @@ export default function TrackAssessments() {
   }
 
   async function saveSingleQuestion(parentId: number, item: AssessmentItem) {
+    const validationError = validateItem(item, "This question");
+    if (validationError) throw new Error(validationError);
+
     const payload = buildQuestionPayload(item, parentId, 0);
 
     if (item.id) {
@@ -362,18 +420,39 @@ export default function TrackAssessments() {
         headers: authHeaders(),
         body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error("Failed to update question");
+      if (!res.ok) {
+        let message = "Failed to update question";
+        try {
+          const d = await res.json();
+          console.error("Update question failed. Payload:", payload, "Response:", d);
+          message = extractErrorMessage(d, message);
+        } catch {}
+        throw new Error(message);
+      }
     } else {
       const res = await fetch(`${API_BASE}admin/assessment-items`, {
         method: "POST",
         headers: authHeaders(),
         body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error("Failed to create question");
+      if (!res.ok) {
+        let message = "Failed to create question";
+        try {
+          const d = await res.json();
+          console.error("Create question failed. Payload:", payload, "Response:", d);
+          message = extractErrorMessage(d, message);
+        } catch {}
+        throw new Error(message);
+      }
     }
   }
 
   async function saveMultipleQuestions(parentId: number, items: AssessmentItem[]) {
+    for (let i = 0; i < items.length; i++) {
+      const validationError = validateItem(items[i], `Question ${i + 1}`);
+      if (validationError) throw new Error(validationError);
+    }
+
     const existing = items.filter((i) => i.id);
     const fresh = items.filter((i) => !i.id);
 
@@ -381,10 +460,11 @@ export default function TrackAssessments() {
     // question and why, instead of a generic "one of the questions" alert.
     for (let idx = 0; idx < existing.length; idx++) {
       const item = existing[idx];
+      const payload = buildQuestionPayload(item, parentId, idx);
       const res = await fetch(`${API_BASE}admin/assessment-items/${item.id}`, {
         method: "PUT",
         headers: authHeaders(),
-        body: JSON.stringify(buildQuestionPayload(item, parentId, idx)),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) {
         const label = item.questionText?.trim()
@@ -393,41 +473,44 @@ export default function TrackAssessments() {
         let message = `Failed to update question ${label}`;
         try {
           const d = await res.json();
-          message = d?.message || d?.error || message;
+          console.error(`Update question ${label} failed. Payload:`, payload, "Response:", d);
+          message = extractErrorMessage(d, message);
         } catch {}
         throw new Error(message);
       }
     }
 
     if (fresh.length) {
+      const bulkPayload = {
+        parentId,
+        parentType: PARENT_TYPE,
+        questions: fresh.map((item, idx) => ({
+          questionText: item.questionText,
+          questionType: item.questionType,
+          options:
+            item.questionType === "multiple_choice"
+              ? item.options.filter((o) => o.trim())
+              : [],
+          correctAnswer:
+            item.questionType === "multiple_choice"
+              ? Number(item.correctAnswer)
+              : item.correctAnswer,
+          explanation: item.explanation || undefined,
+          orderIndex: item.orderIndex ?? idx,
+          points: item.points,
+        })),
+      };
       const res = await fetch(`${API_BASE}admin/assessment-items/bulk`, {
         method: "POST",
         headers: authHeaders(),
-        body: JSON.stringify({
-          parentId,
-          parentType: PARENT_TYPE,
-          questions: fresh.map((item, idx) => ({
-            questionText: item.questionText,
-            questionType: item.questionType,
-            options:
-              item.questionType === "multiple_choice"
-                ? item.options.filter((o) => o.trim())
-                : [],
-            correctAnswer:
-              item.questionType === "multiple_choice"
-                ? Number(item.correctAnswer)
-                : item.correctAnswer,
-            explanation: item.explanation || undefined,
-            orderIndex: item.orderIndex ?? idx,
-            points: item.points,
-          })),
-        }),
+        body: JSON.stringify(bulkPayload),
       });
       if (!res.ok) {
         let message = "Failed to add new questions";
         try {
           const d = await res.json();
-          message = d?.message || d?.error || message;
+          console.error("Bulk add questions failed. Payload:", bulkPayload, "Response:", d);
+          message = extractErrorMessage(d, message);
         } catch {}
         throw new Error(message);
       }
