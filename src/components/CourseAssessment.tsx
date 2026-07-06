@@ -74,21 +74,17 @@ function normalizeOptions(raw: unknown): string[] {
 // Derives the badge text from the assessment's actual question items,
 // instead of guessing from a count. "No question yet" when the assessment
 // has zero items; the real question type when there's one shared type
-// across items; "Mixed" when items have different types (e.g. from a
-// bulk file upload with varied question types).
+// across items; a comma-joined list of the types present when items have
+// different types (e.g. from a bulk file upload with varied questions).
 function getDisplayLabel(items: any[]): string {
   if (!items || items.length === 0) return "No question yet";
-  const types = new Set(items.map((it) => it?.questionType).filter(Boolean));
-  if (types.size === 1) {
-    const t = [...types][0] as string;
-    const labels: Record<string, string> = {
-      multiple_choice: "Multiple Choice",
-      true_false: "True/False",
-      short_answer: "Short Answer",
-    };
-    return labels[t] || t;
-  }
-  return "Mixed";
+  const labels: Record<string, string> = {
+    multiple_choice: "Multiple Choice",
+    true_false: "True/False",
+    short_answer: "Short Answer",
+  };
+  const types = [...new Set(items.map((it) => it?.questionType).filter(Boolean))] as string[];
+  return types.map((t) => labels[t] || t).join(", ");
 }
 
 export default function CourseAssessments() {
@@ -343,7 +339,7 @@ export default function CourseAssessments() {
       options:
         item.questionType === "multiple_choice"
           ? item.options.filter((o) => o.trim())
-          : undefined,
+          : [],
       correctAnswer:
         item.questionType === "multiple_choice" ? Number(item.correctAnswer) : item.correctAnswer,
       explanation: item.explanation || undefined,
@@ -390,17 +386,27 @@ export default function CourseAssessments() {
     const existing = items.filter((i) => i.id);
     const fresh = items.filter((i) => !i.id);
 
-    await Promise.all(
-      existing.map((item, idx) =>
-        fetch(`${API_BASE}admin/assessment-items/${item.id}`, {
-          method: "PUT",
-          headers: authHeaders(),
-          body: JSON.stringify(buildQuestionPayload(item, parentId, idx)),
-        }).then((res) => {
-          if (!res.ok) throw new Error("Failed to update one of the questions");
-        })
-      )
-    );
+    // Sequential (not Promise.all) so a failure tells us exactly which
+    // question and why, instead of a generic "one of the questions" alert.
+    for (let idx = 0; idx < existing.length; idx++) {
+      const item = existing[idx];
+      const res = await fetch(`${API_BASE}admin/assessment-items/${item.id}`, {
+        method: "PUT",
+        headers: authHeaders(),
+        body: JSON.stringify(buildQuestionPayload(item, parentId, idx)),
+      });
+      if (!res.ok) {
+        const label = item.questionText?.trim()
+          ? `"${item.questionText.slice(0, 40)}${item.questionText.length > 40 ? "…" : ""}"`
+          : `#${idx + 1}`;
+        let message = `Failed to update question ${label}`;
+        try {
+          const d = await res.json();
+          message = d?.message || d?.error || message;
+        } catch {}
+        throw new Error(message);
+      }
+    }
 
     if (fresh.length) {
       const res = await fetch(`${API_BASE}admin/assessment-items/bulk`, {
@@ -415,7 +421,7 @@ export default function CourseAssessments() {
             options:
               item.questionType === "multiple_choice"
                 ? item.options.filter((o) => o.trim())
-                : undefined,
+                : [],
             correctAnswer:
               item.questionType === "multiple_choice"
                 ? Number(item.correctAnswer)
@@ -426,7 +432,14 @@ export default function CourseAssessments() {
           })),
         }),
       });
-      if (!res.ok) throw new Error("Failed to add new questions");
+      if (!res.ok) {
+        let message = "Failed to add new questions";
+        try {
+          const d = await res.json();
+          message = d?.message || d?.error || message;
+        } catch {}
+        throw new Error(message);
+      }
     }
   }
 
@@ -754,11 +767,15 @@ export default function CourseAssessments() {
                   />
                 </div>
               </div>
-              {/*
-                No "Active" checkbox here anymore. Active/inactive is now
-                controlled entirely by the Delete (-> history) and Restore
-                actions, so there's one clear way to do it instead of two.
-              */}
+              <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={editForm.isActive}
+                  onChange={(e) => setEditForm({ ...editForm, isActive: e.target.checked })}
+                  className="w-4 h-4 rounded border-gray-300 accent-[#004900]"
+                />
+                <span className="text-sm text-gray-700">Active</span>
+              </label>
             </div>
 
             <hr className="my-5 border-gray-100" />
