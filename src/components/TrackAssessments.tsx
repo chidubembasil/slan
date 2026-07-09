@@ -182,16 +182,16 @@ function buildCorrectAnswerFields(
 // question back into the editor, so the "Correct Answer" box and the
 // "Explanation" box each show what the admin originally typed into them,
 // instead of showing everything jammed into one field.
-function extractExpectedAnswer(explanation: unknown): { note: string; expected: string } {
-  const text = typeof explanation === "string" ? explanation : "";
-  if (!text) return { note: "", expected: "" };
-  const marker = "Expected answer:";
-  const idx = text.lastIndexOf(marker);
-  if (idx === -1) return { note: text, expected: "" };
-  const note = text.slice(0, idx).trim();
-  const expected = text.slice(idx + marker.length).trim();
-  return { note, expected };
-}
+// function extractExpectedAnswer(explanation: unknown): { note: string; expected: string } {
+//   const text = typeof explanation === "string" ? explanation : "";
+//   if (!text) return { note: "", expected: "" };
+//   const marker = "Expected answer:";
+//   const idx = text.lastIndexOf(marker);
+//   if (idx === -1) return { note: text, expected: "" };
+//   const note = text.slice(0, idx).trim();
+//   const expected = text.slice(idx + marker.length).trim();
+//   return { note, expected };
+// }
 
 // Client-side guard so a question with no valid answer never gets sent to
 // the backend as null. Returns an error string, or null if the item is fine.
