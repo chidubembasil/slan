@@ -1,17 +1,22 @@
 // UsersTable.tsx
 import { useEffect, useState } from "react";
 import { Search, Eye, Pencil, Trash2 } from "lucide-react";
-import { useAuthGuard } from "../hooks/useAuthGuard"
+import { useAuthGuard } from "../hooks/useAuthGuard";
 
 interface User {
-  id: string;
+  id: number;
   fullName: string;
   email: string;
-  school: string;
-  location: string;
+  phone: string;
   role: string;
-  progress: number;
-  status: "Active" | "Inactive";
+  systemRole: string;
+  state: string;
+  schoolName: string;
+  schoolLocation: string;
+  schoolType: string;
+  isEmailVerified: boolean;
+  isActive: boolean;
+  createdAt: string;
   avatar?: string;
 }
 
@@ -22,6 +27,16 @@ interface Column {
 
 const API_BASE = import.meta.env.VITE_BASE_URL;
 
+const COLUMNS: Column[] = [
+  { key: "user", label: "User" },
+  { key: "schoolName", label: "School Name" },
+  { key: "state", label: "State" },
+  { key: "role", label: "Role" },
+  { key: "verified", label: "Verified" },
+  { key: "status", label: "Status" },
+  { key: "actions", label: "Actions" },
+];
+
 export default function Users() {
   useAuthGuard();
   const [users, setUsers] = useState<User[]>([]);
@@ -30,17 +45,7 @@ export default function Users() {
   const [roleFilter, setRoleFilter] = useState("All");
   const [appliedRole, setAppliedRole] = useState("All");
   const [loading, setLoading] = useState(true);
-
-  // Columns are visible immediately - no waiting for API
-  const [columns, setColumns] = useState<Column[]>([
-    { key: "user", label: "User" },
-    { key: "schoolName", label: "School Name" },
-    { key: "state", label: "State" },
-    { key: "role", label: "Role" },
-    { key: "progress", label: "Progress" },
-    { key: "status", label: "Status" },
-    { key: "actions", label: "Actions" },
-  ]);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchData();
@@ -49,23 +54,31 @@ export default function Users() {
   async function fetchData() {
     try {
       setLoading(true);
-      const [usersRes, colsRes] = await Promise.all([
-        fetch(`${API_BASE}/admin/users`),
-        fetch(`${API_BASE}/admin/users`).catch(() => null),
-      ]);
+      setError(null);
 
-      if (usersRes.ok) {
-        const usersData = await usersRes.json();
-        setUsers(usersData);
+      const res = await fetch(`${API_BASE}/admin/users`);
+
+      if (!res.ok) {
+        if (res.status === 403) {
+          setError("Forbidden — admin token required");
+        } else {
+          setError(`Request failed (${res.status})`);
+        }
+        setUsers([]);
+        return;
       }
 
-      // Override columns only if API provides them
-      if (colsRes?.ok) {
-        const colsData = await colsRes.json();
-        if (colsData?.length) setColumns(colsData);
+      const json = await res.json();
+
+      if (json?.success && Array.isArray(json.data)) {
+        setUsers(json.data);
+      } else {
+        setUsers([]);
       }
     } catch (err) {
-      console.error("Failed to fetch:", err);
+      console.error("Failed to fetch users:", err);
+      setError("Failed to reach the server");
+      setUsers([]);
     } finally {
       setLoading(false);
     }
@@ -73,11 +86,12 @@ export default function Users() {
 
   const filteredUsers = users.filter((user) => {
     const q = searchQuery.toLowerCase();
-    const matchesSearch =!q ||
-      user.fullName.toLowerCase().includes(q) ||
-      user.email.toLowerCase().includes(q) ||
-      user.school.toLowerCase().includes(q) ||
-      user.location.toLowerCase().includes(q);
+    const matchesSearch =
+      !q ||
+      user.fullName?.toLowerCase().includes(q) ||
+      user.email?.toLowerCase().includes(q) ||
+      user.schoolName?.toLowerCase().includes(q) ||
+      user.state?.toLowerCase().includes(q);
 
     const matchesRole = appliedRole === "All" || user.role === appliedRole;
     return matchesSearch && matchesRole;
@@ -98,7 +112,12 @@ export default function Users() {
         return (
           <div className="flex items-center gap-3">
             <img
-              src={user.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.fullName)}&background=004900&color=fff`}
+              src={
+                user.avatar ||
+                `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                  user.fullName
+                )}&background=004900&color=fff`
+              }
               className="w-9 h-9 rounded-full object-cover"
               alt=""
             />
@@ -109,26 +128,37 @@ export default function Users() {
           </div>
         );
       case "schoolName":
-        return <span className="text-sm text-slate-700">{user.school}</span>;
+        return <span className="text-sm text-slate-700">{user.schoolName}</span>;
       case "state":
-        return <span className="text-sm text-gray-600">{user.location}</span>;
+        return <span className="text-sm text-gray-600">{user.state}</span>;
       case "role":
-        return <span className="inline-flex bg-gray-100 px-2.5 py-1 rounded-full text-xs text-gray-700">{user.role}</span>;
-      case "progress":
         return (
-          <div className="flex items-center gap-2">
-            <div className="w-20 bg-gray-200 rounded-full h-1.5 overflow-hidden">
-              <div style={{ width: `${user.progress}%` }} className="bg-[#004900] h-1.5 rounded-full transition-all" />
-            </div>
-            <span className="text-xs font-medium text-slate-600 w-8">{user.progress}%</span>
-          </div>
+          <span className="inline-flex bg-gray-100 px-2.5 py-1 rounded-full text-xs text-gray-700">
+            {user.role}
+          </span>
+        );
+      case "verified":
+        return (
+          <span
+            className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${
+              user.isEmailVerified
+                ? "bg-green-100 text-green-700"
+                : "bg-yellow-100 text-yellow-700"
+            }`}
+          >
+            {user.isEmailVerified ? "Verified" : "Unverified"}
+          </span>
         );
       case "status":
         return (
-          <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${
-            user.status === "Active"? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"
-          }`}>
-            {user.status}
+          <span
+            className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${
+              user.isActive
+                ? "bg-green-100 text-green-700"
+                : "bg-gray-100 text-gray-600"
+            }`}
+          >
+            {user.isActive ? "Active" : "Inactive"}
           </span>
         );
       case "actions":
@@ -151,11 +181,12 @@ export default function Users() {
   };
 
   return (
-    
     <div className="bg-white p-6 shadow-sm rounded-xl w-full border border-gray-100">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-semibold text-slate-900">Users Management</h1>
-        <span className="text-sm text-gray-500">{filteredUsers.length} of {users.length} users</span>
+        <span className="text-sm text-gray-500">
+          {filteredUsers.length} of {users.length} users
+        </span>
       </div>
 
       {/* Search + Filter */}
@@ -172,7 +203,7 @@ export default function Users() {
         </div>
 
         <select
-          className="border border-gray-300 px-4 h-11 rounded-lg bg-white text-sm min-w- focus:outline-none focus:ring-2 focus:ring-[#004900]/20"
+          className="border border-gray-300 px-4 h-11 rounded-lg bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20"
           value={roleFilter}
           onChange={(e) => setRoleFilter(e.target.value)}
           aria-label="select"
@@ -196,30 +227,52 @@ export default function Users() {
       </div>
 
       {/* Active filters */}
-      {(searchQuery || appliedRole!== "All") && (
+      {(searchQuery || appliedRole !== "All") && (
         <div className="flex items-center gap-2 mb-4 text-xs">
           <span className="text-gray-500">Filters:</span>
           {searchQuery && (
             <span className="inline-flex items-center gap-1 bg-[#004900]/10 text-[#004900] px-2.5 py-1 rounded-md">
               "{searchQuery}"
-              <button onClick={() => { setSearchInput(""); setSearchQuery(""); }} className="hover:text-[#003600]">×</button>
+              <button
+                onClick={() => {
+                  setSearchInput("");
+                  setSearchQuery("");
+                }}
+                className="hover:text-[#003600]"
+              >
+                ×
+              </button>
             </span>
           )}
-          {appliedRole!== "All" && (
+          {appliedRole !== "All" && (
             <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 px-2.5 py-1 rounded-md">
               {appliedRole}
-              <button onClick={() => { setRoleFilter("All"); setAppliedRole("All"); }} className="hover:text-blue-900">×</button>
+              <button
+                onClick={() => {
+                  setRoleFilter("All");
+                  setAppliedRole("All");
+                }}
+                className="hover:text-blue-900"
+              >
+                ×
+              </button>
             </span>
           )}
         </div>
       )}
 
-      {/* TABLE - ALWAYS VISIBLE */}
+      {error && (
+        <div className="mb-4 text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-4 py-2">
+          {error}
+        </div>
+      )}
+
+      {/* TABLE */}
       <div className="overflow-x-auto border border-gray-200 rounded-lg">
         <table className="w-full">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
-              {columns.map((col) => (
+              {COLUMNS.map((col) => (
                 <th
                   key={col.key}
                   className="text-left py-3.5 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider"
@@ -230,28 +283,28 @@ export default function Users() {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 bg-white">
-            {loading? (
+            {loading ? (
               <tr>
-                <td colSpan={columns.length} className="py-16 text-center">
+                <td colSpan={COLUMNS.length} className="py-16 text-center">
                   <div className="inline-flex items-center gap-2 text-gray-500">
                     <div className="w-4 h-4 border-2 border-gray-300 border-t-[#004900] rounded-full animate-spin"></div>
                     <span className="text-sm">Loading users...</span>
                   </div>
                 </td>
               </tr>
-            ) : filteredUsers.length === 0? (
+            ) : filteredUsers.length === 0 ? (
               <tr>
-                <td colSpan={columns.length} className="py-16 text-center">
+                <td colSpan={COLUMNS.length} className="py-16 text-center">
                   <p className="text-sm text-gray-500">No users found</p>
                   <p className="text-xs text-gray-400 mt-1">
-                    {users.length === 0? "No data from API" : "Try adjusting your search"}
+                    {users.length === 0 ? "No data from API" : "Try adjusting your search"}
                   </p>
                 </td>
               </tr>
             ) : (
               filteredUsers.map((user) => (
                 <tr key={user.id} className="hover:bg-gray-50/50 transition-colors">
-                  {columns.map((col) => (
+                  {COLUMNS.map((col) => (
                     <td key={col.key} className="py-3.5 px-4 align-middle">
                       {renderCell(user, col.key)}
                     </td>

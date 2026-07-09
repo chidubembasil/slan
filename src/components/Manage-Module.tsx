@@ -26,6 +26,7 @@ type Module = {
   estimatedReadMinutes?: number;
   trackId: number;
   track?: { id: number; title: string };
+  thumbnailUrl?: string;
 };
 
 type UnitForm = {
@@ -121,6 +122,93 @@ function ConfirmModal({
   );
 }
 
+// ── Cloudinary Upload ─────────────────────────────────────────────────────────
+// Shared by unit video/pdf uploads AND the module thumbnail upload below.
+
+const uploadToCloudinary = async (file: File, folder: string = "curriculum"): Promise<string> => {
+  const API_KEY = import.meta.env.VITE_API_KEY;
+  const API_SECRET = import.meta.env.VITE_API_SECRET_KEY;
+  const CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
+  if (!API_KEY || !API_SECRET || !CLOUD_NAME) throw new Error("Cloudinary credentials missing");
+
+  const timestamp = Math.round(new Date().getTime() / 1000);
+  const signatureString = `folder=${folder}&timestamp=${timestamp}${API_SECRET}`;
+  const signature = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(signatureString));
+  const signatureHex = Array.from(new Uint8Array(signature))
+    .map((b) => b.toString(16).padStart(2, "0")).join("");
+
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("api_key", API_KEY);
+  formData.append("timestamp", timestamp.toString());
+  formData.append("signature", signatureHex);
+  formData.append("folder", folder);
+
+  const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/upload`, {
+    method: "POST", body: formData,
+  });
+  const data = await res.json();
+  if (!res.ok || data.error) throw new Error(data.error?.message || "Upload failed");
+  return data.secure_url;
+};
+
+// ── Thumbnail Picker ──────────────────────────────────────────────────────────
+// Small self-contained control: shows current/preview image, lets the user
+// pick a new file. The actual Cloudinary upload happens on Save (in
+// EditModuleForm.handleSave) so nothing is uploaded until the user commits.
+
+function ThumbnailPicker({
+  previewUrl,
+  onFileSelected,
+  uploading,
+}: {
+  previewUrl: string;
+  onFileSelected: (file: File) => void;
+  uploading: boolean;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) onFileSelected(file);
+  };
+
+  return (
+    <div className="flex items-center gap-4">
+      <div className="w-20 h-20 rounded-lg border border-gray-200 bg-gray-50 overflow-hidden flex items-center justify-center shrink-0">
+        {previewUrl ? (
+          <img src={previewUrl} alt="Thumbnail preview" className="w-full h-full object-cover" />
+        ) : (
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5">
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <circle cx="8.5" cy="8.5" r="1.5" />
+            <path d="M21 15l-5-5L5 21" />
+          </svg>
+        )}
+      </div>
+      <div>
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          disabled={uploading}
+          className="px-3.5 py-2 rounded-lg text-xs font-medium border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-60"
+        >
+          {uploading ? "Uploading…" : previewUrl ? "Change Image" : "Choose Image"}
+        </button>
+        <p className="text-xs text-gray-400 mt-1.5">PNG or JPG, up to 5MB.</p>
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/*"
+          onChange={handleChange}
+          className="hidden"
+          title="Upload thumbnail image"
+        />
+      </div>
+    </div>
+  );
+}
+
 // ── Edit Module Form ──────────────────────────────────────────────────────────
 
 function EditModuleForm({ module, onDone }: { module: Module; onDone: () => void }) {
@@ -131,11 +219,21 @@ function EditModuleForm({ module, onDone }: { module: Module; onDone: () => void
     estimatedReadMinutes: module.estimatedReadMinutes ?? 0,
     status: module.status,
   });
+  const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
+  const [thumbnailPreview, setThumbnailPreview] = useState<string>(module.thumbnailUrl ?? "");
+  const [uploadingThumbnail, setUploadingThumbnail] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   const set = (k: keyof typeof form, v: string | number) =>
     setForm((f) => ({ ...f, [k]: v }));
+
+  const handleThumbnailSelected = (file: File) => {
+    setThumbnailFile(file);
+    // Local preview via object URL — instant, no network round trip.
+    const objectUrl = URL.createObjectURL(file);
+    setThumbnailPreview(objectUrl);
+  };
 
   const handleSave = async () => {
     if (!form.title.trim()) { setError("Title is required"); return; }
@@ -143,7 +241,15 @@ function EditModuleForm({ module, onDone }: { module: Module; onDone: () => void
     const token = localStorage.getItem("adminAccessToken");
     if (!token) { setError("Not authenticated"); return; }
     setLoading(true);
+
+    let finalThumbnailUrl = module.thumbnailUrl ?? "";
     try {
+      if (thumbnailFile) {
+        setUploadingThumbnail(true);
+        finalThumbnailUrl = await uploadToCloudinary(thumbnailFile, "thumbnails");
+        setUploadingThumbnail(false);
+      }
+
       const res = await fetch(`${BASE}admin/modules/${module.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -153,21 +259,31 @@ function EditModuleForm({ module, onDone }: { module: Module; onDone: () => void
           description: form.description || undefined,
           shortDescription: form.shortDescription || undefined,
           estimatedReadMinutes: form.estimatedReadMinutes,
-          status: form.status
+          status: form.status,
+          thumbnailUrl: finalThumbnailUrl || undefined,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Update failed");
       onDone();
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || "Something went wrong while saving the thumbnail");
     } finally {
       setLoading(false);
+      setUploadingThumbnail(false);
     }
   };
 
   return (
     <div className="space-y-4">
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-1.5">Thumbnail</label>
+        <ThumbnailPicker
+          previewUrl={thumbnailPreview}
+          onFileSelected={handleThumbnailSelected}
+          uploading={uploadingThumbnail}
+        />
+      </div>
       <div>
         <label className="block text-xs font-medium text-gray-700 mb-1.5">Title <span className="text-red-500">*</span></label>
         <input value={form.title} onChange={(e) => set("title", e.target.value)} className={inputCls} placeholder="Module title" />
@@ -198,41 +314,12 @@ function EditModuleForm({ module, onDone }: { module: Module; onDone: () => void
       <div className="flex gap-3 pt-1">
         <button onClick={handleSave} disabled={loading}
           className="bg-[#004900] text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-[#003700] disabled:opacity-60">
-          {loading ? "Saving..." : "Save Changes"}
+          {loading ? (uploadingThumbnail ? "Uploading thumbnail…" : "Saving...") : "Save Changes"}
         </button>
       </div>
     </div>
   );
 }
-
-// ── Cloudinary Upload ─────────────────────────────────────────────────────────
-
-const uploadToCloudinary = async (file: File, folder: string = "curriculum"): Promise<string> => {
-  const API_KEY = import.meta.env.VITE_API_KEY;
-  const API_SECRET = import.meta.env.VITE_API_SECRET_KEY;
-  const CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
-  if (!API_KEY || !API_SECRET || !CLOUD_NAME) throw new Error("Cloudinary credentials missing");
-
-  const timestamp = Math.round(new Date().getTime() / 1000);
-  const signatureString = `folder=${folder}&timestamp=${timestamp}${API_SECRET}`;
-  const signature = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(signatureString));
-  const signatureHex = Array.from(new Uint8Array(signature))
-    .map((b) => b.toString(16).padStart(2, "0")).join("");
-
-  const formData = new FormData();
-  formData.append("file", file);
-  formData.append("api_key", API_KEY);
-  formData.append("timestamp", timestamp.toString());
-  formData.append("signature", signatureHex);
-  formData.append("folder", folder);
-
-  const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/upload`, {
-    method: "POST", body: formData,
-  });
-  const data = await res.json();
-  if (!res.ok || data.error) throw new Error(data.error?.message || "Upload failed");
-  return data.secure_url;
-};
 
 // ── Field helper ──────────────────────────────────────────────────────────────
 
@@ -350,15 +437,11 @@ function UnitCreateModal({
         <input type="text" value={form.title} onChange={(e) => set("title", e.target.value)}
           placeholder="e.g. What is Instructional Leadership?" className={inputCls} />
       </Field>
-      {/* <Field label="Description" required error={errors.description}>
-        <textarea rows={3} value={form.description} onChange={(e) => set("description", e.target.value)}
-          placeholder="Brief description of this unit" className={textareaCls} />
-      </Field> */}
       <Field label="Description" required>
         <textarea rows={3} value={form.description} onChange={(e) => set("description", e.target.value)}
           placeholder="Brief description of this unit" className={textareaCls} />
       </Field>
-      
+
       <Field label="Content" required error={errors.content}>
         <RichTextEditor
           value={form.content}
@@ -1250,12 +1333,27 @@ export default function ManageModules() {
                     <tr key={mod.id} className="hover:bg-gray-50/60 transition-colors">
                       <td className="px-6 py-4 text-gray-400 font-mono text-xs">{mod.id}</td>
                       <td className="px-6 py-4">
-                        <div className="font-medium text-gray-900">{mod.title}</div>
-                        {mod.shortDescription && (
-                          <div className="text-xs text-gray-400 mt-0.5 line-clamp-1 max-w-xs">
-                            {mod.shortDescription}
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-lg border border-gray-100 bg-gray-50 overflow-hidden flex items-center justify-center shrink-0">
+                            {mod.thumbnailUrl ? (
+                              <img src={mod.thumbnailUrl} alt="" className="w-full h-full object-cover" />
+                            ) : (
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" strokeWidth="1.5">
+                                <rect x="3" y="3" width="18" height="18" rx="2" />
+                                <circle cx="8.5" cy="8.5" r="1.5" />
+                                <path d="M21 15l-5-5L5 21" />
+                              </svg>
+                            )}
                           </div>
-                        )}
+                          <div>
+                            <div className="font-medium text-gray-900">{mod.title}</div>
+                            {mod.shortDescription && (
+                              <div className="text-xs text-gray-400 mt-0.5 line-clamp-1 max-w-xs">
+                                {mod.shortDescription}
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       </td>
                       <td className="px-6 py-4">
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700">
