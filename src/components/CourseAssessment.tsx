@@ -117,10 +117,10 @@ function extractErrorMessage(d: any, fallback: string): string {
 //   - the full text of the correct option (bulk uploads) -> match against
 //     the question's own options (case-insensitively) and resolve to index
 //   - true/false as a boolean, "True"/"False", or 0/1     -> normalize to
-//     the lowercase "true"/"false" the select expects
-// Without this, the "Correct Answer" dropdown silently falls back to
-// "Select..." for anything other than a clean numeric index, even though
-// the question genuinely has a correct answer saved on the backend.
+//     the lowercase "true"/"false" the toggle expects
+// Without this, the correct-answer radio/toggle would silently show nothing
+// selected for anything other than a clean numeric index, even though the
+// question genuinely has a correct answer saved on the backend.
 function normalizeCorrectAnswer(it: any): string {
   if (it?.correctAnswer === undefined || it?.correctAnswer === null) return "";
 
@@ -152,22 +152,65 @@ function normalizeCorrectAnswer(it: any): string {
   return typeof it.correctAnswer === "string" ? it.correctAnswer : String(it.correctAnswer);
 }
 
+// Short-answer questions have no single machine-checkable answer — the API
+// validates `correctAnswer` as a number (an option index) for every
+// question, which only makes sense for multiple_choice/true_false. Sending
+// free text there is exactly what produced the
+// `questions.N.correctAnswer: expected number, received string` bulk-save
+// errors. So for short_answer we send `correctAnswer: null` and fold
+// whatever the admin typed into the "Correct Answer" box into `explanation`
+// instead — no text is lost, it just travels in a field the API accepts.
+function buildCorrectAnswerFields(
+  item: AssessmentItem
+): { correctAnswer: number | string | null; explanation?: string } {
+  if (item.questionType === "multiple_choice") {
+    return { correctAnswer: Number(item.correctAnswer), explanation: item.explanation?.trim() || undefined };
+  }
+  if (item.questionType === "short_answer") {
+    const expected = item.correctAnswer?.trim();
+    const note = item.explanation?.trim();
+    const explanation = expected
+      ? note
+        ? `${note}\n\nExpected answer: ${expected}`
+        : `Expected answer: ${expected}`
+      : note || undefined;
+    return { correctAnswer: null, explanation };
+  }
+  // true_false
+  return { correctAnswer: item.correctAnswer, explanation: item.explanation?.trim() || undefined };
+}
+
+// Reverses buildCorrectAnswerFields' short_answer merge when loading a
+// question back into the editor, so the "Correct Answer" box and the
+// "Explanation" box each show what the admin originally typed into them,
+// instead of showing everything jammed into one field.
+function extractExpectedAnswer(explanation: unknown): { note: string; expected: string } {
+  const text = typeof explanation === "string" ? explanation : "";
+  if (!text) return { note: "", expected: "" };
+  const marker = "Expected answer:";
+  const idx = text.lastIndexOf(marker);
+  if (idx === -1) return { note: text, expected: "" };
+  const note = text.slice(0, idx).trim();
+  const expected = text.slice(idx + marker.length).trim();
+  return { note, expected };
+}
+
 // Client-side guard so a question with no valid answer never gets sent to
 // the backend as null. Returns an error string, or null if the item is fine.
 function validateItem(item: AssessmentItem, label: string): string | null {
   if (!item.questionText.trim()) return `${label}: question text is required`;
   if (item.questionType === "multiple_choice") {
     if (item.correctAnswer === "") {
-      return `${label}: please select the correct answer`;
+      return `${label}: please mark which option is correct`;
     }
     const validOptionCount = item.options.filter((o) => o.trim()).length;
     const idx = Number(item.correctAnswer);
     if (!Number.isInteger(idx) || idx < 0 || idx >= validOptionCount) {
-      return `${label}: correct answer is invalid — please reselect it from the dropdown`;
+      return `${label}: correct answer is invalid — please mark a correct option`;
     }
   } else if (item.questionType === "true_false") {
     if (item.correctAnswer !== "true" && item.correctAnswer !== "false") {
-      return `${label}: please select True or False`;
+      return `${label}: please mark True or False as correct`;
     }
   } else if (item.questionType === "short_answer") {
     if (!item.correctAnswer.trim()) return `${label}: please enter the expected answer`;
@@ -192,10 +235,17 @@ export default function CourseAssessments() {
     isActive: true,
   });
 
-  // A single unified list drives the editor for both "single" and
-  // "multiple" question assessments, so more questions can always be added
-  // regardless of how many the assessment started out with.
+  // A single unified list drives the editor for every assessment,
+  // regardless of whether it started out as "single", "multiple", or
+  // "upload" (bulk-created), so questions can always be added, edited,
+  // or removed one at a time.
   const [items, setItems] = useState<AssessmentItem[]>([emptyItem()]);
+
+  // CSV/Excel replace is now an optional, collapsed secondary action
+  // instead of the only way to touch a bulk-uploaded assessment's
+  // questions. Choosing a file here takes priority over the editable
+  // list on save (it replaces all questions).
+  const [showCsvReplace, setShowCsvReplace] = useState(false);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
 
   const [loadingItems, setLoadingItems] = useState(false);
@@ -297,6 +347,7 @@ export default function CourseAssessments() {
   async function openEdit(row: CourseAssessmentRow) {
     setEditingRow(row);
     setUploadFile(null);
+    setShowCsvReplace(false);
 
     try {
       const configRes = await fetch(`${API_BASE}admin/courses/${row.courseId}/assessment`, {
@@ -334,8 +385,9 @@ export default function CourseAssessments() {
       });
     }
 
-    if (row.questionType === "upload") return;
-
+    // Always load the assessment's questions into the editable list —
+    // including assessments that started out as a bulk CSV/Excel upload.
+    // CSV replace is still available below as an optional secondary action.
     setLoadingItems(true);
     try {
       const res = await fetch(
@@ -346,16 +398,36 @@ export default function CourseAssessments() {
       const data = await res.json();
       const fetchedItems: AssessmentItem[] = Array.isArray(data) ? data : data.data || [];
 
-      const normalized: AssessmentItem[] = fetchedItems.map((it: any, idx: number) => ({
-        id: it.id,
-        questionText: it.questionText || "",
-        questionType: it.questionType || "multiple_choice",
-        options: normalizeOptions(it.options),
-        correctAnswer: normalizeCorrectAnswer(it),
-        explanation: it.explanation || "",
-        orderIndex: it.orderIndex ?? idx,
-        points: it.points ?? 1,
-      }));
+      const normalized: AssessmentItem[] = fetchedItems.map((it: any, idx: number) => {
+        const isUnresolvedShortAnswer =
+          it.questionType === "short_answer" &&
+          (it.correctAnswer === null || it.correctAnswer === undefined || it.correctAnswer === "");
+
+        if (isUnresolvedShortAnswer) {
+          const { note, expected } = extractExpectedAnswer(it.explanation);
+          return {
+            id: it.id,
+            questionText: it.questionText || "",
+            questionType: it.questionType || "multiple_choice",
+            options: normalizeOptions(it.options),
+            correctAnswer: expected,
+            explanation: note,
+            orderIndex: it.orderIndex ?? idx,
+            points: it.points ?? 1,
+          };
+        }
+
+        return {
+          id: it.id,
+          questionText: it.questionText || "",
+          questionType: it.questionType || "multiple_choice",
+          options: normalizeOptions(it.options),
+          correctAnswer: normalizeCorrectAnswer(it),
+          explanation: it.explanation || "",
+          orderIndex: it.orderIndex ?? idx,
+          points: it.points ?? 1,
+        };
+      });
 
       setItems(normalized.length ? normalized : [emptyItem()]);
     } catch (e: any) {
@@ -369,6 +441,7 @@ export default function CourseAssessments() {
     setEditingRow(null);
     setItems([emptyItem()]);
     setUploadFile(null);
+    setShowCsvReplace(false);
   }
 
   async function saveAssessmentConfig(courseId: number) {
@@ -393,10 +466,11 @@ export default function CourseAssessments() {
     try {
       await saveAssessmentConfig(editingRow.courseId);
 
-      if (editingRow.questionType === "upload") {
-        if (uploadFile) {
-          await uploadQuestionsFile(editingRow.id, uploadFile);
-        }
+      // A CSV/Excel file (if chosen via the optional "replace" section)
+      // takes priority and replaces all questions; otherwise we save
+      // whatever is in the editable list.
+      if (uploadFile) {
+        await uploadQuestionsFile(editingRow.id, uploadFile);
       } else {
         await saveQuestions(editingRow.id, items);
       }
@@ -411,6 +485,7 @@ export default function CourseAssessments() {
   }
 
   function buildQuestionPayload(item: AssessmentItem, parentId: number, orderIndex: number) {
+    const { correctAnswer, explanation } = buildCorrectAnswerFields(item);
     return {
       parentId,
       parentType: PARENT_TYPE,
@@ -420,11 +495,8 @@ export default function CourseAssessments() {
         item.questionType === "multiple_choice"
           ? item.options.filter((o) => o.trim())
           : [],
-      correctAnswer:
-        item.questionType === "multiple_choice"
-          ? Number(item.correctAnswer)
-          : item.correctAnswer,
-      explanation: item.explanation || undefined,
+      correctAnswer,
+      explanation,
       orderIndex: item.orderIndex ?? orderIndex,
       points: item.points,
     };
@@ -467,21 +539,21 @@ export default function CourseAssessments() {
       const bulkPayload = {
         parentId,
         parentType: PARENT_TYPE,
-        questions: fresh.map((item, idx) => ({
-          questionText: item.questionText,
-          questionType: item.questionType,
-          options:
-            item.questionType === "multiple_choice"
-              ? item.options.filter((o) => o.trim())
-              : [],
-          correctAnswer:
-            item.questionType === "multiple_choice"
-              ? Number(item.correctAnswer)
-              : item.correctAnswer,
-          explanation: item.explanation || undefined,
-          orderIndex: item.orderIndex ?? idx,
-          points: item.points,
-        })),
+        questions: fresh.map((item, idx) => {
+          const { correctAnswer, explanation } = buildCorrectAnswerFields(item);
+          return {
+            questionText: item.questionText,
+            questionType: item.questionType,
+            options:
+              item.questionType === "multiple_choice"
+                ? item.options.filter((o) => o.trim())
+                : [],
+            correctAnswer,
+            explanation,
+            orderIndex: item.orderIndex ?? idx,
+            points: item.points,
+          };
+        }),
       };
       const res = await fetch(`${API_BASE}admin/assessment-items/bulk`, {
         method: "POST",
@@ -781,7 +853,7 @@ export default function CourseAssessments() {
               <p className="text-sm text-gray-400 text-center py-6">Loading questions...</p>
             )}
 
-            {!loadingItems && editingRow.questionType !== "upload" && (
+            {!loadingItems && (
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
@@ -811,6 +883,7 @@ export default function CourseAssessments() {
                     <p className="text-xs text-gray-400 mb-2">Question {idx + 1}</p>
                     <SingleQuestionEditor
                       item={item}
+                      groupName={`course-q-${item.id ?? idx}`}
                       onChange={(patch) => updateItem(idx, patch)}
                       onOptionChange={(optionIndex, text) =>
                         updateItemOption(idx, optionIndex, text)
@@ -818,28 +891,50 @@ export default function CourseAssessments() {
                     />
                   </div>
                 ))}
-              </div>
-            )}
 
-            {!loadingItems && editingRow.questionType === "upload" && (
-              <div>
-                <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">
-                  Replace Questions (CSV / Excel)
-                </p>
-                <label className="mt-1 flex items-center gap-2 px-3 py-2 border border-dashed border-gray-300 rounded-lg text-sm text-gray-500 cursor-pointer hover:border-[#004900]">
-                  <Upload className="w-4 h-4" />
-                  {uploadFile ? uploadFile.name : "Choose .csv or .xlsx file"}
-                  <input
-                    type="file"
-                    accept=".csv,.xlsx,.xls"
-                    className="hidden"
-                    onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
-                  />
-                </label>
-                <p className="text-xs text-gray-400 mt-2">
-                  Required columns: question_text, question_type, correct_answer. Optional:
-                  option_a–d, explanation, points. Max 5MB.
-                </p>
+                {/* CSV/Excel replace is now optional and collapsed by default —
+                    it's a secondary path, not a requirement, for assessments
+                    that originated from a bulk file upload. */}
+                <div className="pt-2 border-t border-gray-100">
+                  <button
+                    type="button"
+                    onClick={() => setShowCsvReplace((v) => !v)}
+                    className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 hover:underline"
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    {showCsvReplace
+                      ? "Cancel CSV / Excel replace"
+                      : "Replace all questions via CSV / Excel upload instead"}
+                  </button>
+                  {showCsvReplace && (
+                    <div className="mt-3">
+                      <label className="flex items-center gap-2 px-3 py-2 border border-dashed border-gray-300 rounded-lg text-sm text-gray-500 cursor-pointer hover:border-[#004900]">
+                        <Upload className="w-4 h-4" />
+                        {uploadFile ? uploadFile.name : "Choose .csv or .xlsx file"}
+                        <input
+                          type="file"
+                          accept=".csv,.xlsx,.xls"
+                          className="hidden"
+                          onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                        />
+                      </label>
+                      <p className="text-xs text-gray-400 mt-2">
+                        Required columns: question_text, question_type, correct_answer.
+                        Optional: option_a–d, explanation, points. Max 5MB. Uploading a file
+                        here replaces every question above on save.
+                      </p>
+                      {uploadFile && (
+                        <button
+                          type="button"
+                          onClick={() => setUploadFile(null)}
+                          className="text-xs text-red-500 hover:underline mt-1"
+                        >
+                          Clear selected file
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
@@ -926,10 +1021,12 @@ export default function CourseAssessments() {
 
 function SingleQuestionEditor({
   item,
+  groupName,
   onChange,
   onOptionChange,
 }: {
   item: AssessmentItem;
+  groupName: string;
   onChange: (patch: Partial<AssessmentItem>) => void;
   onOptionChange: (optionIndex: number, text: string) => void;
 }) {
@@ -960,69 +1057,108 @@ function SingleQuestionEditor({
         </select>
       </div>
 
+      {/* Correct answer is now marked inline instead of via a separate
+          "Correct Answer" dropdown that defaulted to "Select..." even when
+          a correct answer already existed on the backend. */}
       {item.questionType === "multiple_choice" && (
-        <div className="grid grid-cols-2 gap-2">
-          {item.options.map((opt, idx) => (
-            <div key={idx}>
-              <label className="text-xs font-medium text-gray-600">Option {String.fromCharCode(65 + idx)}</label>
-              <input
-                value={opt}
-                onChange={(e) => onOptionChange(idx, e.target.value)}
-                className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
-                title={`option ${idx}`}
-              />
-            </div>
-          ))}
+        <div>
+          <label className="text-xs font-medium text-gray-600 mb-1 block">
+            Options — mark the correct one
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            {item.options.map((opt, idx) => {
+              const isCorrect = String(idx) === item.correctAnswer;
+              return (
+                <div key={idx} className="flex items-end gap-2">
+                  <div className="flex-1">
+                    <label className="text-xs text-gray-500">Option {String.fromCharCode(65 + idx)}</label>
+                    <input
+                      value={opt}
+                      onChange={(e) => onOptionChange(idx, e.target.value)}
+                      className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                      title={`option ${idx}`}
+                    />
+                  </div>
+                  <label
+                    className={`flex items-center gap-1 pb-2 cursor-pointer select-none text-xs ${
+                      isCorrect ? "text-[#004900] font-medium" : "text-gray-400"
+                    }`}
+                    title="Mark as correct answer"
+                  >
+                    <input
+                      type="radio"
+                      name={groupName}
+                      checked={isCorrect}
+                      onChange={() => onChange({ correctAnswer: String(idx) })}
+                      className="w-4 h-4 accent-[#004900]"
+                    />
+                    Correct
+                  </label>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3">
+      {item.questionType === "true_false" && (
+        <div>
+          <label className="text-xs font-medium text-gray-600 mb-1 block">
+            Correct Answer
+          </label>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => onChange({ correctAnswer: "true" })}
+              className={`flex-1 px-3 py-2 text-sm rounded-lg border transition-colors ${
+                item.correctAnswer === "true"
+                  ? "bg-[#004900] text-white border-[#004900]"
+                  : "border-gray-200 text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              True
+            </button>
+            <button
+              type="button"
+              onClick={() => onChange({ correctAnswer: "false" })}
+              className={`flex-1 px-3 py-2 text-sm rounded-lg border transition-colors ${
+                item.correctAnswer === "false"
+                  ? "bg-[#004900] text-white border-[#004900]"
+                  : "border-gray-200 text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              False
+            </button>
+          </div>
+        </div>
+      )}
+
+      {item.questionType === "short_answer" && (
         <div>
           <label className="text-xs font-medium text-gray-600">Correct Answer</label>
-          {item.questionType === "multiple_choice" ? (
-            <select
-              value={item.correctAnswer}
-              onChange={(e) => onChange({ correctAnswer: e.target.value })}
-              className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
-              title="correct answer select"
-            >
-              <option value="">Select...</option>
-              {item.options.map((_, idx) => (
-                <option key={idx} value={idx}>
-                  {String.fromCharCode(65 + idx)}
-                </option>
-              ))}
-            </select>
-          ) : item.questionType === "true_false" ? (
-            <select
-              value={item.correctAnswer}
-              onChange={(e) => onChange({ correctAnswer: e.target.value })}
-              className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
-              title="correct answer select"
-            >
-              <option value="">Select...</option>
-              <option value="true">True</option>
-              <option value="false">False</option>
-            </select>
-          ) : (
-            <input
-              value={item.correctAnswer}
-              onChange={(e) => onChange({ correctAnswer: e.target.value })}
-              className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
-              title="correct answer"
-            />
-          )}
-        </div>
-        <div>
-          <label className="text-xs font-medium text-gray-600">Points</label>
           <input
-            type="number"
-            value={item.points}
-            onChange={(e) => onChange({ points: Number(e.target.value) })}
+            value={item.correctAnswer}
+            onChange={(e) => onChange({ correctAnswer: e.target.value })}
             className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
-            title="points"
+            title="correct answer"
           />
+          <p className="text-[11px] text-gray-400 mt-1">
+            Short-answer questions aren't auto-graded on the backend, so this text is saved
+            inside the explanation field as "Expected answer: …" instead of as a literal
+            correct-answer value.
+          </p>
         </div>
+      )}
+
+      <div>
+        <label className="text-xs font-medium text-gray-600">Points</label>
+        <input
+          type="number"
+          value={item.points}
+          onChange={(e) => onChange({ points: Number(e.target.value) })}
+          className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm max-w-[140px]"
+          title="points"
+        />
       </div>
 
       <div>

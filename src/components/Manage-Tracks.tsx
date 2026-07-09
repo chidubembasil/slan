@@ -7,7 +7,12 @@ const CLOUDINARY_CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
 const CLOUDINARY_API_KEY = import.meta.env.VITE_API_KEY;
 const CLOUDINARY_API_SECRET = import.meta.env.VITE_API_SECRET_KEY;
 
-async function uploadFileToCloudinary(file: File, folder: string = "assessments"): Promise<string> {
+// Generic Cloudinary upload (auto-detects resource type — used for images
+// like track/module thumbnails). CSV/Excel assessment files no longer go
+// through Cloudinary — they're posted straight to the backend as multipart
+// form-data, matching what the backend's /assessment-items/bulk-upload
+// endpoint actually expects (see AddAssessmentForm below).
+async function uploadFileToCloudinary(file: File, folder: string = "curriculum"): Promise<string> {
   if (!CLOUDINARY_API_KEY || !CLOUDINARY_API_SECRET || !CLOUDINARY_CLOUD_NAME) {
     throw new Error("Cloudinary credentials missing");
   }
@@ -27,7 +32,7 @@ async function uploadFileToCloudinary(file: File, folder: string = "assessments"
   formData.append("folder", folder);
 
   const res = await fetch(
-    `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/raw/upload`,
+    `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/upload`,
     { method: "POST", body: formData }
   );
 
@@ -287,12 +292,25 @@ function AddModuleForm({ trackId, onDone, onCancel }: {
     estimatedReadMinutes: 0,
     status: "draft",
   });
+  const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
+  const [thumbnailPreview, setThumbnailPreview] = useState("");
+  const [uploadingThumb, setUploadingThumb] = useState(false);
+  const thumbInputRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [formErrors, setFormErrors] = useState<Partial<Record<keyof ModuleForm, string>>>({});
 
   const set = (k: keyof ModuleForm, v: string | number) =>
     setForm(f => ({ ...f, [k]: v }));
+
+  const handleThumbnailSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setThumbnailFile(file);
+    const reader = new FileReader();
+    reader.onload = (ev) => setThumbnailPreview(ev.target?.result as string);
+    reader.readAsDataURL(file);
+  };
 
   const validate = () => {
     const e: Partial<Record<keyof ModuleForm, string>> = {};
@@ -307,6 +325,20 @@ function AddModuleForm({ trackId, onDone, onCancel }: {
     if (!validate()) return;
     const token = localStorage.getItem("adminAccessToken");
     if (!token) { setError("Not authenticated"); return; }
+
+    let thumbnailUrl = "";
+    if (thumbnailFile) {
+      setUploadingThumb(true);
+      try {
+        thumbnailUrl = await uploadFileToCloudinary(thumbnailFile, "thumbnails");
+      } catch (err: any) {
+        setError(err.message || "Thumbnail upload failed");
+        setUploadingThumb(false);
+        return;
+      }
+      setUploadingThumb(false);
+    }
+
     setLoading(true);
     try {
       const res = await fetch(`${BASE}admin/tracks/${trackId}/modules`, {
@@ -319,6 +351,7 @@ function AddModuleForm({ trackId, onDone, onCancel }: {
           content: form.content || undefined,
           estimatedReadMinutes: form.estimatedReadMinutes,
           status: form.status,
+          thumbnailUrl: thumbnailUrl || undefined,
         }),
       });
       const data = await res.json();
@@ -333,6 +366,35 @@ function AddModuleForm({ trackId, onDone, onCancel }: {
 
   return (
     <div className="space-y-4">
+      {/* Thumbnail Upload */}
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-1.5">Thumbnail</label>
+        <div className="flex items-center gap-4">
+          {thumbnailPreview && (
+            <img src={thumbnailPreview} alt="preview" className="w-16 h-16 rounded-lg object-cover border border-gray-200" />
+          )}
+          <div className="flex-1">
+            <button
+              type="button"
+              onClick={() => thumbInputRef.current?.click()}
+              disabled={uploadingThumb}
+              className="px-4 py-2 rounded-lg text-xs font-medium border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-60"
+            >
+              {uploadingThumb ? "Uploading…" : thumbnailPreview ? "Change Image" : "Upload Image"}
+            </button>
+            <input
+              ref={thumbInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleThumbnailSelect}
+              title="input"
+            />
+            <p className="text-xs text-gray-400 mt-1">JPG, PNG, WebP. Max 5MB.</p>
+          </div>
+        </div>
+      </div>
+
       <div>
         <label className="block text-xs font-medium text-gray-700 mb-1.5">
           Title <span className="text-red-500">*</span>
@@ -372,7 +434,7 @@ function AddModuleForm({ trackId, onDone, onCancel }: {
       </div>
       {error && <p className="text-xs text-red-600">{error}</p>}
       <div className="flex gap-3 pt-1">
-        <button onClick={handleSubmit} disabled={loading}
+        <button onClick={handleSubmit} disabled={loading || uploadingThumb}
           className="bg-[#004900] text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-[#003700] disabled:opacity-60">
           {loading ? "Creating..." : "Create Module →"}
         </button>
@@ -629,7 +691,6 @@ function AddAssessmentForm({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [qLoading, setQLoading] = useState(false);
   const [qError, setQError] = useState("");
-  const [uploadingFile, setUploadingFile] = useState(false);
 
   const setC = (k: keyof typeof config, v: any) =>
     setConfig(f => ({ ...f, [k]: v }));
@@ -731,32 +792,23 @@ function AddAssessmentForm({
         if (!res.ok) throw new Error(data.message || "Bulk submit failed");
 
       } else if (mode === "file") {
+        // File upload → sent directly to the backend as multipart form-data,
+        // matching the working Module-assessment implementation. (Previously
+        // this uploaded to Cloudinary first and posted a JSON { fileUrl }
+        // payload, which the backend's bulk-upload endpoint rejected with a
+        // 400 "File processing failed" — it expects the actual file.)
         if (!fileRef) { setQError("Please select a CSV or Excel file"); setQLoading(false); return; }
-        
-        setUploadingFile(true);
-        let cloudinaryUrl: string;
-        try {
-          cloudinaryUrl = await uploadFileToCloudinary(fileRef, "assessments");
-        } catch (err: any) {
-          setQError(err.message || "File upload to Cloudinary failed");
-          setUploadingFile(false);
-          setQLoading(false);
-          return;
-        }
-        setUploadingFile(false);
+
+        const formData = new FormData();
+        formData.append("file", fileRef);
+        formData.append("parentId", String(parentId));
+        formData.append("parentType", parentType);
 
         const res = await fetch(`${BASE}admin/assessment-items/bulk-upload`, {
           method: "POST",
-          headers: { 
-            "Content-Type": "application/json", 
-            Authorization: `Bearer ${token}` 
-          },
+          headers: { Authorization: `Bearer ${token}` },
           credentials: "include",
-          body: JSON.stringify({
-            fileUrl: cloudinaryUrl,
-            parentId,
-            parentType,
-          }),
+          body: formData,
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || "File processing failed");
@@ -938,7 +990,7 @@ function AddAssessmentForm({
             </div>
           )}
 
-          {/* File upload mode — goes to Cloudinary */}
+          {/* File upload mode — direct multipart to backend */}
           {mode === "file" && (
             <div className="space-y-4">
               <div className="border-2 border-dashed border-gray-200 rounded-xl p-6 text-center hover:border-[#004900]/30 transition-colors">
@@ -956,13 +1008,12 @@ function AddAssessmentForm({
                 <p className="text-sm text-gray-500 mb-1">
                   {fileRef ? fileRef.name : "Drop a CSV or Excel file here, or click to browse"}
                 </p>
-                <p className="text-xs text-gray-400 mb-3">Max 5 MB · .csv, .xlsx · Uploads to Cloudinary</p>
+                <p className="text-xs text-gray-400 mb-3">Max 5 MB · .csv, .xlsx</p>
                 <button
                   onClick={() => fileInputRef.current?.click()}
-                  disabled={uploadingFile}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium bg-[#004900] text-white hover:bg-[#003700] disabled:opacity-60"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium bg-[#004900] text-white hover:bg-[#003700]"
                 >
-                  {uploadingFile ? "Uploading…" : "Choose File"}
+                  Choose File
                 </button>
                 <input
                   ref={fileInputRef}
@@ -1006,10 +1057,10 @@ function AddAssessmentForm({
           <div className="flex gap-3 pt-2">
             <button
               onClick={handleSubmitQuestions}
-              disabled={qLoading || uploadingFile}
+              disabled={qLoading}
               className="bg-[#004900] text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-[#003700] disabled:opacity-60"
             >
-              {qLoading || uploadingFile
+              {qLoading
                 ? "Submitting…"
                 : mode === "file"
                 ? "Upload & Save"

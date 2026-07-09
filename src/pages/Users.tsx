@@ -56,7 +56,7 @@ export default function Users() {
       setLoading(true);
       setError(null);
 
-      const res = await fetch(`${API_BASE}/admin/users`);
+      const res = await fetch(`${API_BASE}admin/users`);
 
       if (!res.ok) {
         if (res.status === 403) {
