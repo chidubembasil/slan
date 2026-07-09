@@ -1101,7 +1101,8 @@ function SingleQuestionEditor({
           </label>
           <div className="grid grid-cols-2 gap-2">
             {item.options.map((opt, idx) => {
-              const isCorrect = String(idx) === item.correctAnswer;
+              const isCorrect =
+                String(idx) === item.correctAnswer || opt.trim().toLowerCase() === item.correctAnswer.trim().toLowerCase();
               return (
                 <div key={idx} className="flex items-end gap-2">
                   <div className="flex-1">
