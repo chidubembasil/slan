@@ -167,15 +167,11 @@ function buildCorrectAnswerFields(
     return { correctAnswer: Number(item.correctAnswer), explanation: item.explanation?.trim() || undefined };
   }
   if (item.questionType === "short_answer") {
-    const expected = item.correctAnswer?.trim();
-    const note = item.explanation?.trim();
-    const explanation = expected
-      ? note
-        ? `${note}\n\nExpected answer: ${expected}`
-        : `Expected answer: ${expected}`
-      : note || undefined;
-    return { correctAnswer: null, explanation };
-  }
+    return { 
+        correctAnswer: item.correctAnswer, 
+        explanation: item.explanation?.trim() || undefined 
+    };
+}
   // true_false
   return { correctAnswer: item.correctAnswer, explanation: item.explanation?.trim() || undefined };
 }
@@ -213,7 +209,7 @@ function validateItem(item: AssessmentItem, label: string): string | null {
       return `${label}: please mark True or False as correct`;
     }
   } else if (item.questionType === "short_answer") {
-    if (!item.correctAnswer.trim()) return `${label}: please enter the expected answer`;
+    // correctAnswer is optional for short_answer
   }
   return null;
 }
@@ -398,26 +394,7 @@ export default function CourseAssessments() {
       const data = await res.json();
       const fetchedItems: AssessmentItem[] = Array.isArray(data) ? data : data.data || [];
 
-      const normalized: AssessmentItem[] = fetchedItems.map((it: any, idx: number) => {
-        const isUnresolvedShortAnswer =
-          it.questionType === "short_answer" &&
-          (it.correctAnswer === null || it.correctAnswer === undefined || it.correctAnswer === "");
-
-        if (isUnresolvedShortAnswer) {
-          const { note, expected } = extractExpectedAnswer(it.explanation);
-          return {
-            id: it.id,
-            questionText: it.questionText || "",
-            questionType: it.questionType || "multiple_choice",
-            options: normalizeOptions(it.options),
-            correctAnswer: expected,
-            explanation: note,
-            orderIndex: it.orderIndex ?? idx,
-            points: it.points ?? 1,
-          };
-        }
-
-        return {
+      const normalized: AssessmentItem[] = fetchedItems.map((it: any, idx: number) => ({
           id: it.id,
           questionText: it.questionText || "",
           questionType: it.questionType || "multiple_choice",
@@ -426,8 +403,7 @@ export default function CourseAssessments() {
           explanation: it.explanation || "",
           orderIndex: it.orderIndex ?? idx,
           points: it.points ?? 1,
-        };
-      });
+      }));
 
       setItems(normalized.length ? normalized : [emptyItem()]);
     } catch (e: any) {

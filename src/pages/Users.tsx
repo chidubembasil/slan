@@ -47,6 +47,16 @@ export default function Users() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Every other admin page reads the admin token and sends it as a Bearer
+  // header — this page was the one exception, which is exactly why
+  // `admin/users` came back "401 Authentication required" with an empty
+  // table instead of the actual user list.
+  const token = localStorage.getItem("adminAccessToken") || "";
+
+  function authHeaders() {
+    return { Authorization: `Bearer ${token}` };
+  }
+
   useEffect(() => {
     fetchData();
   }, []);
@@ -56,10 +66,14 @@ export default function Users() {
       setLoading(true);
       setError(null);
 
-      const res = await fetch(`${API_BASE}admin/users`);
+      const res = await fetch(`${API_BASE}admin/users`, {
+        headers: authHeaders(),
+      });
 
       if (!res.ok) {
-        if (res.status === 403) {
+        if (res.status === 401) {
+          setError("Session expired — please log in again");
+        } else if (res.status === 403) {
           setError("Forbidden — admin token required");
         } else {
           setError(`Request failed (${res.status})`);
