@@ -1,7 +1,7 @@
 import { NavLink } from "react-router-dom"
 import {
   LayoutGrid, BookOpen, Users, CheckSquare, CreditCard,
-  ChartCandlestick, LogOut, Headset, Flag, X
+  ChartCandlestick, LogOut, Headset, Flag, X, Award
 } from "lucide-react"
 
 type Props = {
@@ -20,7 +20,8 @@ export default function SideBar({ isOpen, onClose }: Props) {
     { path: "/payment", name: "Payment", icon: CreditCard },
     { path: "/report", name: "Report", icon: ChartCandlestick },
     { path: "/support", name: "Support Queue", icon: Headset },
-    { path: "/community", name: "Community Mod", icon: Flag }
+    { path: "/community", name: "Community Mod", icon: Flag },
+    { path: "/certificate", name: "Certificate", icon: Award },
   ]
 
   const handleLogout = async () => {

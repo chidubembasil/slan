@@ -7,7 +7,7 @@ import {
   X,
   Plus,
   Trash,
-  History,
+  Archive,
   RotateCcw,
 } from "lucide-react";
 
@@ -110,21 +110,46 @@ function extractErrorMessage(d: any, fallback: string): string {
 }
 
 // Existing questions (especially ones created via CSV/Excel bulk upload)
-// sometimes store the multiple-choice correct answer as a letter ("a"-"d")
-// rather than the numeric option index the edit form's dropdown expects.
-// Without this, the dropdown shows blank ("Select...") for those questions,
-// and saving without touching it sends Number("b") -> NaN -> null over the
-// wire, which the backend rejects. This converts letters to the matching
-// numeric index so the dropdown pre-selects correctly.
+// can store the "correct answer" in a few different shapes depending on
+// where they came from:
+//   - a numeric option index (0-3)                      -> use directly
+//   - a letter ("a"-"d")                                 -> convert to index
+//   - the full text of the correct option (bulk uploads) -> match against
+//     the question's own options (case-insensitively) and resolve to index
+//   - true/false as a boolean, "True"/"False", or 0/1     -> normalize to
+//     the lowercase "true"/"false" the select expects
+// Without this, the "Correct Answer" dropdown silently falls back to
+// "Select..." for anything other than a clean numeric index, even though
+// the question genuinely has a correct answer saved on the backend.
 function normalizeCorrectAnswer(it: any): string {
   if (it?.correctAnswer === undefined || it?.correctAnswer === null) return "";
-  if (typeof it.correctAnswer === "number") return String(it.correctAnswer);
-  const raw = String(it.correctAnswer).trim();
-  if (/^\d+$/.test(raw)) return raw;
-  if (it.questionType === "multiple_choice" && /^[a-dA-D]$/.test(raw)) {
-    return String(raw.toLowerCase().charCodeAt(0) - "a".charCodeAt(0));
+
+  if (it.questionType === "true_false") {
+    if (typeof it.correctAnswer === "boolean") return it.correctAnswer ? "true" : "false";
+    const raw = String(it.correctAnswer).trim().toLowerCase();
+    if (raw === "true" || raw === "1" || raw === "yes") return "true";
+    if (raw === "false" || raw === "0" || raw === "no") return "false";
+    return raw;
   }
-  return raw;
+
+  if (it.questionType === "multiple_choice") {
+    if (typeof it.correctAnswer === "number") return String(it.correctAnswer);
+    const raw = String(it.correctAnswer).trim();
+    if (/^\d+$/.test(raw)) return raw;
+    if (/^[a-dA-D]$/.test(raw)) {
+      return String(raw.toLowerCase().charCodeAt(0) - "a".charCodeAt(0));
+    }
+    // Fallback: the stored value is the option's own text (common with
+    // CSV/Excel bulk uploads) — find which option it matches.
+    const options = normalizeOptions(it.options);
+    const matchIdx = options.findIndex(
+      (o) => o.trim().toLowerCase() === raw.toLowerCase()
+    );
+    return matchIdx !== -1 ? String(matchIdx) : "";
+  }
+
+  // short_answer — stored and displayed as free text either way.
+  return typeof it.correctAnswer === "string" ? it.correctAnswer : String(it.correctAnswer);
 }
 
 // Client-side guard so a question with no valid answer never gets sent to
@@ -155,7 +180,7 @@ export default function CourseAssessments() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const [historyOpen, setHistoryOpen] = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
 
   const [editingRow, setEditingRow] = useState<CourseAssessmentRow | null>(null);
   const [editForm, setEditForm] = useState({
@@ -167,8 +192,10 @@ export default function CourseAssessments() {
     isActive: true,
   });
 
-  const [singleItem, setSingleItem] = useState<AssessmentItem>(emptyItem());
-  const [multipleItems, setMultipleItems] = useState<AssessmentItem[]>([emptyItem()]);
+  // A single unified list drives the editor for both "single" and
+  // "multiple" question assessments, so more questions can always be added
+  // regardless of how many the assessment started out with.
+  const [items, setItems] = useState<AssessmentItem[]>([emptyItem()]);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
 
   const [loadingItems, setLoadingItems] = useState(false);
@@ -206,7 +233,7 @@ export default function CourseAssessments() {
             if (!assessment || !assessment.id) return;
 
             let questionCount = 0;
-            let items: any[] = [];
+            let itemsForRow: any[] = [];
             try {
               const itemsRes = await fetch(
                 `${API_BASE}admin/assessment-items?parentId=${assessment.id}&parentType=${PARENT_TYPE}`,
@@ -214,8 +241,8 @@ export default function CourseAssessments() {
               );
               if (itemsRes.ok) {
                 const itemsData = await itemsRes.json();
-                items = Array.isArray(itemsData) ? itemsData : itemsData.data || [];
-                questionCount = items.length;
+                itemsForRow = Array.isArray(itemsData) ? itemsData : itemsData.data || [];
+                questionCount = itemsForRow.length;
               }
             } catch {
               // leave at 0 / empty
@@ -230,7 +257,7 @@ export default function CourseAssessments() {
               courseId: course.id,
               courseName: course.title || course.name || `Course #${course.id}`,
               questionType,
-              displayLabel: getDisplayLabel(items),
+              displayLabel: getDisplayLabel(itemsForRow),
               questionCount,
               isActive: assessment.isActive !== false,
             });
@@ -253,7 +280,7 @@ export default function CourseAssessments() {
   }, []);
 
   const activeRows = useMemo(() => rows.filter((r) => r.isActive), [rows]);
-  const historyRows = useMemo(() => rows.filter((r) => !r.isActive), [rows]);
+  const archivedRows = useMemo(() => rows.filter((r) => !r.isActive), [rows]);
 
   const filteredRows = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -317,9 +344,9 @@ export default function CourseAssessments() {
       );
       if (!res.ok) throw new Error("Failed to load questions");
       const data = await res.json();
-      const items: AssessmentItem[] = Array.isArray(data) ? data : data.data || [];
+      const fetchedItems: AssessmentItem[] = Array.isArray(data) ? data : data.data || [];
 
-      const normalized: AssessmentItem[] = items.map((it: any, idx: number) => ({
+      const normalized: AssessmentItem[] = fetchedItems.map((it: any, idx: number) => ({
         id: it.id,
         questionText: it.questionText || "",
         questionType: it.questionType || "multiple_choice",
@@ -330,11 +357,7 @@ export default function CourseAssessments() {
         points: it.points ?? 1,
       }));
 
-      if (row.questionType === "single") {
-        setSingleItem(normalized[0] || emptyItem());
-      } else {
-        setMultipleItems(normalized.length ? normalized : [emptyItem()]);
-      }
+      setItems(normalized.length ? normalized : [emptyItem()]);
     } catch (e: any) {
       alert(e.message || "Failed to load existing questions");
     } finally {
@@ -344,8 +367,7 @@ export default function CourseAssessments() {
 
   function closeEdit() {
     setEditingRow(null);
-    setSingleItem(emptyItem());
-    setMultipleItems([emptyItem()]);
+    setItems([emptyItem()]);
     setUploadFile(null);
   }
 
@@ -371,14 +393,12 @@ export default function CourseAssessments() {
     try {
       await saveAssessmentConfig(editingRow.courseId);
 
-      if (editingRow.questionType === "single") {
-        await saveSingleQuestion(editingRow.id, singleItem);
-      } else if (editingRow.questionType === "multiple") {
-        await saveMultipleQuestions(editingRow.id, multipleItems);
-      } else if (editingRow.questionType === "upload") {
+      if (editingRow.questionType === "upload") {
         if (uploadFile) {
           await uploadQuestionsFile(editingRow.id, uploadFile);
         }
+      } else {
+        await saveQuestions(editingRow.id, items);
       }
 
       closeEdit();
@@ -410,53 +430,14 @@ export default function CourseAssessments() {
     };
   }
 
-  async function saveSingleQuestion(parentId: number, item: AssessmentItem) {
-    const validationError = validateItem(item, "This question");
-    if (validationError) throw new Error(validationError);
-
-    const payload = buildQuestionPayload(item, parentId, 0);
-
-    if (item.id) {
-      const res = await fetch(`${API_BASE}admin/assessment-items/${item.id}`, {
-        method: "PUT",
-        headers: authHeaders(),
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) {
-        let message = "Failed to update question";
-        try {
-          const d = await res.json();
-          console.error("Update question failed. Payload:", payload, "Response:", d);
-          message = extractErrorMessage(d, message);
-        } catch {}
-        throw new Error(message);
-      }
-    } else {
-      const res = await fetch(`${API_BASE}admin/assessment-items`, {
-        method: "POST",
-        headers: authHeaders(),
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) {
-        let message = "Failed to create question";
-        try {
-          const d = await res.json();
-          console.error("Create question failed. Payload:", payload, "Response:", d);
-          message = extractErrorMessage(d, message);
-        } catch {}
-        throw new Error(message);
-      }
-    }
-  }
-
-  async function saveMultipleQuestions(parentId: number, items: AssessmentItem[]) {
-    for (let i = 0; i < items.length; i++) {
-      const validationError = validateItem(items[i], `Question ${i + 1}`);
+  async function saveQuestions(parentId: number, questionItems: AssessmentItem[]) {
+    for (let i = 0; i < questionItems.length; i++) {
+      const validationError = validateItem(questionItems[i], `Question ${i + 1}`);
       if (validationError) throw new Error(validationError);
     }
 
-    const existing = items.filter((i) => i.id);
-    const fresh = items.filter((i) => !i.id);
+    const existing = questionItems.filter((i) => i.id);
+    const fresh = questionItems.filter((i) => !i.id);
 
     // Sequential (not Promise.all) so a failure tells us exactly which
     // question and why, instead of a generic "one of the questions" alert.
@@ -501,7 +482,7 @@ export default function CourseAssessments() {
           orderIndex: item.orderIndex ?? idx,
           points: item.points,
         })),
-            };
+      };
       const res = await fetch(`${API_BASE}admin/assessment-items/bulk`, {
         method: "POST",
         headers: authHeaders(),
@@ -537,7 +518,7 @@ export default function CourseAssessments() {
   }
 
   // Sets a row's active status on the backend and mirrors it in local state.
-  // This is the shared mechanism behind Delete (-> false) and Restore (-> true).
+  // This is the shared mechanism behind Archive (-> false) and Restore (-> true).
   async function setRowActive(row: CourseAssessmentRow, isActive: boolean) {
     try {
       const res = await fetch(`${API_BASE}admin/courses/${row.courseId}/assessment`, {
@@ -547,7 +528,7 @@ export default function CourseAssessments() {
       });
       if (!res.ok) {
         throw new Error(
-          isActive ? "Failed to restore assessment" : "Failed to move assessment to history"
+          isActive ? "Failed to restore assessment" : "Failed to move assessment to archive"
         );
       }
       setRows((prev) => prev.map((r) => (r.id === row.id ? { ...r, isActive } : r)));
@@ -556,8 +537,8 @@ export default function CourseAssessments() {
     }
   }
 
-  async function handleDelete(row: CourseAssessmentRow) {
-    if (!confirm(`Move assessment "${row.title}" for ${row.courseName} to history?`)) return;
+  async function handleArchive(row: CourseAssessmentRow) {
+    if (!confirm(`Move assessment "${row.title}" for ${row.courseName} to the archive?`)) return;
     await setRowActive(row, false);
   }
 
@@ -565,67 +546,14 @@ export default function CourseAssessments() {
     await setRowActive(row, true);
   }
 
-  async function handlePermanentDelete(row: CourseAssessmentRow) {
-    if (
-      !confirm(
-        `Permanently delete assessment "${row.title}" for ${row.courseName}? This cannot be undone.`
-      )
-    )
-      return;
-    try {
-      const itemsRes = await fetch(
-        `${API_BASE}admin/assessment-items?parentId=${row.id}&parentType=${PARENT_TYPE}`,
-        { headers: authHeaders(false) }
-      );
-      if (itemsRes.ok) {
-        const itemsData = await itemsRes.json();
-        const items = Array.isArray(itemsData) ? itemsData : itemsData.data || [];
-        await Promise.allSettled(
-          items.map((item: any) =>
-            fetch(`${API_BASE}admin/assessment-items/${item.id}`, {
-              method: "DELETE",
-              headers: authHeaders(false),
-            })
-          )
-        );
-      }
-
-      let res = await fetch(`${API_BASE}admin/courses/${row.courseId}/assessment`, {
-        method: "DELETE",
-        headers: authHeaders(false),
-      });
-
-      if (!res.ok && res.status === 404) {
-        res = await fetch(`${API_BASE}admin/assessments/${row.id}`, {
-          method: "DELETE",
-          headers: authHeaders(false),
-        });
-      }
-
-      if (!res.ok) {
-        let message = "Failed to permanently delete assessment";
-        try {
-          const errData = await res.json();
-          message = errData?.message || errData?.error || message;
-        } catch {}
-        throw new Error(message);
-      }
-
-      setRows((prev) => prev.filter((r) => r.id !== row.id));
-    } catch (e: any) {
-      console.error("Permanent delete error:", e);
-      alert(e.message || "Failed to permanently delete assessment");
-    }
-  }
-
-  function updateMultipleItem(index: number, patch: Partial<AssessmentItem>) {
-    setMultipleItems((prev) =>
+  function updateItem(index: number, patch: Partial<AssessmentItem>) {
+    setItems((prev) =>
       prev.map((item, i) => (i === index ? { ...item, ...patch } : item))
     );
   }
 
-  function updateMultipleItemOption(itemIndex: number, optionIndex: number, text: string) {
-    setMultipleItems((prev) =>
+  function updateItemOption(itemIndex: number, optionIndex: number, text: string) {
+    setItems((prev) =>
       prev.map((item, i) =>
         i === itemIndex
           ? {
@@ -637,12 +565,12 @@ export default function CourseAssessments() {
     );
   }
 
-  function addMultipleItem() {
-    setMultipleItems((prev) => [...prev, emptyItem()]);
+  function addItem() {
+    setItems((prev) => [...prev, emptyItem()]);
   }
 
-  async function removeMultipleItem(index: number) {
-    const item = multipleItems[index];
+  async function removeItem(index: number) {
+    const item = items[index];
     if (item.id) {
       if (!confirm("Delete this question?")) return;
       try {
@@ -656,14 +584,7 @@ export default function CourseAssessments() {
         return;
       }
     }
-    setMultipleItems((prev) => prev.filter((_, i) => i !== index));
-  }
-
-  function updateSingleOption(optionIndex: number, text: string) {
-    setSingleItem((prev) => ({
-      ...prev,
-      options: prev.options.map((o, oi) => (oi === optionIndex ? text : o)),
-    }));
+    setItems((prev) => prev.filter((_, i) => i !== index));
   }
 
   return (
@@ -680,15 +601,15 @@ export default function CourseAssessments() {
           />
         </div>
         <button
-          onClick={() => setHistoryOpen(true)}
+          onClick={() => setArchiveOpen(true)}
           className="inline-flex items-center gap-2 px-3 py-2 text-sm border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50"
-          title="View history"
+          title="View archive"
         >
-          <History className="w-4 h-4" />
-          History
-          {historyRows.length > 0 && (
+          <Archive className="w-4 h-4" />
+          Archive
+          {archivedRows.length > 0 && (
             <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[11px] rounded-full bg-gray-200 text-gray-700">
-              {historyRows.length}
+              {archivedRows.length}
             </span>
           )}
         </button>
@@ -754,9 +675,9 @@ export default function CourseAssessments() {
                       <Pencil className="w-4 h-4" />
                     </button>
                     <button
-                      onClick={() => handleDelete(row)}
+                      onClick={() => handleArchive(row)}
                       className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-red-500 hover:bg-red-50"
-                      title="Move to history"
+                      title="Move to archive"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -860,50 +781,39 @@ export default function CourseAssessments() {
               <p className="text-sm text-gray-400 text-center py-6">Loading questions...</p>
             )}
 
-            {!loadingItems && editingRow.questionType === "single" && (
-              <div className="space-y-3">
-                <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                  Single Question
-                </p>
-                <SingleQuestionEditor
-                  item={singleItem}
-                  onChange={(patch) => setSingleItem((prev) => ({ ...prev, ...patch }))}
-                  onOptionChange={updateSingleOption}
-                />
-              </div>
-            )}
-
-            {!loadingItems && editingRow.questionType === "multiple" && (
+            {!loadingItems && editingRow.questionType !== "upload" && (
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                    Questions ({multipleItems.length})
+                    Questions ({items.length})
                   </p>
                   <button
-                    onClick={addMultipleItem}
+                    onClick={addItem}
                     className="inline-flex items-center gap-1 text-xs text-[#004900] hover:underline"
                   >
                     <Plus className="w-3.5 h-3.5" /> Add question
                   </button>
                 </div>
-                {multipleItems.map((item, idx) => (
+                {items.map((item, idx) => (
                   <div
                     key={item.id ?? `new-${idx}`}
                     className="border border-gray-200 rounded-lg p-3 relative"
                   >
-                    <button
-                      onClick={() => removeMultipleItem(idx)}
-                      className="absolute top-2 right-2 text-gray-400 hover:text-red-500"
-                      title="remove question"
-                    >
-                      <Trash className="w-3.5 h-3.5" />
-                    </button>
+                    {items.length > 1 && (
+                      <button
+                        onClick={() => removeItem(idx)}
+                        className="absolute top-2 right-2 text-gray-400 hover:text-red-500"
+                        title="remove question"
+                      >
+                        <Trash className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                     <p className="text-xs text-gray-400 mb-2">Question {idx + 1}</p>
                     <SingleQuestionEditor
                       item={item}
-                      onChange={(patch) => updateMultipleItem(idx, patch)}
-                      onOptionChange={(optionId, text) =>
-                        updateMultipleItemOption(idx, optionId, text)
+                      onChange={(patch) => updateItem(idx, patch)}
+                      onOptionChange={(optionIndex, text) =>
+                        updateItemOption(idx, optionIndex, text)
                       }
                     />
                   </div>
@@ -952,23 +862,23 @@ export default function CourseAssessments() {
         </div>
       )}
 
-      {historyOpen && (
+      {archiveOpen && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl w-full max-w-3xl p-6 relative max-h-[85vh] overflow-y-auto">
             <button
-              onClick={() => setHistoryOpen(false)}
+              onClick={() => setArchiveOpen(false)}
               className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
               title="close"
             >
               <X className="w-5 h-5" />
             </button>
-            <h3 className="text-lg font-semibold mb-1">Assessment History</h3>
+            <h3 className="text-lg font-semibold mb-1">Assessment Archive</h3>
             <p className="text-sm text-gray-500 mb-4">
-              Deleted or deactivated course assessments. Restore them or remove them for good.
+              Archived course assessments. Restore one to make it active again.
             </p>
 
-            {historyRows.length === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-10">Nothing in history.</p>
+            {archivedRows.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-10">Archive is empty.</p>
             ) : (
               <div className="border border-gray-200 rounded-xl overflow-hidden">
                 <table className="w-full text-sm">
@@ -982,7 +892,7 @@ export default function CourseAssessments() {
                     </tr>
                   </thead>
                   <tbody>
-                    {historyRows.map((row) => (
+                    {archivedRows.map((row) => (
                       <tr key={row.id} className="border-b border-gray-100 hover:bg-gray-50">
                         <td className="px-4 py-3 text-gray-700">{row.id}</td>
                         <td className="px-4 py-3 font-medium text-gray-900">{row.title}</td>
@@ -995,17 +905,10 @@ export default function CourseAssessments() {
                         <td className="px-4 py-3 text-right">
                           <button
                             onClick={() => handleRestore(row)}
-                            className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-[#004900] hover:bg-green-50 mr-1"
+                            className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-[#004900] hover:bg-green-50"
                             title="Restore"
                           >
                             <RotateCcw className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handlePermanentDelete(row)}
-                            className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-red-500 hover:bg-red-50"
-                            title="Delete permanently"
-                          >
-                            <Trash2 className="w-4 h-4" />
                           </button>
                         </td>
                       </tr>

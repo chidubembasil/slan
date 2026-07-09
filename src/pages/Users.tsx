@@ -50,8 +50,8 @@ export default function Users() {
     try {
       setLoading(true);
       const [usersRes, colsRes] = await Promise.all([
-        fetch(`${API_BASE}/api/users`),
-        fetch(`${API_BASE}/api/users/columns`).catch(() => null),
+        fetch(`${API_BASE}/admin/users`),
+        fetch(`${API_BASE}/admin/users`).catch(() => null),
       ]);
 
       if (usersRes.ok) {

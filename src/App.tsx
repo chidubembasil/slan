@@ -13,6 +13,7 @@ import Assessment from './pages/Assessment'
 import Notification from './pages/Notification'
 import Support from './pages/Support'
 import Community from './pages/Community'
+import CertificationsSignatoriesPage from './pages/certificationssginatoriesPage'
 
 // components
 import Header from './components/Header'
@@ -68,6 +69,7 @@ function App() {
           <Route path='/notification' element={<Notification />}/>
           <Route path='/support' element={<Support />}/>
           <Route path='/community' element={<Community />}/>
+          <Route path='/certificate' element={<CertificationsSignatoriesPage />}/>
         </Route>
       </Routes>
     </BrowserRouter>
