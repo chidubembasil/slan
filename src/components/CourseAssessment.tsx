@@ -122,34 +122,72 @@ function extractErrorMessage(d: any, fallback: string): string {
 // selected for anything other than a clean numeric index, even though the
 // question genuinely has a correct answer saved on the backend.
 function normalizeCorrectAnswer(it: any): string {
-  if (it?.correctAnswer === undefined || it?.correctAnswer === null) return "";
+  if (it?.correctAnswer == null) return "";
 
+  // TRUE/FALSE
   if (it.questionType === "true_false") {
-    if (typeof it.correctAnswer === "boolean") return it.correctAnswer ? "true" : "false";
+    if (typeof it.correctAnswer === "boolean") {
+      return it.correctAnswer ? "true" : "false";
+    }
+
     const raw = String(it.correctAnswer).trim().toLowerCase();
-    if (raw === "true" || raw === "1" || raw === "yes") return "true";
-    if (raw === "false" || raw === "0" || raw === "no") return "false";
+
+    if (["true", "1", "yes"].includes(raw)) return "true";
+    if (["false", "0", "no"].includes(raw)) return "false";
+
     return raw;
   }
 
+  // MULTIPLE CHOICE
   if (it.questionType === "multiple_choice") {
-    if (typeof it.correctAnswer === "number") return String(it.correctAnswer);
-    const raw = String(it.correctAnswer).trim();
-    if (/^\d+$/.test(raw)) return raw;
-    if (/^[a-dA-D]$/.test(raw)) {
-      return String(raw.toLowerCase().charCodeAt(0) - "a".charCodeAt(0));
-    }
-    // Fallback: the stored value is the option's own text (common with
-    // CSV/Excel bulk uploads) — find which option it matches.
     const options = normalizeOptions(it.options);
-    const matchIdx = options.findIndex(
-      (o) => o.trim().toLowerCase() === raw.toLowerCase()
+
+    // number
+    if (typeof it.correctAnswer === "number") {
+      return String(it.correctAnswer);
+    }
+
+    // object
+    if (typeof it.correctAnswer === "object") {
+      const value =
+        it.correctAnswer.index ??
+        it.correctAnswer.value ??
+        it.correctAnswer.option ??
+        it.correctAnswer.text ??
+        "";
+
+      return normalizeCorrectAnswer({
+        ...it,
+        correctAnswer: value,
+      });
+    }
+
+    const raw = String(it.correctAnswer).trim();
+
+    // index
+    if (/^\d+$/.test(raw)) {
+      return raw;
+    }
+
+    // A B C D
+    if (/^[A-Da-d]$/.test(raw)) {
+      return String(raw.toUpperCase().charCodeAt(0) - 65);
+    }
+
+    // option text
+    const index = options.findIndex(
+      o => o.trim().toLowerCase() === raw.toLowerCase()
     );
-    return matchIdx !== -1 ? String(matchIdx) : "";
+
+    if (index >= 0) {
+      return String(index);
+    }
+
+    return "";
   }
 
-  // short_answer — stored and displayed as free text either way.
-  return typeof it.correctAnswer === "string" ? it.correctAnswer : String(it.correctAnswer);
+  // SHORT ANSWER
+  return String(it.correctAnswer);
 }
 
 // Short-answer questions have no single machine-checkable answer — the API
