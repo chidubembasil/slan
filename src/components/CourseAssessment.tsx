@@ -30,7 +30,10 @@ interface AssessmentItem {
   id?: number;
   questionText: string;
   questionType: "multiple_choice" | "true_false" | "short_answer";
-  options: string[];
+  options: {
+    id: string;
+    text: string;
+  }[];
   correctAnswer: string;
   explanation?: string;
   orderIndex?: number;
@@ -43,7 +46,12 @@ function emptyItem(): AssessmentItem {
   return {
     questionText: "",
     questionType: "multiple_choice",
-    options: ["", "", "", ""],
+    options: [
+      { id: "1", text: "" },
+      { id: "2", text: "" },
+      { id: "3", text: "" },
+      { id: "4", text: "" }
+    ],
     correctAnswer: "",
     explanation: "",
     orderIndex: 0,
@@ -54,23 +62,31 @@ function emptyItem(): AssessmentItem {
 // Options sometimes come back from the API as objects (e.g. { text: "..." })
 // instead of plain strings. This normalizes any shape into a display string
 // so inputs never render "[object Object]".
-function optionLabel(opt: unknown): string {
-  if (typeof opt === "string") return opt;
-  if (opt && typeof opt === "object") {
-    const o = opt as Record<string, unknown>;
-    const val = o.text ?? o.label ?? o.value ?? o.option ?? "";
-    return typeof val === "string" ? val : String(val ?? "");
-  }
-  return opt === undefined || opt === null ? "" : String(opt);
-}
+// function optionLabel(opt: unknown): string {
+//   if (typeof opt === "string") return opt;
+//   if (opt && typeof opt === "object") {
+//     const o = opt as Record<string, unknown>;
+//     const val = o.text ?? o.label ?? o.value ?? o.option ?? "";
+//     return typeof val === "string" ? val : String(val ?? "");
+//   }
+//   return opt === undefined || opt === null ? "" : String(opt);
+// }
 
-function normalizeOptions(raw: unknown): string[] {
+function normalizeOptions(raw: unknown): { id: string; text: string }[] {
   if (Array.isArray(raw) && raw.length) {
-    return raw.map(optionLabel);
+    return raw.map((opt: any, index) => ({
+      id: String(opt.id ?? index),
+      text: String(opt.text ?? opt.label ?? opt.value ?? opt.option ?? opt ?? ""),
+    }));
   }
-  return ["", "", "", ""];
-}
 
+  return [
+    { id: "1", text: "" },
+    { id: "2", text: "" },
+    { id: "3", text: "" },
+    { id: "4", text: "" },
+  ];
+}
 // Derives the badge text from the assessment's actual question items,
 // instead of guessing from a count. "No question yet" when the assessment
 // has zero items; the real question type when there's one shared type
@@ -176,7 +192,7 @@ function normalizeCorrectAnswer(it: any): string {
 
     // option text
     const index = options.findIndex(
-      o => o.trim().toLowerCase() === raw.toLowerCase()
+      o => o.text.trim().toLowerCase() === raw.toLowerCase()
     );
 
     if (index >= 0) {
@@ -237,7 +253,7 @@ function validateItem(item: AssessmentItem, label: string): string | null {
     if (item.correctAnswer === "") {
       return `${label}: please mark which option is correct`;
     }
-    const validOptionCount = item.options.filter((o) => o.trim()).length;
+    const validOptionCount = item.options.filter((o) => o.text.trim()).length;
     const idx = Number(item.correctAnswer);
     if (!Number.isInteger(idx) || idx < 0 || idx >= validOptionCount) {
       return `${label}: correct answer is invalid — please mark a correct option`;
@@ -507,7 +523,7 @@ export default function CourseAssessments() {
       questionType: item.questionType,
       options:
         item.questionType === "multiple_choice"
-          ? item.options.filter((o) => o.trim())
+          ? item.options.filter((o) => o.text.trim())
           : [],
       correctAnswer,
       explanation,
@@ -560,7 +576,7 @@ export default function CourseAssessments() {
             questionType: item.questionType,
             options:
               item.questionType === "multiple_choice"
-                ? item.options.filter((o) => o.trim())
+                ? item.options.filter((o) => o.text.trim())
                 : [],
             correctAnswer,
             explanation,
@@ -644,12 +660,17 @@ export default function CourseAssessments() {
         i === itemIndex
           ? {
               ...item,
-              options: item.options.map((o, oi) => (oi === optionIndex ? text : o)),
+             options: item.options.map((o, oi) =>
+                oi === optionIndex
+                  ? { ...o, text }
+                  : o
+              ),
             }
           : item
       )
     );
   }
+  
 
   function addItem() {
     setItems((prev) => [...prev, emptyItem()]);
@@ -1081,13 +1102,13 @@ function SingleQuestionEditor({
           </label>
           <div className="grid grid-cols-2 gap-2">
             {item.options.map((opt, idx) => {
-              const isCorrect = String(idx) === item.correctAnswer || opt.trim().toLowerCase() === item.correctAnswer.trim().toLowerCase();
+             const isCorrect = opt.id === item.correctAnswer;
               return (
                 <div key={idx} className="flex items-end gap-2">
                   <div className="flex-1">
                     <label className="text-xs text-gray-500">Option {String.fromCharCode(65 + idx)}</label>
                     <input
-                      value={opt}
+                      value={opt.text}
                       onChange={(e) => onOptionChange(idx, e.target.value)}
                       className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
                       title={`option ${idx}`}
@@ -1103,7 +1124,7 @@ function SingleQuestionEditor({
                       type="radio"
                       name={groupName}
                       checked={isCorrect}
-                      onChange={() => onChange({ correctAnswer: String(idx) })}
+                      onChange={() => onChange({ correctAnswer: opt.id })}
                       className="w-4 h-4 accent-[#004900]"
                     />
                     Correct
