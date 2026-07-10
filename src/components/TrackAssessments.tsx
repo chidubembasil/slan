@@ -1109,7 +1109,7 @@ function SingleQuestionEditor({
           <div className="grid grid-cols-2 gap-2">
             {item.options.map((opt, idx) => {
              const isCorrect = opt.id === item.correctAnswer;
-                          console.log(`The correct answer is ${item.correctAnswer} and the option id is ${opt.id} and isCorrect is ${isCorrect}`)
+              console.log(`The correct answer is ${item.correctAnswer} and the option id is ${opt.id} and isCorrect is ${isCorrect}`)
 
               return (
                 <div key={idx} className="flex items-end gap-2">
