@@ -222,18 +222,23 @@ function normalizeCorrectAnswer(it: any): string {
 // instead — no text is lost, it just travels in a field the API accepts.
 function buildCorrectAnswerFields(
   item: AssessmentItem
-): { correctAnswer: number | string | null; explanation?: string } {
+): { correctAnswer: number | string | null; explanation: string } {
+  // The API schema documents `explanation` as a plain string field on every
+  // question (see PUT /admin/assessment-items/{id}). Previously this fell
+  // back to `undefined` when the box was empty, which can drop the field
+  // from the JSON body entirely instead of sending "" — always send a
+  // string so the field is present regardless of question type.
   if (item.questionType === "multiple_choice") {
-    return { correctAnswer: Number(item.correctAnswer), explanation: item.explanation?.trim() || undefined };
+    return { correctAnswer: Number(item.correctAnswer), explanation: item.explanation?.trim() || "" };
   }
   if (item.questionType === "short_answer") {
     return { 
         correctAnswer: item.correctAnswer, 
-        explanation: item.explanation?.trim() || undefined 
+        explanation: item.explanation?.trim() || "" 
     };
 }
   // true_false
-  return { correctAnswer: item.correctAnswer, explanation: item.explanation?.trim() || undefined };
+  return { correctAnswer: item.correctAnswer, explanation: item.explanation?.trim() || "" };
 }
 
 // Client-side guard so a question with no valid answer never gets sent to
