@@ -62,16 +62,6 @@ function emptyItem(): AssessmentItem {
 // Options sometimes come back from the API as objects (e.g. { text: "..." })
 // instead of plain strings. This normalizes any shape into a display string
 // so inputs never render "[object Object]".
-// function optionLabel(opt: unknown): string {
-//   if (typeof opt === "string") return opt;
-//   if (opt && typeof opt === "object") {
-//     const o = opt as Record<string, unknown>;
-//     const val = o.text ?? o.label ?? o.value ?? o.option ?? "";
-//     return typeof val === "string" ? val : String(val ?? "");
-//   }
-//   return opt === undefined || opt === null ? "" : String(opt);
-// }
-
 function normalizeOptions(raw: unknown): { id: string; text: string }[] {
   if (Array.isArray(raw) && raw.length) {
     return raw.map((opt: any, index) => ({
@@ -131,15 +121,24 @@ function extractErrorMessage(d: any, fallback: string): string {
 // where they came from:
 //   - a numeric option index (0-3)                      -> use directly
 //   - a letter ("a"-"d")                                 -> convert to index
+//   - the option's own id (a UUID assigned by the backend
+//     when the question/option was created)              -> match against
+//     the question's own options by id and resolve to index
 //   - the full text of the correct option (bulk uploads) -> match against
 //     the question's own options (case-insensitively) and resolve to index
 //   - true/false as a boolean, "True"/"False", or 0/1     -> normalize to
 //     the lowercase "true"/"false" the toggle expects
-// Without this, the correct-answer radio/toggle would silently show nothing
-// selected for anything other than a clean numeric index, even though the
-// question genuinely has a correct answer saved on the backend. This is the
-// same logic used by Module/Course assessments, ported here so Track
-// assessments show the correct answer too.
+//
+// IMPORTANT: the backend actually stores `correctAnswer` as the *option's
+// own id* (a UUID), not as the numeric index the frontend sends when
+// creating a question. e.g. a saved item looks like:
+//   options: [{ id: "e3813e2e-...", text: "..." }, ...]
+//   correctAnswer: "e3813e2e-..."   <- matches one option's id, NOT "0"/"1"/etc
+// Without the id-matching branch below, the correct-answer radio would
+// silently show nothing selected for anything other than a clean numeric
+// index, even though the question genuinely has a correct answer saved on
+// the backend. This is the same logic used by Module/Course assessments,
+// ported here so Track assessments show the correct answer too.
 function normalizeCorrectAnswer(it: any): string {
   if (it?.correctAnswer == null) return "";
 
@@ -172,6 +171,7 @@ function normalizeCorrectAnswer(it: any): string {
         it.correctAnswer.index ??
         it.correctAnswer.value ??
         it.correctAnswer.option ??
+        it.correctAnswer.id ??
         it.correctAnswer.text ??
         "";
 
@@ -191,6 +191,12 @@ function normalizeCorrectAnswer(it: any): string {
     // A B C D
     if (/^[A-Da-d]$/.test(raw)) {
       return String(raw.toUpperCase().charCodeAt(0) - 65);
+    }
+
+    // option id (backend stores the option's own id as the correct answer)
+    const idIndex = options.findIndex((o) => o.id === raw);
+    if (idIndex >= 0) {
+      return String(idIndex);
     }
 
     // option text
@@ -232,21 +238,6 @@ function buildCorrectAnswerFields(
   // true_false
   return { correctAnswer: item.correctAnswer, explanation: item.explanation?.trim() || undefined };
 }
-
-// Reverses buildCorrectAnswerFields' short_answer merge when loading a
-// question back into the editor, so the "Correct Answer" box and the
-// "Explanation" box each show what the admin originally typed into them,
-// instead of showing everything jammed into one field.
-// function extractExpectedAnswer(explanation: unknown): { note: string; expected: string } {
-//   const text = typeof explanation === "string" ? explanation : "";
-//   if (!text) return { note: "", expected: "" };
-//   const marker = "Expected answer:";
-//   const idx = text.lastIndexOf(marker);
-//   if (idx === -1) return { note: text, expected: "" };
-//   const note = text.slice(0, idx).trim();
-//   const expected = text.slice(idx + marker.length).trim();
-//   return { note, expected };
-// }
 
 // Client-side guard so a question with no valid answer never gets sent to
 // the backend as null. Returns an error string, or null if the item is fine.
@@ -656,6 +647,33 @@ export default function TrackAssessments() {
     await setRowActive(row, true);
   }
 
+  // Permanently removes an archived assessment. This is a hard delete (not
+  // the same as archiving) — it's only exposed from the Archive view so it
+  // never happens by accident from the main table.
+  // NOTE: assumes a DELETE endpoint exists at admin/tracks/{trackId}/assessment.
+  // Confirm this against your backend before relying on it — the API docs
+  // screenshot we had only showed DELETE documented for individual
+  // assessment-items (admin/assessment-items/{id}), not for the assessment
+  // container itself.
+  async function handleDeletePermanently(row: TrackAssessmentRow) {
+    if (
+      !confirm(
+        `Permanently delete assessment "${row.title}" for ${row.trackName}? This cannot be undone.`
+      )
+    )
+      return;
+    try {
+      const res = await fetch(`${API_BASE}admin/tracks/${row.trackId}/assessment`, {
+        method: "DELETE",
+        headers: authHeaders(false),
+      });
+      if (!res.ok) throw new Error("Failed to delete assessment");
+      setRows((prev) => prev.filter((r) => r.id !== row.id));
+    } catch (e: any) {
+      alert(e.message || "Something went wrong");
+    }
+  }
+
   function updateItem(index: number, patch: Partial<AssessmentItem>) {
     setItems((prev) =>
       prev.map((item, i) => (i === index ? { ...item, ...patch } : item))
@@ -1008,7 +1026,8 @@ export default function TrackAssessments() {
             </button>
             <h3 className="text-lg font-semibold mb-1">Assessment Archive</h3>
             <p className="text-sm text-gray-500 mb-4">
-              Archived track assessments. Restore one to make it active again.
+              Archived track assessments. Restore one to make it active again, or delete it
+              permanently.
             </p>
 
             {archivedRows.length === 0 ? (
@@ -1039,10 +1058,17 @@ export default function TrackAssessments() {
                         <td className="px-4 py-3 text-right">
                           <button
                             onClick={() => handleRestore(row)}
-                            className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-[#004900] hover:bg-green-50"
+                            className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-[#004900] hover:bg-green-50 mr-1"
                             title="Restore"
                           >
                             <RotateCcw className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDeletePermanently(row)}
+                            className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-red-500 hover:bg-red-50"
+                            title="Delete permanently"
+                          >
+                            <Trash2 className="w-4 h-4" />
                           </button>
                         </td>
                       </tr>
@@ -1098,9 +1124,12 @@ function SingleQuestionEditor({
         </select>
       </div>
 
-      {/* Correct answer is now marked inline instead of via a separate
-          "Correct Answer" dropdown that defaulted to "Select..." even when
-          a correct answer already existed on the backend. */}
+      {/* Correct answer is marked inline. isCorrect is derived by comparing
+          the OPTION'S INDEX (not its id) against item.correctAnswer, since
+          item.correctAnswer is always kept as a stringified index ("0".."3")
+          on the client — regardless of whether the option's own `id` is a
+          locally-generated placeholder ("1".."4") or a backend UUID. Comparing
+          against `opt.id` directly was the bug: it never matched either shape. */}
       {item.questionType === "multiple_choice" && (
         <div>
           <label className="text-xs font-medium text-gray-600 mb-1 block">
@@ -1108,8 +1137,7 @@ function SingleQuestionEditor({
           </label>
           <div className="grid grid-cols-2 gap-2">
             {item.options.map((opt, idx) => {
-             const isCorrect = opt.id === item.correctAnswer;
-              console.log(`The correct answer is ${item.correctAnswer} and the option id is ${opt.id} and isCorrect is ${isCorrect}`)
+              const isCorrect = String(idx) === item.correctAnswer;
 
               return (
                 <div key={idx} className="flex items-end gap-2">
