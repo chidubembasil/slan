@@ -525,9 +525,14 @@ export default function TrackAssessments() {
       parentType: PARENT_TYPE,
       questionText: item.questionText,
       questionType: item.questionType,
+      // The API expects a plain array of option text strings, not
+      // {id, text} objects — it regenerates its own option ids/UUIDs from
+      // this array and uses `correctAnswer` (0-based index) to know which
+      // one is correct. Sending objects here produces
+      // "options.N: Invalid input: expected string, received object".
       options:
         item.questionType === "multiple_choice"
-          ? item.options.filter((o) => o.text.trim())
+          ? item.options.filter((o) => o.text.trim()).map((o) => o.text.trim())
           : [],
       correctAnswer,
       explanation,
@@ -580,7 +585,7 @@ export default function TrackAssessments() {
             questionType: item.questionType,
             options:
               item.questionType === "multiple_choice"
-                ? item.options.filter((o) => o.text.trim())
+                ? item.options.filter((o) => o.text.trim()).map((o) => o.text.trim())
                 : [],
             correctAnswer,
             explanation,
