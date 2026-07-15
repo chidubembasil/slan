@@ -592,16 +592,13 @@ const emptyQuestion = (orderIndex = 0): SingleQuestion => ({
 
 // ── Payload helper ─────────────────────────────────────────────────────────
 // Converts the UI's {id, text}[] option shape + letter-based correctAnswer
-// into what the API expects: options as string[], correctAnswer as a
-// 0-based index (for multiple_choice). true_false / short_answer pass through.
+// into what the API expects.
 //
-// FIX: the backend's /bulk validator strictly type-checks correctAnswer —
-// it must be a genuine number for multiple_choice and a genuine string for
-// true_false/short_answer. Without explicit casting here, correctAnswer can
-// end up sent as the wrong JS type (e.g. a string that merely looks
-// numeric), which is exactly what produced "Invalid input: expected
-// number, received string" from the bulk endpoint. Number(...) / String(...)
-// guarantee the right primitive type is what actually gets sent.
+// • multiple_choice → options: string[], correctAnswer: number (0-based index)
+// • true_false      → correctAnswer: number (1 = true, 0 = false)
+// • short_answer    → options: [answer], correctAnswer: 0
+//
+// correctAnswer is always a number for every questionType.
 function buildOptionsAndAnswer(q: SingleQuestion): {
   options: string[] | undefined;
   correctAnswer: number;
@@ -906,94 +903,7 @@ function AddAssessmentForm({
 
     setQLoading(true);
     try {
-      if (mode === "single") {
-        // Single question → POST /admin/assessment-items
-        const q = questions[0];
-        const { options, correctAnswer } = buildOptionsAndAnswer(q);
-        const res = await fetch(`${BASE}admin/assessment-items`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          credentials: "include",
-          body: JSON.stringify({
-            parentId,
-            parentType,
-            questionText: q.questionText,
-            questionType: q.questionType,
-            options,
-            correctAnswer,
-            explanation: q.explanation || undefined,
-            orderIndex: q.orderIndex,
-            points: q.points,
-          }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.message || data.error || "Failed to add question");
-
-      } else if (mode === "bulk") {
-        // The bulk endpoint's backend validator currently only accepts a
-        // numeric correctAnswer, which is correct for multiple_choice but
-        // wrong for short_answer / true_false (those need a string, e.g.
-        // "true"/"false" or free text). To avoid the "Validation error"
-        // this causes when types are mixed, we split the batch: MCQ
-        // questions still go through /bulk in one request, and
-        // short_answer / true_false questions are sent one at a time
-        // through the single-item endpoint, which already accepts strings.
-        const mcqQuestions = questions.filter(q => q.questionType === "multiple_choice");
-        const otherQuestions = questions.filter(q => q.questionType !== "multiple_choice");
-
-        if (mcqQuestions.length > 0) {
-          const res = await fetch(`${BASE}admin/assessment-items/bulk`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-            credentials: "include",
-            body: JSON.stringify({
-              parentId,
-              parentType,
-              questions: mcqQuestions.map(q => {
-                const { options, correctAnswer } = buildOptionsAndAnswer(q);
-                return {
-                  questionText: q.questionText,
-                  questionType: q.questionType,
-                  options,
-                  correctAnswer,
-                  explanation: q.explanation || undefined,
-                  orderIndex: q.orderIndex,
-                  points: q.points,
-                };
-              }),
-            }),
-          });
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.message || data.error || "Bulk submit failed");
-        }
-
-        for (const q of otherQuestions) {
-          const { options, correctAnswer } = buildOptionsAndAnswer(q);
-          const res = await fetch(`${BASE}admin/assessment-items`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-            credentials: "include",
-            body: JSON.stringify({
-              parentId,
-              parentType,
-              questionText: q.questionText,
-              questionType: q.questionType,
-              options,
-              correctAnswer,
-              explanation: q.explanation || undefined,
-              orderIndex: q.orderIndex,
-              points: q.points,
-            }),
-          });
-          const data = await res.json();
-          if (!res.ok) {
-            throw new Error(
-              data.message || data.error || `Failed to add question: "${q.questionText.slice(0, 40)}"`
-            );
-          }
-        }
-
-      } else if (mode === "file") {
+      if (mode === "file") {
         // File → upload to Cloudinary first (reusing the exact same signed
         // upload helper used for unit videos/pdfs and the module thumbnail
         // above), then send the resulting URL to the backend as JSON.
@@ -1024,6 +934,55 @@ function AddAssessmentForm({
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || data.error || "File upload failed");
+
+      } else if (questions.length === 1) {
+        // Single question → POST /admin/assessment-items
+        const q = questions[0];
+        const { options, correctAnswer } = buildOptionsAndAnswer(q);
+        const res = await fetch(`${BASE}admin/assessment-items`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          credentials: "include",
+          body: JSON.stringify({
+            parentId,
+            parentType,
+            questionText: q.questionText,
+            questionType: q.questionType,
+            options,
+            correctAnswer,
+            explanation: q.explanation || undefined,
+            orderIndex: q.orderIndex,
+            points: q.points,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || data.error || "Failed to add question");
+
+      } else {
+        // Multiple questions → POST /admin/assessment-items/bulk
+        const res = await fetch(`${BASE}admin/assessment-items/bulk`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          credentials: "include",
+          body: JSON.stringify({
+            parentId,
+            parentType,
+            questions: questions.map(q => {
+              const { options, correctAnswer } = buildOptionsAndAnswer(q);
+              return {
+                questionText: q.questionText,
+                questionType: q.questionType,
+                options,
+                correctAnswer,
+                explanation: q.explanation || undefined,
+                orderIndex: q.orderIndex,
+                points: q.points,
+              };
+            }),
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || data.error || "Bulk submit failed");
       }
 
       onDone();
