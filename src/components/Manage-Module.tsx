@@ -594,18 +594,26 @@ const emptyQuestion = (orderIndex = 0): SingleQuestion => ({
 // Converts the UI's {id, text}[] option shape + letter-based correctAnswer
 // into what the API expects: options as string[], correctAnswer as a
 // 0-based index (for multiple_choice). true_false / short_answer pass through.
+//
+// FIX: the backend's /bulk validator strictly type-checks correctAnswer —
+// it must be a genuine number for multiple_choice and a genuine string for
+// true_false/short_answer. Without explicit casting here, correctAnswer can
+// end up sent as the wrong JS type (e.g. a string that merely looks
+// numeric), which is exactly what produced "Invalid input: expected
+// number, received string" from the bulk endpoint. Number(...) / String(...)
+// guarantee the right primitive type is what actually gets sent.
 function buildOptionsAndAnswer(q: SingleQuestion): {
   options: string[] | undefined;
   correctAnswer: string | number;
 } {
   if (q.questionType !== "multiple_choice") {
-    return { options: undefined, correctAnswer: q.correctAnswer };
+    return { options: undefined, correctAnswer: String(q.correctAnswer) };
   }
   const filledOptions = q.options.filter((o) => o.text.trim());
   const correctIndex = filledOptions.findIndex((o) => o.id === q.correctAnswer);
   return {
     options: filledOptions.map((o) => o.text),
-    correctAnswer: correctIndex >= 0 ? correctIndex : 0,
+    correctAnswer: Number(correctIndex >= 0 ? correctIndex : 0),
   };
 }
 
