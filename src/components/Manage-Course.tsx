@@ -848,7 +848,7 @@ export default function ManageCourses() {
                           </button>
 
                           {/* Add Assessment */}
-                          <button
+                          {/* <button
                             onClick={() => setModal({ type: "addAssessment", course })}
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-purple-600 text-white hover:bg-purple-700 transition-colors"
                           >
@@ -859,7 +859,7 @@ export default function ManageCourses() {
                               <line x1="9" y1="16" x2="13" y2="16" />
                             </svg>
                             Add Assessment
-                          </button>
+                          </button> */}
 
                           {/* View */}
                           <button

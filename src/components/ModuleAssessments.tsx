@@ -779,6 +779,7 @@ export default function ModuleAssessments() {
               <th className="px-4 py-3 font-medium">ID</th>
               <th className="px-4 py-3 font-medium">Title</th>
               <th className="px-4 py-3 font-medium">Module Name</th>
+              <th className="px-4 py-3 font-medium">Track</th>
               <th className="px-4 py-3 font-medium">Question Type</th>
               <th className="px-4 py-3 font-medium text-right">Actions</th>
             </tr>
@@ -786,21 +787,21 @@ export default function ModuleAssessments() {
           <tbody>
             {loading && (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-gray-400">
+                <td colSpan={6} className="px-4 py-8 text-center text-gray-400">
                   Loading module assessments...
                 </td>
               </tr>
             )}
             {!loading && error && (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-red-500">
+                <td colSpan={6} className="px-4 py-8 text-center text-red-500">
                   {error}
                 </td>
               </tr>
             )}
             {!loading && !error && filteredRows.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-gray-400">
+                <td colSpan={6} className="px-4 py-8 text-center text-gray-400">
                   No module assessments found.
                 </td>
               </tr>
@@ -812,6 +813,7 @@ export default function ModuleAssessments() {
                   <td className="px-4 py-3 text-gray-700">{row.id}</td>
                   <td className="px-4 py-3 font-medium text-gray-900">{row.title}</td>
                   <td className="px-4 py-3 text-gray-700">{row.moduleName}</td>
+                  <td className="px-4 py-3 text-gray-700">{row.trackName}</td>
                   <td className="px-4 py-3">
                     <span
                       className={`inline-flex px-2 py-0.5 rounded-full text-xs ${

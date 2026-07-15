@@ -1,5 +1,5 @@
 import { useState } from "react";
-import CourseAssessments from "../components/CourseAssessment";
+// import CourseAssessments from "../components/CourseAssessment";
 import TrackAssessments from "../components/TrackAssessments";
 import ModuleAssessments from "../components/ModuleAssessments";
 
@@ -43,7 +43,7 @@ export default function ManageAssessments() {
         </div>
 
         {/* Tab content */}
-        {activeTab === "course" && <CourseAssessments />}
+        {/* {activeTab === "course" && <CourseAssessments />} */}
         {activeTab === "track" && <TrackAssessments />}
         {activeTab === "module" && <ModuleAssessments />}
       </div>
