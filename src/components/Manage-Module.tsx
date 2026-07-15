@@ -604,19 +604,34 @@ const emptyQuestion = (orderIndex = 0): SingleQuestion => ({
 // guarantee the right primitive type is what actually gets sent.
 function buildOptionsAndAnswer(q: SingleQuestion): {
   options: string[] | undefined;
-  correctAnswer: string | number;
+  correctAnswer: number;
 } {
-  if (q.questionType !== "multiple_choice") {
-    return { options: undefined, correctAnswer: String(q.correctAnswer) };
+  if (q.questionType === "multiple_choice") {
+    const filledOptions = q.options.filter((o) => o.text.trim());
+
+    const correctIndex = filledOptions.findIndex(
+      (o) => o.id === q.correctAnswer
+    );
+
+    return {
+      options: filledOptions.map((o) => o.text),
+      correctAnswer: correctIndex >= 0 ? correctIndex : 0,
+    };
   }
-  const filledOptions = q.options.filter((o) => o.text.trim());
-  const correctIndex = filledOptions.findIndex((o) => o.id === q.correctAnswer);
+
+  if (q.questionType === "true_false") {
+    return {
+      options: undefined,
+      correctAnswer: q.correctAnswer === "true" ? 1 : 0,
+    };
+  }
+
+  // Short Answer
   return {
-    options: filledOptions.map((o) => o.text),
-    correctAnswer: Number(correctIndex >= 0 ? correctIndex : 0),
+    options: [q.correctAnswer],
+    correctAnswer: 0,
   };
 }
-
 // ── Question Editor ───────────────────────────────────────────────────────────
 
 function QuestionEditor({
