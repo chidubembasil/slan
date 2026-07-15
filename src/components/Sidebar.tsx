@@ -1,7 +1,8 @@
 import { NavLink } from "react-router-dom"
+import { Link } from "react-router-dom";
 import {
   LayoutGrid, BookOpen, Users, CheckSquare, CreditCard,
-  ChartCandlestick, LogOut, Headset, Flag, X, Award
+  ChartCandlestick, LogOut, Headset, Flag, X, Award, Share2
 } from "lucide-react"
 
 type Props = {
@@ -77,6 +78,10 @@ export default function SideBar({ isOpen, onClose }: Props) {
         </nav>
 
         <div className="h-14 border-t border-[#3f4864] flex items-center px-3">
+          <Link to="/AdminUsers" className="flex flex-row gap-2.5">
+            <Share2 className="w-4 h-4" color="white" size={20} />
+            <p>Share</p>
+          </Link>
           <button onClick={handleLogout} className="flex items-center gap-3 text-white/80 hover:text-white text-sm w-full">
             <LogOut size={20} /> Logout
           </button>
