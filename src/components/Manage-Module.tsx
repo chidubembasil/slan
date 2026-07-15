@@ -582,6 +582,28 @@ function QuestionEditor({
     opts[i] = { ...opts[i], text };
     onChange({ ...q, options: opts });
   };
+  // Switching question type must clear correctAnswer — otherwise a leftover
+  // MCQ option id (e.g. "b") or true/false string silently carries over into
+  // the new type and fails validation without any visible sign in the UI.
+  const handleTypeChange = (newType: SingleQuestion["questionType"]) => {
+    if (newType === "multiple_choice") {
+      onChange({
+        ...q,
+        questionType: newType,
+        correctAnswer: "",
+        options: q.options.length
+          ? q.options
+          : [
+              { id: "a", text: "" },
+              { id: "b", text: "" },
+              { id: "c", text: "" },
+              { id: "d", text: "" },
+            ],
+      });
+    } else {
+      onChange({ ...q, questionType: newType, correctAnswer: "" });
+    }
+  };
 
   return (
     <div className="border border-gray-200 rounded-xl p-4 space-y-3 bg-gray-50/50">
@@ -828,33 +850,71 @@ function AddAssessmentForm({
           }),
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.message || "Failed to add question");
+        if (!res.ok) throw new Error(data.message || data.error || "Failed to add question");
 
       } else if (mode === "bulk") {
-        // Bulk JSON → POST /admin/assessment-items/bulk
-        const res = await fetch(`${BASE}admin/assessment-items/bulk`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          credentials: "include",
-          body: JSON.stringify({
-            parentId,
-            parentType,
-            questions: questions.map(q => {
-              const { options, correctAnswer } = buildOptionsAndAnswer(q);
-              return {
-                questionText: q.questionText,
-                questionType: q.questionType,
-                options,
-                correctAnswer,
-                explanation: q.explanation || undefined,
-                orderIndex: q.orderIndex,
-                points: q.points,
-              };
+        // The bulk endpoint's backend validator currently only accepts a
+        // numeric correctAnswer, which is correct for multiple_choice but
+        // wrong for short_answer / true_false (those need a string, e.g.
+        // "true"/"false" or free text). To avoid the "Validation error"
+        // this causes when types are mixed, we split the batch: MCQ
+        // questions still go through /bulk in one request, and
+        // short_answer / true_false questions are sent one at a time
+        // through the single-item endpoint, which already accepts strings.
+        const mcqQuestions = questions.filter(q => q.questionType === "multiple_choice");
+        const otherQuestions = questions.filter(q => q.questionType !== "multiple_choice");
+
+        if (mcqQuestions.length > 0) {
+          const res = await fetch(`${BASE}admin/assessment-items/bulk`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            credentials: "include",
+            body: JSON.stringify({
+              parentId,
+              parentType,
+              questions: mcqQuestions.map(q => {
+                const { options, correctAnswer } = buildOptionsAndAnswer(q);
+                return {
+                  questionText: q.questionText,
+                  questionType: q.questionType,
+                  options,
+                  correctAnswer,
+                  explanation: q.explanation || undefined,
+                  orderIndex: q.orderIndex,
+                  points: q.points,
+                };
+              }),
             }),
-          }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.message || "Bulk submit failed");
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.message || data.error || "Bulk submit failed");
+        }
+
+        for (const q of otherQuestions) {
+          const { options, correctAnswer } = buildOptionsAndAnswer(q);
+          const res = await fetch(`${BASE}admin/assessment-items`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            credentials: "include",
+            body: JSON.stringify({
+              parentId,
+              parentType,
+              questionText: q.questionText,
+              questionType: q.questionType,
+              options,
+              correctAnswer,
+              explanation: q.explanation || undefined,
+              orderIndex: q.orderIndex,
+              points: q.points,
+            }),
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            throw new Error(
+              data.message || data.error || `Failed to add question: "${q.questionText.slice(0, 40)}"`
+            );
+          }
+        }
 
       } else if (mode === "file") {
         // File → POST /admin/assessment-items/bulk-upload (multipart)
@@ -871,7 +931,7 @@ function AddAssessmentForm({
           body: formData,
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.message || "File upload failed");
+        if (!res.ok) throw new Error(data.message || data.error || "File upload failed");
       }
 
       onDone();
