@@ -51,6 +51,7 @@ type Track = {
   id: number;
   title: string;
   shortDescription?: string;
+  description?: string;
   status: TrackStatus;
   isFree: boolean;
   thumbnail?: string;
@@ -130,7 +131,7 @@ function EditTrackForm({ track, onDone }: { track: Track; onDone: () => void }) 
   const [form, setForm] = useState({
     title: track.title,
     shortDescription: track.shortDescription ?? "",
-    description: "",
+    description: track.description ?? "",
     status: track.status,
     isFree: track.isFree,
     thumbnail: track.thumbnail ?? "",
@@ -140,7 +141,52 @@ function EditTrackForm({ track, onDone }: { track: Track; onDone: () => void }) 
   const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
   const [thumbnailPreview, setThumbnailPreview] = useState(track.thumbnail || "");
   const [uploadingThumb, setUploadingThumb] = useState(false);
+  const [fetchingDetails, setFetchingDetails] = useState(true);
   const thumbInputRef = useRef<HTMLInputElement>(null);
+
+  // The `track` prop comes from the tracks list endpoint (admin/tracks),
+  // which may only return a summary shape and can be missing fields like
+  // `description`/`thumbnail`. Fetch the single-track endpoint here so the
+  // edit form always reflects the real saved values instead of showing
+  // blank fields the list response didn't include.
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchFullTrack = async () => {
+      setFetchingDetails(true);
+      const token = localStorage.getItem("adminAccessToken");
+      try {
+        const res = await fetch(`${BASE}admin/tracks/${track.id}`, {
+          headers: { Authorization: `Bearer ${token}` },
+          credentials: "include",
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || "Failed to load track details");
+        const full = data?.data ?? data?.track ?? data;
+        if (cancelled || !full) return;
+
+        setForm({
+          title: full.title ?? track.title,
+          shortDescription: full.shortDescription ?? track.shortDescription ?? "",
+          description: full.description ?? track.description ?? "",
+          status: full.status ?? track.status,
+          isFree: full.isFree ?? track.isFree,
+          thumbnail: full.thumbnail ?? track.thumbnail ?? "",
+        });
+        setThumbnailPreview(full.thumbnail ?? track.thumbnail ?? "");
+      } catch {
+        // If the detail fetch fails, silently keep whatever (possibly
+        // partial) data we already have from the list — don't block
+        // editing over a failed background fetch.
+      } finally {
+        if (!cancelled) setFetchingDetails(false);
+      }
+    };
+
+    fetchFullTrack();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [track.id]);
 
   const set = (k: keyof typeof form, v: string | boolean) =>
     setForm(f => ({ ...f, [k]: v }));
@@ -199,6 +245,10 @@ function EditTrackForm({ track, onDone }: { track: Track; onDone: () => void }) 
 
   return (
     <div className="space-y-4">
+      {fetchingDetails && (
+        <div className="text-xs text-gray-400 -mt-1 mb-1">Loading current values…</div>
+      )}
+
       {/* Thumbnail Upload */}
       <div>
         <label className="block text-xs font-medium text-gray-700 mb-1.5">Thumbnail</label>
@@ -767,44 +817,20 @@ function AddAssessmentForm({
         if (!res.ok) throw new Error(data.message || data.error || "Failed to add question");
 
       } else if (mode === "bulk") {
-        // The bulk endpoint's backend validator currently only accepts a
-        // numeric correctAnswer, which is correct for multiple_choice but
-        // wrong for short_answer / true_false (those need a string, e.g.
-        // "true"/"false" or free text). To avoid the "Validation error"
-        // this causes when types are mixed, we split the batch: MCQ
-        // questions still go through /bulk in one request, and
-        // short_answer / true_false questions are sent one at a time
-        // through the single-item endpoint, which already accepts strings.
-        const mcqQuestions = questions.filter(q => q.questionType === "multiple_choice");
-        const otherQuestions = questions.filter(q => q.questionType !== "multiple_choice");
-
-        if (mcqQuestions.length > 0) {
-          const res = await fetch(`${BASE}admin/assessment-items/bulk`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-            credentials: "include",
-            body: JSON.stringify({
-              parentId,
-              parentType,
-              questions: mcqQuestions.map(q => {
-                const { options, correctAnswer } = buildOptionsAndAnswer(q);
-                return {
-                  questionText: q.questionText,
-                  questionType: q.questionType,
-                  options,
-                  correctAnswer,
-                  explanation: q.explanation || undefined,
-                  orderIndex: q.orderIndex,
-                  points: q.points,
-                };
-              }),
-            }),
-          });
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.message || data.error || "Bulk submit failed");
-        }
-
-        for (const q of otherQuestions) {
+        // The /bulk endpoint's backend validator only accepts a *numeric*
+        // correctAnswer for every item in the batch. That's correct for
+        // multiple_choice, but wrong for short_answer / true_false, which
+        // need a string ("true"/"false" or free text). Sending a mixed
+        // batch straight to /bulk trips that validator and the whole
+        // request fails with a "Validation error" — even for questions
+        // that were valid on their own.
+        //
+        // To make mixed-type batches actually work, we don't use /bulk at
+        // all here. Every question — regardless of type — is submitted
+        // one at a time through the single-item endpoint
+        // (POST /admin/assessment-items), which already accepts both
+        // numeric and string correctAnswer values correctly.
+        for (const q of questions) {
           const { options, correctAnswer } = buildOptionsAndAnswer(q);
           const res = await fetch(`${BASE}admin/assessment-items`, {
             method: "POST",

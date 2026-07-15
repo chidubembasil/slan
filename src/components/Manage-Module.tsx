@@ -123,7 +123,8 @@ function ConfirmModal({
 }
 
 // ── Cloudinary Upload ─────────────────────────────────────────────────────────
-// Shared by unit video/pdf uploads AND the module thumbnail upload below.
+// Shared by unit video/pdf uploads, the module thumbnail upload, AND (now)
+// the assessment CSV/Excel bulk-upload file below.
 
 const uploadToCloudinary = async (file: File, folder: string = "curriculum"): Promise<string> => {
   const API_KEY = import.meta.env.VITE_API_KEY;
@@ -220,10 +221,54 @@ function EditModuleForm({ module, onDone }: { module: Module; onDone: () => void
     status: module.status,
   });
   const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
+  // Tracks the actual persisted thumbnail URL (as opposed to `thumbnailPreview`,
+  // which can also briefly hold a local blob: URL while previewing a newly
+  // picked file). This is what we fall back to on save if no new file was chosen.
+  const [existingThumbnailUrl, setExistingThumbnailUrl] = useState<string>(module.thumbnailUrl ?? "");
   const [thumbnailPreview, setThumbnailPreview] = useState<string>(module.thumbnailUrl ?? "");
   const [uploadingThumbnail, setUploadingThumbnail] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [fetchingDetails, setFetchingDetails] = useState(true);
   const [error, setError] = useState("");
+
+  // The row-level `module` prop comes from the tracks/modules LIST endpoint,
+  // which often returns a trimmed-down object (missing description,
+  // shortDescription, estimatedReadMinutes, thumbnailUrl). That's why the
+  // form was opening with those fields blank even though the backend has
+  // real values for them. Fetch the full module record on mount and hydrate
+  // the form once it arrives, while still showing whatever we already have
+  // immediately so the modal isn't empty while the request is in flight.
+  useEffect(() => {
+    let cancelled = false;
+    const fetchDetails = async () => {
+      const token = localStorage.getItem("adminAccessToken");
+      try {
+        const res = await fetch(`${BASE}admin/modules/${module.id}`, {
+          headers: { Authorization: `Bearer ${token}` },
+          credentials: "include",
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || "Failed to load module details");
+        const full: Module = data?.data ?? data?.module ?? data;
+        if (cancelled) return;
+        setForm({
+          title: full.title ?? module.title,
+          description: full.description ?? "",
+          shortDescription: full.shortDescription ?? "",
+          estimatedReadMinutes: full.estimatedReadMinutes ?? 0,
+          status: full.status ?? module.status,
+        });
+        setExistingThumbnailUrl(full.thumbnailUrl ?? "");
+        setThumbnailPreview(full.thumbnailUrl ?? "");
+      } catch {
+        // Keep whatever we already had from the list row; don't block editing.
+      } finally {
+        if (!cancelled) setFetchingDetails(false);
+      }
+    };
+    fetchDetails();
+    return () => { cancelled = true; };
+  }, [module.id]);
 
   const set = (k: keyof typeof form, v: string | number) =>
     setForm((f) => ({ ...f, [k]: v }));
@@ -242,7 +287,7 @@ function EditModuleForm({ module, onDone }: { module: Module; onDone: () => void
     if (!token) { setError("Not authenticated"); return; }
     setLoading(true);
 
-    let finalThumbnailUrl = module.thumbnailUrl ?? "";
+    let finalThumbnailUrl = existingThumbnailUrl;
     try {
       if (thumbnailFile) {
         setUploadingThumbnail(true);
@@ -276,6 +321,9 @@ function EditModuleForm({ module, onDone }: { module: Module; onDone: () => void
 
   return (
     <div className="space-y-4">
+      {fetchingDetails && (
+        <p className="text-xs text-gray-400">Loading full module details…</p>
+      )}
       <div>
         <label className="block text-xs font-medium text-gray-700 mb-1.5">Thumbnail</label>
         <ThumbnailPicker
@@ -634,7 +682,12 @@ function QuestionEditor({
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="block text-xs font-medium text-gray-700 mb-1">Type</label>
-          <select value={q.questionType} onChange={e => set("questionType", e.target.value)} className={inputCls} title="select">
+          <select
+            value={q.questionType}
+            onChange={e => handleTypeChange(e.target.value as SingleQuestion["questionType"])}
+            className={inputCls}
+            title="select"
+          >
             <option value="multiple_choice">Multiple Choice</option>
             <option value="true_false">True / False</option>
             <option value="short_answer">Short Answer</option>
@@ -775,6 +828,7 @@ function AddAssessmentForm({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [qLoading, setQLoading] = useState(false);
   const [qError, setQError] = useState("");
+  const [fileUploading, setFileUploading] = useState(false);
 
   const setC = (k: keyof typeof config, v: any) =>
     setConfig(f => ({ ...f, [k]: v }));
@@ -917,18 +971,33 @@ function AddAssessmentForm({
         }
 
       } else if (mode === "file") {
-        // File → POST /admin/assessment-items/bulk-upload (multipart)
+        // File → upload to Cloudinary first (reusing the exact same signed
+        // upload helper used for unit videos/pdfs and the module thumbnail
+        // above), then send the resulting URL to the backend as JSON.
+        // Previously this sent the raw file as multipart form-data straight
+        // to the backend, which never went through Cloudinary and is why
+        // uploads were failing.
         if (!fileRef) { setQError("Please select a CSV or Excel file"); setQLoading(false); return; }
-        const formData = new FormData();
-        formData.append("file", fileRef);
-        formData.append("parentId", String(parentId));
-        formData.append("parentType", parentType);
+
+        let fileUrl = "";
+        try {
+          setFileUploading(true);
+          fileUrl = await uploadToCloudinary(fileRef, "assessment-uploads");
+        } catch (err: any) {
+          throw new Error(err.message || "Failed to upload file to Cloudinary");
+        } finally {
+          setFileUploading(false);
+        }
 
         const res = await fetch(`${BASE}admin/assessment-items/bulk-upload`, {
           method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
           credentials: "include",
-          body: formData,
+          body: JSON.stringify({
+            parentId,
+            parentType,
+            fileUrl,
+          }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || data.error || "File upload failed");
@@ -1196,7 +1265,9 @@ function AddAssessmentForm({
               className="bg-[#004900] text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-[#003700] disabled:opacity-60"
             >
               {qLoading
-                ? "Submitting…"
+                ? mode === "file"
+                  ? (fileUploading ? "Uploading file…" : "Saving…")
+                  : "Submitting…"
                 : mode === "file"
                 ? "Upload & Save"
                 : mode === "bulk"
