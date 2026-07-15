@@ -6,7 +6,7 @@ import ModuleAssessments from "../components/ModuleAssessments";
 type Tab = "course" | "track" | "module";
 
 const tabs: { key: Tab; label: string }[] = [
-  { key: "course", label: "Course Assessments" },
+  // { key: "course", label: "Course Assessments" },
   { key: "track", label: "Track Assessments" },
   { key: "module", label: "Module Assessments" },
 ];
