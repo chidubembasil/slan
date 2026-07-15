@@ -14,7 +14,7 @@ import Notification from './pages/Notification'
 import Support from './pages/Support'
 import Community from './pages/Community'
 import CertificationsSignatoriesPage from './pages/certificationssginatoriesPage'
-import AdminUsers from './pages/Share'
+// import AdminUsers from './pages/Share'
 
 // components
 import Header from './components/Header'
@@ -71,7 +71,7 @@ function App() {
           <Route path='/support' element={<Support />}/>
           <Route path='/community' element={<Community />}/>
           <Route path='/certificate' element={<CertificationsSignatoriesPage />}/>
-          <Route path='/share' element={<AdminUsers />}/>
+          {/* <Route path='/share' element={<AdminUsers />}/> */}
         </Route>
       </Routes>
     </BrowserRouter>
