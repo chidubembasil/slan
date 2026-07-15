@@ -8,10 +8,8 @@ const CLOUDINARY_API_KEY = import.meta.env.VITE_API_KEY;
 const CLOUDINARY_API_SECRET = import.meta.env.VITE_API_SECRET_KEY;
 
 // Generic Cloudinary upload (auto-detects resource type — used for images
-// like track/module thumbnails). CSV/Excel assessment files no longer go
-// through Cloudinary — they're posted straight to the backend as multipart
-// form-data, matching what the backend's /assessment-items/bulk-upload
-// endpoint actually expects (see AddAssessmentForm below).
+// like track/module thumbnails). CSV/Excel assessment files go straight to
+// the backend as multipart form-data (see AddAssessmentForm below).
 async function uploadFileToCloudinary(file: File, folder: string = "curriculum"): Promise<string> {
   if (!CLOUDINARY_API_KEY || !CLOUDINARY_API_SECRET || !CLOUDINARY_CLOUD_NAME) {
     throw new Error("Cloudinary credentials missing");
@@ -58,6 +56,11 @@ type Track = {
   courseId: number;
   course?: { id: number; title: string };
 };
+
+// Backend field for module thumbnails is `thumbnail` (confirmed via Swagger
+// docs), kept alongside `thumbnailUrl` for backward compatibility.
+// type ModuleThumbFields = { thumbnail?: string; thumbnailUrl?: string };
+// const getModuleThumbnail = (m: ModuleThumbFields) => m.thumbnail || m.thumbnailUrl || "";
 
 const statusBadge: Record<TrackStatus, string> = {
   published: "bg-green-100 text-green-700",
@@ -117,6 +120,52 @@ function ConfirmModal({ message, onConfirm, onCancel, loading }: {
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── Actions dropdown ────────────────────────────────────────────────────────
+
+function ActionsMenu({
+  items,
+}: {
+  items: { label: string; onClick: () => void; danger?: boolean }[];
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors"
+        aria-label="More actions"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="12" cy="5" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="12" cy="19" r="1.5" />
+        </svg>
+      </button>
+      {open && (
+        <div className="absolute right-0 mt-1.5 w-44 bg-white rounded-xl shadow-lg border border-gray-100 py-1.5 z-20">
+          {items.map((item, i) => (
+            <button
+              key={i}
+              onClick={() => { setOpen(false); item.onClick(); }}
+              className={`w-full text-left px-3.5 py-2 text-xs font-medium hover:bg-gray-50 ${item.danger ? "text-red-600" : "text-gray-700"}`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -401,7 +450,8 @@ function AddModuleForm({ trackId, onDone, onCancel }: {
           content: form.content || undefined,
           estimatedReadMinutes: form.estimatedReadMinutes,
           status: form.status,
-          thumbnailUrl: thumbnailUrl || undefined,
+          // Backend field is `thumbnail`, not `thumbnailUrl` (per Swagger docs).
+          thumbnail: thumbnailUrl || undefined,
         }),
       });
       const data = await res.json();
@@ -497,15 +547,12 @@ function AddModuleForm({ trackId, onDone, onCancel }: {
   );
 }
 
-// ── Assessment Form types & helpers ───────────────────────────────────────────
-
-type QuestionMode = "single" | "bulk" | "file";
+// ── Assessment Form types & helpers (MCQ only) ────────────────────────────────
 
 type SingleQuestion = {
   questionText: string;
-  questionType: "multiple_choice" | "true_false" | "short_answer";
   options: { id: string; text: string }[];
-  correctAnswer: string;
+  correctAnswer: string; // option id
   explanation: string;
   orderIndex: number;
   points: number;
@@ -513,7 +560,6 @@ type SingleQuestion = {
 
 const emptyQuestion = (orderIndex = 0): SingleQuestion => ({
   questionText: "",
-  questionType: "multiple_choice",
   options: [
     { id: "a", text: "" },
     { id: "b", text: "" },
@@ -525,42 +571,30 @@ const emptyQuestion = (orderIndex = 0): SingleQuestion => ({
   orderIndex,
   points: 1,
 });
-// ── Payload helper ─────────────────────────────────────────────────────────
-// Converts the UI's {id, text}[] option shape + letter-based correctAnswer
-// into what the API expects: options as string[], correctAnswer as a
-// 0-based index (for multiple_choice). true_false / short_answer pass through.
+
 function buildOptionsAndAnswer(q: SingleQuestion): {
-  options: string[] | undefined;
+  options: string[];
   correctAnswer: number;
 } {
-  if (q.questionType === "multiple_choice") {
-    const filledOptions = q.options.filter((o) => o.text.trim());
-
-    const correctIndex = filledOptions.findIndex(
-      (o) => o.id === q.correctAnswer
-    );
-
-    return {
-      options: filledOptions.map((o) => o.text),
-      correctAnswer: correctIndex >= 0 ? correctIndex : 0,
-    };
-  }
-
-  if (q.questionType === "true_false") {
-    return {
-      options: undefined,
-      correctAnswer: q.correctAnswer === "true" ? 1 : 0,
-    };
-  }
-
-  // Short Answer
+  const filledOptions = q.options.filter((o) => o.text.trim());
+  const correctIndex = filledOptions.findIndex((o) => o.id === q.correctAnswer);
   return {
-    options: [q.correctAnswer],
-    correctAnswer: 0,
+    options: filledOptions.map((o) => o.text),
+    correctAnswer: correctIndex >= 0 ? correctIndex : 0,
   };
 }
 
-// ── Question Editor ───────────────────────────────────────────────────────────
+function validateQuestions(qs: SingleQuestion[]): string {
+  for (const q of qs) {
+    if (!q.questionText.trim()) return "Every question needs question text";
+    const filled = q.options.filter((o) => o.text.trim());
+    if (filled.length < 2) return "Every question needs at least 2 options";
+    if (!q.correctAnswer) return "Every question needs a correct answer selected";
+  }
+  return "";
+}
+
+// ── Question Editor (MCQ only) ─────────────────────────────────────────────────
 
 function QuestionEditor({
   q,
@@ -586,7 +620,7 @@ function QuestionEditor({
     <div className="border border-gray-200 rounded-xl p-4 space-y-3 bg-gray-50/50">
       <div className="flex items-center justify-between">
         <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-          Question {index + 1}
+          Question {index + 1} <span className="text-gray-300 normal-case font-normal">· Multiple Choice</span>
         </span>
         {showRemove && (
           <button onClick={onRemove} className="text-xs text-red-500 hover:text-red-700 font-medium">
@@ -608,72 +642,26 @@ function QuestionEditor({
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1">Type</label>
-          <select
-            value={q.questionType}
-            onChange={e => set("questionType", e.target.value)}
-            className={inputCls}
-            title="select"
-          >
-            <option value="multiple_choice">Multiple Choice</option>
-            <option value="true_false">True / False</option>
-            <option value="short_answer">Short Answer</option>
-          </select>
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1">Points</label>
-          <input
-            type="number" min={1}
-            value={q.points}
-            onChange={e => set("points", Number(e.target.value))}
-            className={inputCls}
-            title="input"
-          />
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-1.5">Options</label>
+        <div className="space-y-2">
+          {q.options.map((opt, i) => (
+            <div key={opt.id} className="flex items-center gap-2">
+              <span className="text-xs font-mono font-bold text-gray-400 w-4">
+                {opt.id.toUpperCase()}
+              </span>
+              <input
+                value={opt.text}
+                onChange={e => setOption(i, e.target.value)}
+                placeholder={`Option ${opt.id.toUpperCase()}`}
+                className={inputCls}
+              />
+            </div>
+          ))}
         </div>
       </div>
 
-      {q.questionType === "multiple_choice" && (
-        <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1.5">Options</label>
-          <div className="space-y-2">
-            {q.options.map((opt, i) => (
-              <div key={opt.id} className="flex items-center gap-2">
-                <span className="text-xs font-mono font-bold text-gray-400 w-4">
-                  {opt.id.toUpperCase()}
-                </span>
-                <input
-                  value={opt.text}
-                  onChange={e => setOption(i, e.target.value)}
-                  placeholder={`Option ${opt.id.toUpperCase()}`}
-                  className={inputCls}
-                />
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {q.questionType === "true_false" && (
-        <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1">
-            Correct Answer <span className="text-red-500">*</span>
-          </label>
-          <select
-            value={q.correctAnswer}
-            onChange={e => set("correctAnswer", e.target.value)}
-            className={inputCls}
-            title="select"
-          >
-            <option value="">Select…</option>
-            <option value="true">True</option>
-            <option value="false">False</option>
-          </select>
-        </div>
-      )}
-
-      {q.questionType === "multiple_choice" && (
+      <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="block text-xs font-medium text-gray-700 mb-1">
             Correct Answer <span className="text-red-500">*</span>
@@ -692,21 +680,17 @@ function QuestionEditor({
             ))}
           </select>
         </div>
-      )}
-
-      {q.questionType === "short_answer" && (
         <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1">
-            Correct Answer <span className="text-red-500">*</span>
-          </label>
+          <label className="block text-xs font-medium text-gray-700 mb-1">Points</label>
           <input
-            value={q.correctAnswer}
-            onChange={e => set("correctAnswer", e.target.value)}
+            type="number" min={1}
+            value={q.points}
+            onChange={e => set("points", Number(e.target.value))}
             className={inputCls}
-            placeholder="Expected answer"
+            title="input"
           />
         </div>
-      )}
+      </div>
 
       <div>
         <label className="block text-xs font-medium text-gray-700 mb-1">
@@ -724,6 +708,9 @@ function QuestionEditor({
 }
 
 // ── Add Assessment Form (Track) ───────────────────────────────────────────────
+// Track assessments only support the "multiple questions" flow — no single
+// question and no CSV upload — and always submit via
+// POST /admin/assessment-items/bulk.
 
 type AssessmentStep = 1 | 2;
 
@@ -751,10 +738,7 @@ function AddAssessmentForm({
   const [assessmentId, setAssessmentId] = useState<number | null>(null);
 
   // Step 2 — questions
-  const [mode, setMode] = useState<QuestionMode>("single");
   const [questions, setQuestions] = useState<SingleQuestion[]>([emptyQuestion(0)]);
-  const [fileRef, setFileRef] = useState<File | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [qLoading, setQLoading] = useState(false);
   const [qError, setQError] = useState("");
 
@@ -799,102 +783,40 @@ function AddAssessmentForm({
     }
   };
 
-  // ── Step 2: submit questions ─────────────────────────────────────────────────
+  // ── Step 2: submit questions — POST /admin/assessment-items/bulk ────────────
   const handleSubmitQuestions = async () => {
     setQError("");
     const token = localStorage.getItem("adminAccessToken");
     if (!token) { setQError("Not authenticated"); return; }
 
-    const parentId = assessmentId;
-    const parentType = "track_assessment";
+    const validationError = validateQuestions(questions);
+    if (validationError) { setQError(validationError); return; }
 
     setQLoading(true);
     try {
-      if (mode === "single") {
-        const q = questions[0];
-        const { options, correctAnswer } = buildOptionsAndAnswer(q);
-        const res = await fetch(`${BASE}admin/assessment-items`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          credentials: "include",
-          body: JSON.stringify({
-            parentId,
-            parentType,
-            questionText: q.questionText,
-            questionType: q.questionType,
-            options,
-            correctAnswer,
-            explanation: q.explanation || undefined,
-            orderIndex: q.orderIndex,
-            points: q.points,
-          }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.message || data.error || "Failed to add question");
-
-      } else if (mode === "bulk") {
-        // The /bulk endpoint's backend validator only accepts a *numeric*
-        // correctAnswer for every item in the batch. That's correct for
-        // multiple_choice, but wrong for short_answer / true_false, which
-        // need a string ("true"/"false" or free text). Sending a mixed
-        // batch straight to /bulk trips that validator and the whole
-        // request fails with a "Validation error" — even for questions
-        // that were valid on their own.
-        //
-        // To make mixed-type batches actually work, we don't use /bulk at
-        // all here. Every question — regardless of type — is submitted
-        // one at a time through the single-item endpoint
-        // (POST /admin/assessment-items), which already accepts both
-        // numeric and string correctAnswer values correctly.
-        for (const q of questions) {
-          const { options, correctAnswer } = buildOptionsAndAnswer(q);
-          const res = await fetch(`${BASE}admin/assessment-items`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-            credentials: "include",
-            body: JSON.stringify({
-              parentId,
-              parentType,
+      const res = await fetch(`${BASE}admin/assessment-items/bulk`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        credentials: "include",
+        body: JSON.stringify({
+          parentId: assessmentId,
+          parentType: "track_assessment",
+          questions: questions.map(q => {
+            const { options, correctAnswer } = buildOptionsAndAnswer(q);
+            return {
               questionText: q.questionText,
-              questionType: q.questionType,
+              questionType: "multiple_choice",
               options,
               correctAnswer,
               explanation: q.explanation || undefined,
               orderIndex: q.orderIndex,
               points: q.points,
-            }),
-          });
-          const data = await res.json();
-          if (!res.ok) {
-            throw new Error(
-              data.message || data.error || `Failed to add question: "${q.questionText.slice(0, 40)}"`
-            );
-          }
-        }
-
-      } else if (mode === "file") {
-        // File upload → sent directly to the backend as multipart form-data,
-        // matching the working Module-assessment implementation. (Previously
-        // this uploaded to Cloudinary first and posted a JSON { fileUrl }
-        // payload, which the backend's bulk-upload endpoint rejected with a
-        // 400 "File processing failed" — it expects the actual file.)
-        if (!fileRef) { setQError("Please select a CSV or Excel file"); setQLoading(false); return; }
-
-        const formData = new FormData();
-        formData.append("file", fileRef);
-        formData.append("parentId", String(parentId));
-        formData.append("parentType", parentType);
-
-        const res = await fetch(`${BASE}admin/assessment-items/bulk-upload`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
-          credentials: "include",
-          body: formData,
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.message || data.error || "File processing failed");
-      }
-
+            };
+          }),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || data.error || "Bulk submit failed");
       onDone();
     } catch (err: any) {
       setQError(err.message);
@@ -1014,124 +936,37 @@ function AddAssessmentForm({
         </div>
       )}
 
-      {/* ── STEP 2: Questions ── */}
+      {/* ── STEP 2: Questions (multiple only) ── */}
       {step === 2 && (
         <div className="space-y-5">
-
-          {/* Mode selector */}
-          <div>
-            <p className="text-xs font-medium text-gray-700 mb-2">
-              How do you want to add questions?
+          <div className="flex items-center gap-2 px-3.5 py-2.5 bg-[#004900]/5 border border-[#004900]/20 rounded-lg">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#004900" strokeWidth="2">
+              <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
+              <rect x="9" y="3" width="6" height="4" rx="1" />
+            </svg>
+            <p className="text-xs text-[#004900] font-medium">
+              Track assessments are always submitted as a batch of multiple-choice questions.
             </p>
-            <div className="grid grid-cols-3 gap-2">
-              {(["single", "bulk", "file"] as QuestionMode[]).map(m => (
-                <button
-                  key={m}
-                  onClick={() => {
-                    setMode(m);
-                    if (m !== "file") setQuestions([emptyQuestion(0)]);
-                    setFileRef(null);
-                    setQError("");
-                  }}
-                  className={`py-2.5 px-3 rounded-xl text-xs font-medium border transition-all ${
-                    mode === m
-                      ? "border-[#004900] bg-[#004900]/5 text-[#004900]"
-                      : "border-gray-200 text-gray-500 hover:border-gray-300"
-                  }`}
-                >
-                  {m === "single" && "Single  Choice"}
-                  {m === "bulk" && "Multiple  Choices"}
-                  {m === "file" && "Upload File (CSV/Excel)"}
-                </button>
-              ))}
-            </div>
           </div>
 
-          {/* Single / Bulk — question editors */}
-          {(mode === "single" || mode === "bulk") && (
-            <div className="space-y-4">
-              {questions.map((q, i) => (
-                <QuestionEditor
-                  key={i}
-                  q={q}
-                  index={i}
-                  onChange={updated => updateQuestion(i, updated)}
-                  onRemove={() => removeQuestion(i)}
-                  showRemove={questions.length > 1}
-                />
-              ))}
-              {mode === "bulk" && (
-                <button
-                  onClick={addQuestion}
-                  className="w-full py-2.5 border-2 border-dashed border-gray-200 rounded-xl text-xs font-medium text-gray-400 hover:border-[#004900]/40 hover:text-[#004900] transition-colors"
-                >
-                  + Add Another Question
-                </button>
-              )}
-            </div>
-          )}
-
-          {/* File upload mode — direct multipart to backend */}
-          {mode === "file" && (
-            <div className="space-y-4">
-              <div className="border-2 border-dashed border-gray-200 rounded-xl p-6 text-center hover:border-[#004900]/30 transition-colors">
-                <svg
-                  className="mx-auto mb-3 text-gray-300"
-                  width="40" height="40"
-                  viewBox="0 0 24 24"
-                  fill="none" stroke="currentColor" strokeWidth="1.5"
-                >
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                  <polyline points="14 2 14 8 20 8" />
-                  <line x1="12" y1="11" x2="12" y2="17" />
-                  <polyline points="9 14 12 11 15 14" />
-                </svg>
-                <p className="text-sm text-gray-500 mb-1">
-                  {fileRef ? fileRef.name : "Drop a CSV or Excel file here, or click to browse"}
-                </p>
-                <p className="text-xs text-gray-400 mb-3">Max 5 MB · .csv, .xlsx</p>
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium bg-[#004900] text-white hover:bg-[#003700]"
-                >
-                  Choose File
-                </button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".csv,.xlsx,.xls"
-                  className="hidden"
-                  onChange={e => setFileRef(e.target.files?.[0] ?? null)}
-                  title="input"
-                />
-              </div>
-
-              {/* Column reference */}
-              <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
-                <p className="text-xs font-semibold text-blue-700 mb-1.5">Required columns</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {["question_text", "question_type", "correct_answer"].map(col => (
-                    <code key={col} className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-xs">
-                      {col}
-                    </code>
-                  ))}
-                </div>
-                <p className="text-xs font-semibold text-blue-700 mt-2.5 mb-1.5">Optional columns</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {["option_a", "option_b", "option_c", "option_d", "explanation", "points"].map(col => (
-                    <code key={col} className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-xs">
-                      {col}
-                    </code>
-                  ))}
-                </div>
-                <p className="text-xs text-blue-600 mt-2 leading-relaxed">
-                  <strong>question_type</strong>: multiple_choice, true_false, short_answer
-                  <br />
-                  <strong>correct_answer</strong>: a / b / c / d for MCQ; true / false for true_false
-                </p>
-              </div>
-            </div>
-          )}
+          <div className="space-y-4">
+            {questions.map((q, i) => (
+              <QuestionEditor
+                key={i}
+                q={q}
+                index={i}
+                onChange={updated => updateQuestion(i, updated)}
+                onRemove={() => removeQuestion(i)}
+                showRemove={questions.length > 1}
+              />
+            ))}
+            <button
+              onClick={addQuestion}
+              className="w-full py-2.5 border-2 border-dashed border-gray-200 rounded-xl text-xs font-medium text-gray-400 hover:border-[#004900]/40 hover:text-[#004900] transition-colors"
+            >
+              + Add Another Question
+            </button>
+          </div>
 
           {qError && <p className="text-xs text-red-600">{qError}</p>}
 
@@ -1143,11 +978,7 @@ function AddAssessmentForm({
             >
               {qLoading
                 ? "Submitting…"
-                : mode === "file"
-                ? "Upload & Save"
-                : mode === "bulk"
-                ? `Save ${questions.length} Question${questions.length !== 1 ? "s" : ""}`
-                : "Save Question"}
+                : `Save ${questions.length} Question${questions.length !== 1 ? "s" : ""}`}
             </button>
             <button
               onClick={() => setStep(1)}
@@ -1291,9 +1122,17 @@ export default function ManageTracks() {
 
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
-                          {track.thumbnail && (
-                            <img src={track.thumbnail} alt="" className="w-8 h-8 rounded-lg object-cover" />
-                          )}
+                          <div className="w-8 h-8 rounded-lg border border-gray-100 bg-gray-50 overflow-hidden flex items-center justify-center shrink-0">
+                            {track.thumbnail ? (
+                              <img src={track.thumbnail} alt="" className="w-full h-full object-cover" />
+                            ) : (
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" strokeWidth="1.5">
+                                <rect x="3" y="3" width="18" height="18" rx="2" />
+                                <circle cx="8.5" cy="8.5" r="1.5" />
+                                <path d="M21 15l-5-5L5 21" />
+                              </svg>
+                            )}
+                          </div>
                           <div>
                             <div className="font-medium text-gray-900">{track.title}</div>
                             {track.shortDescription && (
@@ -1324,7 +1163,7 @@ export default function ManageTracks() {
                       </td>
 
                       <td className="px-6 py-4">
-                        <div className="flex items-center justify-end gap-2 flex-wrap">
+                        <div className="flex items-center justify-end gap-2">
 
                           {/* Add Module */}
                           <button
@@ -1352,32 +1191,13 @@ export default function ManageTracks() {
                             Add Assessment
                           </button>
 
-                          {/* Edit */}
-                          <button
-                            onClick={() => setModal({ type: "edit", track })}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-blue-200 text-blue-600 hover:bg-blue-50 transition-colors"
-                          >
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                            </svg>
-                            Edit
-                          </button>
-
-                          {/* Delete */}
-                          <button
-                            onClick={() => setModal({ type: "delete", track })}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-red-200 text-red-600 hover:bg-red-50 transition-colors"
-                          >
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <polyline points="3 6 5 6 21 6" />
-                              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                              <path d="M10 11v6M14 11v6" />
-                              <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-                            </svg>
-                            Delete
-                          </button>
-
+                          {/* Overflow menu */}
+                          <ActionsMenu
+                            items={[
+                              { label: "Edit Track", onClick: () => setModal({ type: "edit", track }) },
+                              { label: "Delete Track", onClick: () => setModal({ type: "delete", track }), danger: true },
+                            ]}
+                          />
                         </div>
                       </td>
                     </tr>

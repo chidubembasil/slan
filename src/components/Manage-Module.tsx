@@ -26,8 +26,16 @@ type Module = {
   estimatedReadMinutes?: number;
   trackId: number;
   track?: { id: number; title: string };
+  // Backend field is actually `thumbnail` (confirmed via the Swagger docs for
+  // PUT /admin/modules/{id}) — `thumbnailUrl` is kept as a fallback in case
+  // any older records/endpoints still use it.
+  thumbnail?: string;
   thumbnailUrl?: string;
 };
+
+// Single place that decides which field to read the module thumbnail from.
+const getModuleThumbnail = (m: Pick<Module, "thumbnail" | "thumbnailUrl">) =>
+  m.thumbnail || m.thumbnailUrl || "";
 
 type UnitForm = {
   moduleId: string;
@@ -122,9 +130,55 @@ function ConfirmModal({
   );
 }
 
+// ── Actions dropdown (keeps row-level buttons from getting crowded) ───────────
+
+function ActionsMenu({
+  items,
+}: {
+  items: { label: string; onClick: () => void; danger?: boolean }[];
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors"
+        aria-label="More actions"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="12" cy="5" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="12" cy="19" r="1.5" />
+        </svg>
+      </button>
+      {open && (
+        <div className="absolute right-0 mt-1.5 w-48 bg-white rounded-xl shadow-lg border border-gray-100 py-1.5 z-20">
+          {items.map((item, i) => (
+            <button
+              key={i}
+              onClick={() => { setOpen(false); item.onClick(); }}
+              className={`w-full text-left px-3.5 py-2 text-xs font-medium hover:bg-gray-50 ${item.danger ? "text-red-600" : "text-gray-700"}`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Cloudinary Upload ─────────────────────────────────────────────────────────
-// Shared by unit video/pdf uploads, the module thumbnail upload, AND (now)
-// the assessment CSV/Excel bulk-upload file below.
+// Shared by unit video/pdf uploads, the module thumbnail upload, AND the
+// assessment CSV/Excel bulk-upload file below.
 
 const uploadToCloudinary = async (file: File, folder: string = "curriculum"): Promise<string> => {
   const API_KEY = import.meta.env.VITE_API_KEY;
@@ -154,9 +208,6 @@ const uploadToCloudinary = async (file: File, folder: string = "curriculum"): Pr
 };
 
 // ── Thumbnail Picker ──────────────────────────────────────────────────────────
-// Small self-contained control: shows current/preview image, lets the user
-// pick a new file. The actual Cloudinary upload happens on Save (in
-// EditModuleForm.handleSave) so nothing is uploaded until the user commits.
 
 function ThumbnailPicker({
   previewUrl,
@@ -224,8 +275,8 @@ function EditModuleForm({ module, onDone }: { module: Module; onDone: () => void
   // Tracks the actual persisted thumbnail URL (as opposed to `thumbnailPreview`,
   // which can also briefly hold a local blob: URL while previewing a newly
   // picked file). This is what we fall back to on save if no new file was chosen.
-  const [existingThumbnailUrl, setExistingThumbnailUrl] = useState<string>(module.thumbnailUrl ?? "");
-  const [thumbnailPreview, setThumbnailPreview] = useState<string>(module.thumbnailUrl ?? "");
+  const [existingThumbnailUrl, setExistingThumbnailUrl] = useState<string>(getModuleThumbnail(module));
+  const [thumbnailPreview, setThumbnailPreview] = useState<string>(getModuleThumbnail(module));
   const [uploadingThumbnail, setUploadingThumbnail] = useState(false);
   const [loading, setLoading] = useState(false);
   const [fetchingDetails, setFetchingDetails] = useState(true);
@@ -233,7 +284,7 @@ function EditModuleForm({ module, onDone }: { module: Module; onDone: () => void
 
   // The row-level `module` prop comes from the tracks/modules LIST endpoint,
   // which often returns a trimmed-down object (missing description,
-  // shortDescription, estimatedReadMinutes, thumbnailUrl). That's why the
+  // shortDescription, estimatedReadMinutes, thumbnail). That's why the
   // form was opening with those fields blank even though the backend has
   // real values for them. Fetch the full module record on mount and hydrate
   // the form once it arrives, while still showing whatever we already have
@@ -258,8 +309,9 @@ function EditModuleForm({ module, onDone }: { module: Module; onDone: () => void
           estimatedReadMinutes: full.estimatedReadMinutes ?? 0,
           status: full.status ?? module.status,
         });
-        setExistingThumbnailUrl(full.thumbnailUrl ?? "");
-        setThumbnailPreview(full.thumbnailUrl ?? "");
+        const thumb = getModuleThumbnail(full);
+        setExistingThumbnailUrl(thumb);
+        setThumbnailPreview(thumb);
       } catch {
         // Keep whatever we already had from the list row; don't block editing.
       } finally {
@@ -305,7 +357,9 @@ function EditModuleForm({ module, onDone }: { module: Module; onDone: () => void
           shortDescription: form.shortDescription || undefined,
           estimatedReadMinutes: form.estimatedReadMinutes,
           status: form.status,
-          thumbnailUrl: finalThumbnailUrl || undefined,
+          // Backend field is `thumbnail` (see Swagger docs for this endpoint),
+          // not `thumbnailUrl` — this was the reason thumbnails weren't saving.
+          thumbnail: finalThumbnailUrl || undefined,
         }),
       });
       const data = await res.json();
@@ -422,7 +476,6 @@ function UnitCreateModal({
   const validate = (): boolean => {
     const e: FormErrors<UnitForm> = {};
     if (!form.title.trim()) e.title = "Title is required";
-    /* if (!form.description.trim()) e.description = "Description is required"; */
     if (!form.content.trim()) e.content = "Content is required";
     if (form.estimatedReadMinutes === "" || isNaN(Number(form.estimatedReadMinutes)))
       e.estimatedReadMinutes = "Must be a valid number";
@@ -562,14 +615,15 @@ function UnitCreateModal({
 }
 
 // ── Assessment Form types ─────────────────────────────────────────────────────
+// Only multiple-choice questions are supported now (true/false and
+// short-answer have been removed).
 
 type QuestionMode = "single" | "bulk" | "file";
 
 type SingleQuestion = {
   questionText: string;
-  questionType: "multiple_choice" | "true_false" | "short_answer";
   options: { id: string; text: string }[];
-  correctAnswer: string;
+  correctAnswer: string; // option id, e.g. "a"
   explanation: string;
   orderIndex: number;
   points: number;
@@ -577,7 +631,6 @@ type SingleQuestion = {
 
 const emptyQuestion = (orderIndex = 0): SingleQuestion => ({
   questionText: "",
-  questionType: "multiple_choice",
   options: [
     { id: "a", text: "" },
     { id: "b", text: "" },
@@ -590,46 +643,32 @@ const emptyQuestion = (orderIndex = 0): SingleQuestion => ({
   points: 1,
 });
 
-// ── Payload helper ─────────────────────────────────────────────────────────
 // Converts the UI's {id, text}[] option shape + letter-based correctAnswer
-// into what the API expects.
-//
-// • multiple_choice → options: string[], correctAnswer: number (0-based index)
-// • true_false      → correctAnswer: number (1 = true, 0 = false)
-// • short_answer    → options: [answer], correctAnswer: 0
-//
-// correctAnswer is always a number for every questionType.
+// into what the API expects: options as string[], correctAnswer as a
+// 0-based index.
 function buildOptionsAndAnswer(q: SingleQuestion): {
-  options: string[] | undefined;
+  options: string[];
   correctAnswer: number;
 } {
-  if (q.questionType === "multiple_choice") {
-    const filledOptions = q.options.filter((o) => o.text.trim());
-
-    const correctIndex = filledOptions.findIndex(
-      (o) => o.id === q.correctAnswer
-    );
-
-    return {
-      options: filledOptions.map((o) => o.text),
-      correctAnswer: correctIndex >= 0 ? correctIndex : 0,
-    };
-  }
-
-  if (q.questionType === "true_false") {
-    return {
-      options: undefined,
-      correctAnswer: q.correctAnswer === "true" ? 1 : 0,
-    };
-  }
-
-  // Short Answer
+  const filledOptions = q.options.filter((o) => o.text.trim());
+  const correctIndex = filledOptions.findIndex((o) => o.id === q.correctAnswer);
   return {
-    options: [q.correctAnswer],
-    correctAnswer: 0,
+    options: filledOptions.map((o) => o.text),
+    correctAnswer: correctIndex >= 0 ? correctIndex : 0,
   };
 }
-// ── Question Editor ───────────────────────────────────────────────────────────
+
+function validateQuestions(qs: SingleQuestion[]): string {
+  for (const q of qs) {
+    if (!q.questionText.trim()) return "Every question needs question text";
+    const filled = q.options.filter((o) => o.text.trim());
+    if (filled.length < 2) return "Every question needs at least 2 options";
+    if (!q.correctAnswer) return "Every question needs a correct answer selected";
+  }
+  return "";
+}
+
+// ── Question Editor (MCQ only) ─────────────────────────────────────────────────
 
 function QuestionEditor({
   q,
@@ -650,34 +689,12 @@ function QuestionEditor({
     opts[i] = { ...opts[i], text };
     onChange({ ...q, options: opts });
   };
-  // Switching question type must clear correctAnswer — otherwise a leftover
-  // MCQ option id (e.g. "b") or true/false string silently carries over into
-  // the new type and fails validation without any visible sign in the UI.
-  const handleTypeChange = (newType: SingleQuestion["questionType"]) => {
-    if (newType === "multiple_choice") {
-      onChange({
-        ...q,
-        questionType: newType,
-        correctAnswer: "",
-        options: q.options.length
-          ? q.options
-          : [
-              { id: "a", text: "" },
-              { id: "b", text: "" },
-              { id: "c", text: "" },
-              { id: "d", text: "" },
-            ],
-      });
-    } else {
-      onChange({ ...q, questionType: newType, correctAnswer: "" });
-    }
-  };
 
   return (
     <div className="border border-gray-200 rounded-xl p-4 space-y-3 bg-gray-50/50">
       <div className="flex items-center justify-between">
         <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-          Question {index + 1}
+          Question {index + 1} <span className="text-gray-300 normal-case font-normal">· Multiple Choice</span>
         </span>
         {showRemove && (
           <button onClick={onRemove} className="text-xs text-red-500 hover:text-red-700 font-medium">
@@ -699,72 +716,26 @@ function QuestionEditor({
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1">Type</label>
-          <select
-            value={q.questionType}
-            onChange={e => handleTypeChange(e.target.value as SingleQuestion["questionType"])}
-            className={inputCls}
-            title="select"
-          >
-            <option value="multiple_choice">Multiple Choice</option>
-            <option value="true_false">True / False</option>
-            <option value="short_answer">Short Answer</option>
-          </select>
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1">Points</label>
-          <input
-            type="number" min={1}
-            value={q.points}
-            onChange={e => set("points", Number(e.target.value))}
-            className={inputCls}
-            title="input"
-          />
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-1.5">Options</label>
+        <div className="space-y-2">
+          {q.options.map((opt, i) => (
+            <div key={opt.id} className="flex items-center gap-2">
+              <span className="text-xs font-mono font-bold text-gray-400 w-4">
+                {opt.id.toUpperCase()}
+              </span>
+              <input
+                value={opt.text}
+                onChange={e => setOption(i, e.target.value)}
+                placeholder={`Option ${opt.id.toUpperCase()}`}
+                className={inputCls}
+              />
+            </div>
+          ))}
         </div>
       </div>
 
-      {q.questionType === "multiple_choice" && (
-        <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1.5">Options</label>
-          <div className="space-y-2">
-            {q.options.map((opt, i) => (
-              <div key={opt.id} className="flex items-center gap-2">
-                <span className="text-xs font-mono font-bold text-gray-400 w-4">
-                  {opt.id.toUpperCase()}
-                </span>
-                <input
-                  value={opt.text}
-                  onChange={e => setOption(i, e.target.value)}
-                  placeholder={`Option ${opt.id.toUpperCase()}`}
-                  className={inputCls}
-                />
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {q.questionType === "true_false" && (
-        <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1">
-            Correct Answer <span className="text-red-500">*</span>
-          </label>
-          <select
-            value={q.correctAnswer}
-            onChange={e => set("correctAnswer", e.target.value)}
-            className={inputCls}
-            title="select"
-          >
-            <option value="">Select…</option>
-            <option value="true">True</option>
-            <option value="false">False</option>
-          </select>
-        </div>
-      )}
-
-      {q.questionType === "multiple_choice" && (
+      <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="block text-xs font-medium text-gray-700 mb-1">
             Correct Answer <span className="text-red-500">*</span>
@@ -783,21 +754,17 @@ function QuestionEditor({
             ))}
           </select>
         </div>
-      )}
-
-      {q.questionType === "short_answer" && (
         <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1">
-            Correct Answer <span className="text-red-500">*</span>
-          </label>
+          <label className="block text-xs font-medium text-gray-700 mb-1">Points</label>
           <input
-            value={q.correctAnswer}
-            onChange={e => set("correctAnswer", e.target.value)}
+            type="number" min={1}
+            value={q.points}
+            onChange={e => set("points", Number(e.target.value))}
             className={inputCls}
-            placeholder="Expected answer"
+            title="input"
           />
         </div>
-      )}
+      </div>
 
       <div>
         <label className="block text-xs font-medium text-gray-700 mb-1">
@@ -815,6 +782,8 @@ function QuestionEditor({
 }
 
 // ── Add Assessment Form (Module) ──────────────────────────────────────────────
+// Module assessments keep all 3 input modes: single question, multiple
+// questions, or a CSV/Excel upload.
 
 type AssessmentStep = 1 | 2;
 
@@ -904,12 +873,8 @@ function AddAssessmentForm({
     setQLoading(true);
     try {
       if (mode === "file") {
-        // File → upload to Cloudinary first (reusing the exact same signed
-        // upload helper used for unit videos/pdfs and the module thumbnail
-        // above), then send the resulting URL to the backend as JSON.
-        // Previously this sent the raw file as multipart form-data straight
-        // to the backend, which never went through Cloudinary and is why
-        // uploads were failing.
+        // File → upload to Cloudinary first, then send the resulting URL to
+        // the backend as JSON.
         if (!fileRef) { setQError("Please select a CSV or Excel file"); setQLoading(false); return; }
 
         let fileUrl = "";
@@ -935,54 +900,59 @@ function AddAssessmentForm({
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || data.error || "File upload failed");
 
-      } else if (questions.length === 1) {
-        // Single question → POST /admin/assessment-items
-        const q = questions[0];
-        const { options, correctAnswer } = buildOptionsAndAnswer(q);
-        const res = await fetch(`${BASE}admin/assessment-items`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          credentials: "include",
-          body: JSON.stringify({
-            parentId,
-            parentType,
-            questionText: q.questionText,
-            questionType: q.questionType,
-            options,
-            correctAnswer,
-            explanation: q.explanation || undefined,
-            orderIndex: q.orderIndex,
-            points: q.points,
-          }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.message || data.error || "Failed to add question");
-
       } else {
-        // Multiple questions → POST /admin/assessment-items/bulk
-        const res = await fetch(`${BASE}admin/assessment-items/bulk`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          credentials: "include",
-          body: JSON.stringify({
-            parentId,
-            parentType,
-            questions: questions.map(q => {
-              const { options, correctAnswer } = buildOptionsAndAnswer(q);
-              return {
-                questionText: q.questionText,
-                questionType: q.questionType,
-                options,
-                correctAnswer,
-                explanation: q.explanation || undefined,
-                orderIndex: q.orderIndex,
-                points: q.points,
-              };
+        const validationError = validateQuestions(questions);
+        if (validationError) { setQError(validationError); setQLoading(false); return; }
+
+        if (mode === "single") {
+          // Single question → POST /admin/assessment-items
+          const q = questions[0];
+          const { options, correctAnswer } = buildOptionsAndAnswer(q);
+          const res = await fetch(`${BASE}admin/assessment-items`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            credentials: "include",
+            body: JSON.stringify({
+              parentId,
+              parentType,
+              questionText: q.questionText,
+              questionType: "multiple_choice",
+              options,
+              correctAnswer,
+              explanation: q.explanation || undefined,
+              orderIndex: q.orderIndex,
+              points: q.points,
             }),
-          }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.message || data.error || "Bulk submit failed");
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.message || data.error || "Failed to add question");
+
+        } else {
+          // Multiple questions → POST /admin/assessment-items/bulk
+          const res = await fetch(`${BASE}admin/assessment-items/bulk`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            credentials: "include",
+            body: JSON.stringify({
+              parentId,
+              parentType,
+              questions: questions.map(q => {
+                const { options, correctAnswer } = buildOptionsAndAnswer(q);
+                return {
+                  questionText: q.questionText,
+                  questionType: "multiple_choice",
+                  options,
+                  correctAnswer,
+                  explanation: q.explanation || undefined,
+                  orderIndex: q.orderIndex,
+                  points: q.points,
+                };
+              }),
+            }),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.message || data.error || "Bulk submit failed");
+        }
       }
 
       onDone();
@@ -1045,25 +1015,16 @@ function AddAssessmentForm({
             </span>
           </div>
 
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1.5">
-              Title <span className="text-red-500">*</span>
-            </label>
+          <Field label="Title" required error={configErrors.title}>
             <input
               value={config.title}
               onChange={e => setC("title", e.target.value)}
               placeholder="e.g. Module Final Assessment"
               className={inputCls}
             />
-            {configErrors.title && (
-              <p className="text-xs text-red-600 mt-1">{configErrors.title}</p>
-            )}
-          </div>
+          </Field>
 
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1.5">
-              Description <span className="text-red-500">*</span>
-            </label>
+          <Field label="Description" required error={configErrors.description}>
             <textarea
               rows={3}
               value={config.description}
@@ -1071,10 +1032,7 @@ function AddAssessmentForm({
               placeholder="What this assessment covers"
               className={textareaCls}
             />
-            {configErrors.description && (
-              <p className="text-xs text-red-600 mt-1">{configErrors.description}</p>
-            )}
-          </div>
+          </Field>
 
           <div className="grid grid-cols-3 gap-4">
            <div>
@@ -1144,8 +1102,8 @@ function AddAssessmentForm({
                       : "border-gray-200 text-gray-500 hover:border-gray-300"
                   }`}
                 >
-                  {m === "single" && "Single Choice"}
-                  {m === "bulk" && "Multiple Choices"}
+                  {m === "single" && "Single Question"}
+                  {m === "bulk" && "Multiple Questions"}
                   {m === "file" && "Upload File (CSV/Excel)"}
                 </button>
               ))}
@@ -1215,7 +1173,7 @@ function AddAssessmentForm({
               <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
                 <p className="text-xs font-semibold text-blue-700 mb-1.5">Required columns</p>
                 <div className="flex flex-wrap gap-1.5">
-                  {["question_text", "question_type", "correct_answer"].map(col => (
+                  {["question_text", "correct_answer"].map(col => (
                     <code key={col} className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-xs">
                       {col}
                     </code>
@@ -1230,9 +1188,9 @@ function AddAssessmentForm({
                   ))}
                 </div>
                 <p className="text-xs text-blue-600 mt-2 leading-relaxed">
-                  <strong>question_type</strong>: multiple_choice, true_false, short_answer
+                  All rows are treated as <strong>multiple_choice</strong>.
                   <br />
-                  <strong>correct_answer</strong>: a / b / c / d for MCQ; true / false for true_false
+                  <strong>correct_answer</strong>: a / b / c / d
                 </p>
               </div>
             </div>
@@ -1275,6 +1233,147 @@ function AddAssessmentForm({
   );
 }
 
+// ── Module Reflection Form ─────────────────────────────────────────────────────
+// NOTE: This posts to a PLACEHOLDER route:
+//   `${BASE}admin/modules/{moduleId}/reflection`
+// Swap the URL inside this component (search for "DUMMY ROUTE") for the real
+// endpoint once your backend has one — everything else here already works.
+
+type ReflectionMode = "add" | "edit";
+
+function ModuleReflectionForm({
+  module,
+  mode,
+  onDone,
+  onCancel,
+}: {
+  module: Module;
+  mode: ReflectionMode;
+  onDone: () => void;
+  onCancel: () => void;
+}) {
+  const [description, setDescription] = useState("");
+  const [criteria, setCriteria] = useState("");
+  const [fetching, setFetching] = useState(mode === "edit");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  // Best-effort pre-fill for "edit" mode. Since the real route doesn't exist
+  // yet, this will simply fail quietly and leave the fields blank — remove
+  // this effect entirely if you don't want the extra request until the
+  // route is live.
+  useEffect(() => {
+    if (mode !== "edit") return;
+    let cancelled = false;
+    (async () => {
+      const token = localStorage.getItem("adminAccessToken");
+      try {
+        // DUMMY ROUTE — replace with the real "get reflection" endpoint.
+        const res = await fetch(`${BASE}admin/modules/${module.id}/reflection`, {
+          headers: { Authorization: `Bearer ${token}` },
+          credentials: "include",
+        });
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        if (cancelled) return;
+        const refl = data?.data ?? data?.reflection ?? data;
+        setDescription(refl?.description ?? "");
+        setCriteria(refl?.criteria ?? "");
+      } catch {
+        // Route not implemented yet — leave fields blank.
+      } finally {
+        if (!cancelled) setFetching(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [mode, module.id]);
+
+  const handleSubmit = async () => {
+    setError("");
+    if (!description.trim() || !criteria.trim()) {
+      setError("Both description and criteria are required");
+      return;
+    }
+    const token = localStorage.getItem("adminAccessToken");
+    if (!token) { setError("Not authenticated"); return; }
+    setLoading(true);
+    try {
+      // DUMMY ROUTE — replace with the real "create/update reflection"
+      // endpoint once it exists. POST is used for "add", PUT for "edit".
+      const res = await fetch(`${BASE}admin/modules/${module.id}/reflection`, {
+        method: mode === "add" ? "POST" : "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        credentials: "include",
+        body: JSON.stringify({ description, criteria }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to save reflection");
+      onDone();
+    } catch (err: any) {
+      setError(err.message || "Something went wrong");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-start gap-2 px-3.5 py-2.5 bg-amber-50 border border-amber-100 rounded-lg">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#b45309" strokeWidth="2" className="shrink-0 mt-0.5">
+          <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
+        </svg>
+        <p className="text-xs text-amber-700 leading-relaxed">
+          This form currently posts to a placeholder route:{" "}
+          <code className="bg-amber-100 px-1 rounded">admin/modules/{module.id}/reflection</code>.
+          Swap in the real endpoint inside <code className="bg-amber-100 px-1 rounded">ModuleReflectionForm</code> once it's ready.
+        </p>
+      </div>
+
+      {fetching ? (
+        <p className="text-xs text-gray-400">Loading existing reflection…</p>
+      ) : (
+        <>
+          <Field label="Description" required>
+            <textarea
+              rows={4}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className={textareaCls}
+              placeholder="Reflection description"
+            />
+          </Field>
+          <Field label="Criteria" required>
+            <textarea
+              rows={4}
+              value={criteria}
+              onChange={(e) => setCriteria(e.target.value)}
+              className={textareaCls}
+              placeholder="Reflection criteria"
+            />
+          </Field>
+        </>
+      )}
+
+      {error && <p className="text-xs text-red-600">{error}</p>}
+      <div className="flex gap-3 pt-1">
+        <button
+          onClick={handleSubmit}
+          disabled={loading || fetching}
+          className="bg-[#004900] text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-[#003700] disabled:opacity-60"
+        >
+          {loading ? "Saving…" : mode === "add" ? "Submit" : "Save Changes"}
+        </button>
+        <button
+          onClick={onCancel}
+          className="px-5 py-2.5 rounded-lg text-sm border border-gray-300 text-gray-600 hover:bg-gray-50"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 type ModalState =
@@ -1282,7 +1381,9 @@ type ModalState =
   | { type: "edit"; module: Module }
   | { type: "delete"; module: Module }
   | { type: "addUnit"; module: Module }
-  | { type: "addAssessment"; module: Module };
+  | { type: "addAssessment"; module: Module }
+  | { type: "addReflection"; module: Module }
+  | { type: "editReflection"; module: Module };
 
 export default function ManageModules() {
   const [modules, setModules] = useState<Module[]>([]);
@@ -1370,44 +1471,30 @@ export default function ManageModules() {
       <div className="max-w-7xl mx-auto px-6 py-8">
 
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Manage Modules</h1>
             <p className="text-sm text-gray-500 mt-0.5">Modules belong to tracks and group related units</p>
           </div>
-          <span className="text-sm text-gray-400">
-            {filteredModules.length} module{filteredModules.length !== 1 ? "s" : ""}
-          </span>
-        </div>
-
-        {/* Track filter pills */}
-        {!loading && !fetchError && tracks.length > 0 && (
-          <div className="flex items-center gap-2 mb-5 flex-wrap">
-            <button
-              onClick={() => setSelectedTrackId("all")}
-              className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                selectedTrackId === "all"
-                  ? "bg-[#004900] text-white"
-                  : "bg-white border border-gray-200 text-gray-600 hover:border-[#004900] hover:text-[#004900]"
-              }`}
-            >
-              All tracks
-            </button>
-            {tracks.map((t) => (
-              <button
-                key={t.id}
-                onClick={() => setSelectedTrackId(t.id)}
-                className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                  selectedTrackId === t.id
-                    ? "bg-[#004900] text-white"
-                    : "bg-white border border-gray-200 text-gray-600 hover:border-[#004900] hover:text-[#004900]"
-                }`}
+          <div className="flex items-center gap-3">
+            {!loading && !fetchError && tracks.length > 0 && (
+              <select
+                value={selectedTrackId}
+                onChange={(e) => setSelectedTrackId(e.target.value === "all" ? "all" : Number(e.target.value))}
+                className="px-3.5 py-2 border border-gray-200 rounded-lg text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900]"
+                aria-label="Filter by track"
               >
-                {t.title}
-              </button>
-            ))}
+                <option value="all">All tracks</option>
+                {tracks.map((t) => (
+                  <option key={t.id} value={t.id}>{t.title}</option>
+                ))}
+              </select>
+            )}
+            <span className="text-sm text-gray-400 whitespace-nowrap">
+              {filteredModules.length} module{filteredModules.length !== 1 ? "s" : ""}
+            </span>
           </div>
-        )}
+        </div>
 
         {/* Table */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
@@ -1442,97 +1529,83 @@ export default function ManageModules() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {filteredModules.map((mod) => (
-                    <tr key={mod.id} className="hover:bg-gray-50/60 transition-colors">
-                      <td className="px-6 py-4 text-gray-400 font-mono text-xs">{mod.id}</td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-lg border border-gray-100 bg-gray-50 overflow-hidden flex items-center justify-center shrink-0">
-                            {mod.thumbnailUrl ? (
-                              <img src={mod.thumbnailUrl} alt="" className="w-full h-full object-cover" />
-                            ) : (
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" strokeWidth="1.5">
-                                <rect x="3" y="3" width="18" height="18" rx="2" />
-                                <circle cx="8.5" cy="8.5" r="1.5" />
-                                <path d="M21 15l-5-5L5 21" />
+                  {filteredModules.map((mod) => {
+                    const thumb = getModuleThumbnail(mod);
+                    return (
+                      <tr key={mod.id} className="hover:bg-gray-50/60 transition-colors">
+                        <td className="px-6 py-4 text-gray-400 font-mono text-xs">{mod.id}</td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-lg border border-gray-100 bg-gray-50 overflow-hidden flex items-center justify-center shrink-0">
+                              {thumb ? (
+                                <img src={thumb} alt="" className="w-full h-full object-cover" />
+                              ) : (
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" strokeWidth="1.5">
+                                  <rect x="3" y="3" width="18" height="18" rx="2" />
+                                  <circle cx="8.5" cy="8.5" r="1.5" />
+                                  <path d="M21 15l-5-5L5 21" />
+                                </svg>
+                              )}
+                            </div>
+                            <div>
+                              <div className="font-medium text-gray-900">{mod.title}</div>
+                              {mod.shortDescription && (
+                                <div className="text-xs text-gray-400 mt-0.5 line-clamp-1 max-w-xs">
+                                  {mod.shortDescription}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700">
+                            {mod.track?.title ?? `Track #${mod.trackId}`}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4"><Badge status={mod.status} /></td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center justify-end gap-2">
+
+                            {/* Add Unit */}
+                            <button
+                              onClick={() => setModal({ type: "addUnit", module: mod })}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-[#004900] text-white hover:bg-[#003700] transition-colors"
+                            >
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                <line x1="12" y1="5" x2="12" y2="19" />
+                                <line x1="5" y1="12" x2="19" y2="12" />
                               </svg>
-                            )}
+                              Add Unit
+                            </button>
+
+                            {/* Add Assessment */}
+                            <button
+                              onClick={() => setModal({ type: "addAssessment", module: mod })}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-purple-600 text-white hover:bg-purple-700 transition-colors"
+                            >
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
+                                <rect x="9" y="3" width="6" height="4" rx="1" />
+                                <line x1="9" y1="12" x2="15" y2="12" />
+                                <line x1="9" y1="16" x2="13" y2="16" />
+                              </svg>
+                              Add Assessment
+                            </button>
+
+                            {/* Overflow menu: reflection, edit, delete */}
+                            <ActionsMenu
+                              items={[
+                                { label: "Add Reflection", onClick: () => setModal({ type: "addReflection", module: mod }) },
+                                { label: "Edit Reflection", onClick: () => setModal({ type: "editReflection", module: mod }) },
+                                { label: "Edit Module", onClick: () => setModal({ type: "edit", module: mod }) },
+                                { label: "Delete Module", onClick: () => setModal({ type: "delete", module: mod }), danger: true },
+                              ]}
+                            />
                           </div>
-                          <div>
-                            <div className="font-medium text-gray-900">{mod.title}</div>
-                            {mod.shortDescription && (
-                              <div className="text-xs text-gray-400 mt-0.5 line-clamp-1 max-w-xs">
-                                {mod.shortDescription}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700">
-                          {mod.track?.title ?? `Track #${mod.trackId}`}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4"><Badge status={mod.status} /></td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center justify-end gap-2 flex-wrap">
-
-                          {/* Add Unit */}
-                          <button
-                            onClick={() => setModal({ type: "addUnit", module: mod })}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-[#004900] text-white hover:bg-[#003700] transition-colors"
-                          >
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                              <line x1="12" y1="5" x2="12" y2="19" />
-                              <line x1="5" y1="12" x2="19" y2="12" />
-                            </svg>
-                            Add Unit
-                          </button>
-
-                          {/* Add Assessment */}
-                          <button
-                            onClick={() => setModal({ type: "addAssessment", module: mod })}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-purple-600 text-white hover:bg-purple-700 transition-colors"
-                          >
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                              <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
-                              <rect x="9" y="3" width="6" height="4" rx="1" />
-                              <line x1="9" y1="12" x2="15" y2="12" />
-                              <line x1="9" y1="16" x2="13" y2="16" />
-                            </svg>
-                            Add Assessment
-                          </button>
-
-                          {/* Edit */}
-                          <button
-                            onClick={() => setModal({ type: "edit", module: mod })}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-blue-200 text-blue-600 hover:bg-blue-50 transition-colors"
-                          >
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                            </svg>
-                            Edit
-                          </button>
-
-                          {/* Delete */}
-                          <button
-                            onClick={() => setModal({ type: "delete", module: mod })}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-red-200 text-red-600 hover:bg-red-50 transition-colors"
-                          >
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <polyline points="3 6 5 6 21 6" />
-                              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                              <path d="M10 11v6M14 11v6" />
-                              <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-                            </svg>
-                            Delete
-                          </button>
-
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -1579,6 +1652,36 @@ export default function ManageModules() {
             onDone={() => {
               closeModal();
               showToast("Assessment and questions saved successfully");
+            }}
+            onCancel={closeModal}
+          />
+        </Modal>
+      )}
+
+      {/* ── Add Reflection Modal ── */}
+      {modal.type === "addReflection" && (
+        <Modal title={`Add Reflection — ${modal.module.title}`} onClose={closeModal}>
+          <ModuleReflectionForm
+            module={modal.module}
+            mode="add"
+            onDone={() => {
+              closeModal();
+              showToast("Reflection saved");
+            }}
+            onCancel={closeModal}
+          />
+        </Modal>
+      )}
+
+      {/* ── Edit Reflection Modal ── */}
+      {modal.type === "editReflection" && (
+        <Modal title={`Edit Reflection — ${modal.module.title}`} onClose={closeModal}>
+          <ModuleReflectionForm
+            module={modal.module}
+            mode="edit"
+            onDone={() => {
+              closeModal();
+              showToast("Reflection updated");
             }}
             onCancel={closeModal}
           />

@@ -257,7 +257,6 @@ function EditUnitForm({
   const validate = () => {
     const e: Partial<Record<keyof typeof form, string>> = {};
     if (!form.title.trim()) e.title = "Title is required";
-    /* if (!form.description.trim()) e.description = "Description is required"; */
     if (!form.content.trim()) e.content = "Content is required";
     setFormErrors((prev) => ({ ...prev, ...e }));
     return Object.keys(e).length === 0;
@@ -335,24 +334,9 @@ function EditUnitForm({
         )}
       </div>
 
-      {/* <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1.5">
-          Description <span className="text-red-500">*</span>
-        </label>
-        <textarea
-          rows={3}
-          value={form.description}
-          onChange={(e) => set("description", e.target.value)}
-          className={textareaCls}
-          placeholder="Full description of this unit"
-        />
-        {formErrors.description && (
-          <p className="text-xs text-red-600 mt-1">{formErrors.description}</p>
-        )}
-      </div> */}
       <div>
         <label className="block text-xs font-medium text-gray-700 mb-1.5">
-          Description {/* <span className="text-red-500">*</span> */}
+          Description
         </label>
         <textarea
           rows={3}
@@ -431,6 +415,7 @@ function EditUnitForm({
               >
                 Current video
               </a>
+
               <button
                 type="button"
                 onClick={() => setExistingVideoUrl("")}
@@ -439,6 +424,7 @@ function EditUnitForm({
                 Remove
               </button>
             </div>
+        
           )}
           <input
             type="file"
@@ -719,46 +705,32 @@ export default function ManageUnits() {
       <div className="max-w-7xl mx-auto px-6 py-8">
 
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Manage Units</h1>
             <p className="text-sm text-gray-500 mt-0.5">
               Units are the individual lessons inside a module
             </p>
           </div>
-          <span className="text-sm text-gray-400">
-            {filteredUnits.length} unit{filteredUnits.length !== 1 ? "s" : ""}
-          </span>
-        </div>
-
-        {/* Module filter pills */}
-        {!loading && !fetchError && modules.length > 0 && (
-          <div className="flex items-center gap-2 mb-5 flex-wrap">
-            <button
-              onClick={() => setSelectedModuleId("all")}
-              className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                selectedModuleId === "all"
-                  ? "bg-[#004900] text-white"
-                  : "bg-white border border-gray-200 text-gray-600 hover:border-[#004900] hover:text-[#004900]"
-              }`}
-            >
-              All modules
-            </button>
-            {modules.map((m) => (
-              <button
-                key={m.id}
-                onClick={() => setSelectedModuleId(m.id)}
-                className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                  selectedModuleId === m.id
-                    ? "bg-[#004900] text-white"
-                    : "bg-white border border-gray-200 text-gray-600 hover:border-[#004900] hover:text-[#004900]"
-                }`}
+          <div className="flex items-center gap-3">
+            {!loading && !fetchError && modules.length > 0 && (
+              <select
+                value={selectedModuleId}
+                onChange={(e) => setSelectedModuleId(e.target.value === "all" ? "all" : Number(e.target.value))}
+                className="px-3.5 py-2 border border-gray-200 rounded-lg text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900]"
+                aria-label="Filter by module"
               >
-                {m.title}
-              </button>
-            ))}
+                <option value="all">All modules</option>
+                {modules.map((m) => (
+                  <option key={m.id} value={m.id}>{m.title}</option>
+                ))}
+              </select>
+            )}
+            <span className="text-sm text-gray-400 whitespace-nowrap">
+              {filteredUnits.length} unit{filteredUnits.length !== 1 ? "s" : ""}
+            </span>
           </div>
-        )}
+        </div>
 
         {/* Table card */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
