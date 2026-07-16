@@ -797,7 +797,7 @@ export default function ManageUnits() {
 
         {/* Cascading filters: Course → Track → Module → Unit */}
         {!loading && !fetchError && (
-          <div className="flex flex-wrap items-center gap-3 mb-6">
+          <div className="flex flex-wrap items-center gap-3 mb-6 ">
             <select
               value={selectedCourseId}
               onChange={(e) => handleCourseSelect(e.target.value)}
@@ -849,7 +849,7 @@ export default function ManageUnits() {
         )}
 
         {/* Table card */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden w-[95%]">
 
           {loading && (
             <div className="flex items-center justify-center py-20 text-gray-400 text-sm">
