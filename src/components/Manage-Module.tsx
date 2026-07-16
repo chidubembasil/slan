@@ -1285,6 +1285,58 @@ type ReflectionEntry = { description: string; criteria: string };
 
 const emptyReflectionEntry = (): ReflectionEntry => ({ description: "", criteria: "" });
 
+// The GET /admin/modules/{moduleId}/reflection response shape isn't fully
+// pinned down (it's described as "reflection with response count", which
+// could mean the reflection fields are flattened alongside responseCount,
+// or nested under a `reflection` key). This normalizer tries every
+// reasonable wrapper/field-name combination instead of assuming one, so the
+// Edit and View modals actually populate regardless of which shape the
+// backend uses. If fields are still coming back empty after this, check the
+// browser console — the raw payload is logged there to make it easy to see
+// exactly what key holds the data.
+type NormalizedReflection = {
+  id: number | null;
+  description: string;
+  criteria: string;
+  responseCount?: number;
+};
+
+function normalizeReflection(raw: any): NormalizedReflection {
+  if (!raw) return { id: null, description: "", criteria: "" };
+
+  // Peel back whichever wrapper layer(s) are present:
+  //   { data: {...} }            → container
+  //   { data: { reflection: {} }}→ container.reflection
+  //   { reflection: {...} }      → raw.reflection
+  //   already-flat                → raw itself
+  const container = raw?.data ?? raw;
+  const refl =
+    container?.reflection ??
+    container?.moduleReflection ??
+    raw?.reflection ??
+    container;
+
+  const id = refl?.id ?? refl?._id ?? refl?.reflectionId ?? null;
+  const description =
+    refl?.description ?? refl?.prompt ?? refl?.reflectionDescription ?? refl?.text ?? "";
+  const criteria =
+    refl?.criteria ?? refl?.reflectionCriteria ?? refl?.rubric ?? "";
+  const responseCount =
+    refl?.responseCount ?? container?.responseCount ?? raw?.responseCount;
+
+  return { id: id ?? null, description, criteria, responseCount };
+}
+
+// Same idea for the learner-responses list: try the common wrapper shapes
+// before giving up and returning an empty array.
+function normalizeReflectionResponses(raw: any): ReflectionResponse[] {
+  const container = raw?.data ?? raw;
+  if (Array.isArray(container)) return container;
+  if (Array.isArray(container?.responses)) return container.responses;
+  if (Array.isArray(raw?.responses)) return raw.responses;
+  return [];
+}
+
 function ModuleReflectionForm({
   module,
   mode,
@@ -1318,9 +1370,11 @@ function ModuleReflectionForm({
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || "Failed to load reflection");
         if (cancelled) return;
-        const refl = data?.data ?? data?.reflection ?? data;
-        setEntries([{ description: refl?.description ?? "", criteria: refl?.criteria ?? "" }]);
-        setReflectionId(refl?.id ?? null);
+        // eslint-disable-next-line no-console
+        console.log("[reflection:edit] raw GET response:", data);
+        const refl = normalizeReflection(data);
+        setEntries([{ description: refl.description, criteria: refl.criteria }]);
+        setReflectionId(refl.id);
       } catch (err: any) {
         if (!cancelled) setError(err.message || "Failed to load existing reflection");
       } finally {
@@ -1520,10 +1574,9 @@ function ViewModuleReflection({
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || "Failed to load learner responses");
         if (cancelled) return;
-        const list: ReflectionResponse[] = Array.isArray(data)
-          ? data
-          : data.data ?? data.responses ?? [];
-        setResponses(list);
+        // eslint-disable-next-line no-console
+        console.log("[reflection:view] raw responses payload:", data);
+        setResponses(normalizeReflectionResponses(data));
       } catch (err: any) {
         if (!cancelled) setResponsesError(err.message || "Failed to load learner responses");
       } finally {
@@ -1544,12 +1597,13 @@ function ViewModuleReflection({
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || "Failed to load reflection");
         if (cancelled) return;
-        const refl = data?.data ?? data?.reflection ?? data;
-        setDescription(refl?.description ?? "");
-        setCriteria(refl?.criteria ?? "");
-        const id = refl?.id ?? null;
-        setReflectionId(id);
-        if (id) await fetchResponses(id, token);
+        // eslint-disable-next-line no-console
+        console.log("[reflection:view] raw GET response:", data);
+        const refl = normalizeReflection(data);
+        setDescription(refl.description);
+        setCriteria(refl.criteria);
+        setReflectionId(refl.id);
+        if (refl.id) await fetchResponses(refl.id, token);
       } catch (err: any) {
         if (!cancelled) setError(err.message || "Failed to load reflection");
       } finally {
