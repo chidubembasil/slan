@@ -96,6 +96,41 @@ function Modal({
   );
 }
 
+// ── Full Screen Modal Shell ────────────────────────────────────────────────────
+// Same visual language as `Modal`, but takes over the entire viewport
+// (screen width + height) instead of a centered card. Used for content that
+// benefits from more room, e.g. viewing a reflection plus its full list of
+// learner responses.
+
+function FullScreenModal({
+  title,
+  onClose,
+  children,
+}: {
+  title: string;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col bg-white">
+      <div className="bg-[#004900] px-6 py-4 flex items-center justify-between shrink-0">
+        <h2 className="text-white font-semibold text-base">{title}</h2>
+        <button
+          onClick={onClose}
+          className="text-white/70 hover:text-white text-2xl leading-none w-9 h-9 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors"
+          aria-label="Close"
+          title="Close"
+        >
+          ✕
+        </button>
+      </div>
+      <div className="flex-1 overflow-y-auto">
+        <div className="max-w-5xl mx-auto px-6 py-8">{children}</div>
+      </div>
+    </div>
+  );
+}
+
 // ── Confirm Delete ────────────────────────────────────────────────────────────
 
 function ConfirmModal({
@@ -1371,6 +1406,188 @@ function ModuleReflectionForm({
   );
 }
 
+// ── View Module Reflection (full-screen) ──────────────────────────────────────
+// Read-only view wired to:
+//   GET /admin/modules/{moduleId}/reflection            → description, criteria, id
+//   GET /admin/reflections/{reflectionId}/responses      → list all learner responses
+// Rendered inside <FullScreenModal>, which already provides the X close button.
+
+type ReflectionResponse = {
+  id: number;
+  userId?: number;
+  user?: { id?: number; name?: string; fullName?: string; email?: string };
+  response?: string;
+  answer?: string;
+  content?: string;
+  submittedAt?: string;
+  createdAt?: string;
+};
+
+function ViewModuleReflection({ module }: { module: Module }) {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [description, setDescription] = useState("");
+  const [criteria, setCriteria] = useState("");
+  const [reflectionId, setReflectionId] = useState<number | null>(null);
+
+  const [responses, setResponses] = useState<ReflectionResponse[]>([]);
+  const [responsesLoading, setResponsesLoading] = useState(false);
+  const [responsesError, setResponsesError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchResponses = async (id: number, token: string | null) => {
+      setResponsesLoading(true);
+      setResponsesError("");
+      try {
+        // GET /admin/reflections/{reflectionId}/responses
+        const res = await fetch(`${BASE}admin/reflections/${id}/responses`, {
+          headers: { Authorization: `Bearer ${token}` },
+          credentials: "include",
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || "Failed to load learner responses");
+        if (cancelled) return;
+        const list: ReflectionResponse[] = Array.isArray(data)
+          ? data
+          : data.data ?? data.responses ?? [];
+        setResponses(list);
+      } catch (err: any) {
+        if (!cancelled) setResponsesError(err.message || "Failed to load learner responses");
+      } finally {
+        if (!cancelled) setResponsesLoading(false);
+      }
+    };
+
+    const fetchReflection = async () => {
+      setLoading(true);
+      setError("");
+      const token = localStorage.getItem("adminAccessToken");
+      try {
+        // GET /admin/modules/{moduleId}/reflection
+        const res = await fetch(`${BASE}admin/modules/${module.id}/reflection`, {
+          headers: { Authorization: `Bearer ${token}` },
+          credentials: "include",
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || "Failed to load reflection");
+        if (cancelled) return;
+        const refl = data?.data ?? data?.reflection ?? data;
+        setDescription(refl?.description ?? "");
+        setCriteria(refl?.criteria ?? "");
+        const id = refl?.id ?? null;
+        setReflectionId(id);
+        if (id) await fetchResponses(id, token);
+      } catch (err: any) {
+        if (!cancelled) setError(err.message || "Failed to load reflection");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    fetchReflection();
+    return () => { cancelled = true; };
+  }, [module.id]);
+
+  if (loading) {
+    return <p className="text-sm text-gray-400">Loading reflection…</p>;
+  }
+
+  if (error) {
+    return (
+      <div className="max-w-2xl">
+        <p className="text-sm text-red-600">{error}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-8">
+      {/* Reflection details */}
+      <div className="bg-gray-50 border border-gray-200 rounded-2xl p-6 space-y-4">
+        <div className="flex items-center gap-2">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#004900" strokeWidth="2">
+            <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
+            <rect x="9" y="3" width="6" height="4" rx="1" />
+          </svg>
+          <h3 className="text-sm font-semibold text-gray-700">
+            Reflection for "{module.title}"
+            <span className="text-gray-400 font-normal ml-1">(Module #{module.id})</span>
+          </h3>
+        </div>
+        <div>
+          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Description</p>
+          <p className="text-sm text-gray-800 whitespace-pre-wrap">{description || "—"}</p>
+        </div>
+        <div>
+          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Criteria</p>
+          <p className="text-sm text-gray-800 whitespace-pre-wrap">{criteria || "—"}</p>
+        </div>
+      </div>
+
+      {/* Learner responses */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold text-gray-700">Learner Responses</h3>
+          {!responsesLoading && !responsesError && (
+            <span className="text-xs text-gray-400">
+              {responses.length} response{responses.length !== 1 ? "s" : ""}
+            </span>
+          )}
+        </div>
+
+        {!reflectionId && (
+          <p className="text-sm text-gray-400">
+            No reflection ID was returned, so learner responses can't be loaded.
+          </p>
+        )}
+
+        {reflectionId && responsesLoading && (
+          <p className="text-sm text-gray-400">Loading learner responses…</p>
+        )}
+
+        {reflectionId && !responsesLoading && responsesError && (
+          <p className="text-sm text-red-600">{responsesError}</p>
+        )}
+
+        {reflectionId && !responsesLoading && !responsesError && responses.length === 0 && (
+          <div className="border border-dashed border-gray-200 rounded-xl py-10 text-center">
+            <p className="text-sm text-gray-400">No learner responses yet.</p>
+          </div>
+        )}
+
+        {reflectionId && !responsesLoading && !responsesError && responses.length > 0 && (
+          <div className="space-y-3">
+            {responses.map((r) => {
+              const name =
+                r.user?.fullName ||
+                r.user?.name ||
+                r.user?.email ||
+                (r.userId ? `Learner #${r.userId}` : "Learner");
+              const text = r.response ?? r.answer ?? r.content ?? "";
+              const date = r.submittedAt || r.createdAt;
+              return (
+                <div key={r.id} className="border border-gray-200 rounded-xl p-4 bg-white">
+                  <div className="flex items-center justify-between mb-2 gap-3 flex-wrap">
+                    <span className="text-sm font-medium text-gray-800">{name}</span>
+                    {date && (
+                      <span className="text-xs text-gray-400 whitespace-nowrap">
+                        {new Date(date).toLocaleString()}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-sm text-gray-600 whitespace-pre-wrap">{text || "—"}</p>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 type ModalState =
@@ -1380,7 +1597,8 @@ type ModalState =
   | { type: "addUnit"; module: Module }
   | { type: "addAssessment"; module: Module }
   | { type: "addReflection"; module: Module }
-  | { type: "editReflection"; module: Module };
+  | { type: "editReflection"; module: Module }
+  | { type: "viewReflection"; module: Module };
 
 export default function ManageModules() {
   const [modules, setModules] = useState<Module[]>([]);
@@ -1594,6 +1812,7 @@ export default function ManageModules() {
                               items={[
                                 { label: "Add Reflection", onClick: () => setModal({ type: "addReflection", module: mod }) },
                                 { label: "Edit Reflection", onClick: () => setModal({ type: "editReflection", module: mod }) },
+                                { label: "View Reflection", onClick: () => setModal({ type: "viewReflection", module: mod }) },
                                 { label: "Edit Module", onClick: () => setModal({ type: "edit", module: mod }) },
                                 { label: "Delete Module", onClick: () => setModal({ type: "delete", module: mod }), danger: true },
                               ]}
@@ -1683,6 +1902,16 @@ export default function ManageModules() {
             onCancel={closeModal}
           />
         </Modal>
+      )}
+
+      {/* ── View Reflection Modal (full screen, X to close) ── */}
+      {modal.type === "viewReflection" && (
+        <FullScreenModal
+          title={`Reflection — ${modal.module.title}`}
+          onClose={closeModal}
+        >
+          <ViewModuleReflection module={modal.module} />
+        </FullScreenModal>
       )}
 
       {/* ── Delete Confirm ── */}

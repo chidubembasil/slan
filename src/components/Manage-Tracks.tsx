@@ -57,6 +57,9 @@ type Track = {
   course?: { id: number; title: string };
 };
 
+// Minimal shape for the course filter dropdown.
+type CourseOption = { id: number; title: string };
+
 // Backend field for module thumbnails is `thumbnail` (confirmed via Swagger
 // docs), kept alongside `thumbnailUrl` for backward compatibility.
 // type ModuleThumbFields = { thumbnail?: string; thumbnailUrl?: string };
@@ -1010,6 +1013,9 @@ type ModalState =
 
 export default function ManageTracks() {
   const [tracks, setTracks] = useState<Track[]>([]);
+  const [courses, setCourses] = useState<CourseOption[]>([]);
+  const [selectedCourseId, setSelectedCourseId] = useState<number | "all">("all");
+  const [selectedTrackId, setSelectedTrackId] = useState<number | "all">("all");
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState("");
   const [modal, setModal] = useState<ModalState>({ type: "none" });
@@ -1040,7 +1046,27 @@ export default function ManageTracks() {
     }
   }, []);
 
-  useEffect(() => { fetchTracks(); }, [fetchTracks]);
+  // Populates the course filter dropdown. Kept as a separate fetch (rather
+  // than deriving from `tracks`) so every course shows up in the filter even
+  // if it doesn't have any tracks yet.
+  const fetchCourses = useCallback(async () => {
+    const token = localStorage.getItem("adminAccessToken");
+    try {
+      const res = await fetch(`${BASE}admin/courses`, {
+        headers: { Authorization: `Bearer ${token}` },
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to load courses");
+      const list: CourseOption[] = Array.isArray(data) ? data : data.data ?? data.courses ?? [];
+      setCourses(list);
+    } catch {
+      // Non-fatal — the course filter simply won't populate if this fails;
+      // the tracks table itself doesn't depend on it.
+    }
+  }, []);
+
+  useEffect(() => { fetchTracks(); fetchCourses(); }, [fetchTracks, fetchCourses]);
 
   const handleDelete = async () => {
     if (modal.type !== "delete") return;
@@ -1066,18 +1092,63 @@ export default function ManageTracks() {
     }
   };
 
+  // Tracks belonging to the currently selected course (or all tracks, if
+  // "all" is selected) — this is what populates the track filter's options.
+  const tracksInSelectedCourse = selectedCourseId === "all"
+    ? tracks
+    : tracks.filter((t) => t.courseId === selectedCourseId || t.course?.id === selectedCourseId);
+
+  const filteredTracks = selectedTrackId === "all"
+    ? tracksInSelectedCourse
+    : tracksInSelectedCourse.filter((t) => t.id === selectedTrackId);
+
+  const handleCourseFilterChange = (value: string) => {
+    setSelectedCourseId(value === "all" ? "all" : Number(value));
+    // Changing the course invalidates whatever track was previously
+    // selected, since it may not belong to the new course.
+    setSelectedTrackId("all");
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-6 py-8">
 
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Manage Tracks</h1>
             <p className="text-sm text-gray-500 mt-0.5">Tracks belong to courses and group related modules</p>
           </div>
-          <span className="text-sm text-gray-400">
-            {tracks.length} track{tracks.length !== 1 ? "s" : ""}
-          </span>
+          <div className="flex items-center gap-3">
+            {!loading && !fetchError && courses.length > 0 && (
+              <select
+                value={selectedCourseId}
+                onChange={(e) => handleCourseFilterChange(e.target.value)}
+                className="px-3.5 py-2 border border-gray-200 rounded-lg text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900]"
+                aria-label="Filter by course"
+              >
+                <option value="all">All courses</option>
+                {courses.map((c) => (
+                  <option key={c.id} value={c.id}>{c.title}</option>
+                ))}
+              </select>
+            )}
+            {!loading && !fetchError && tracksInSelectedCourse.length > 0 && (
+              <select
+                value={selectedTrackId}
+                onChange={(e) => setSelectedTrackId(e.target.value === "all" ? "all" : Number(e.target.value))}
+                className="px-3.5 py-2 border border-gray-200 rounded-lg text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900]"
+                aria-label="Filter by track"
+              >
+                <option value="all">All tracks</option>
+                {tracksInSelectedCourse.map((t) => (
+                  <option key={t.id} value={t.id}>{t.title}</option>
+                ))}
+              </select>
+            )}
+            <span className="text-sm text-gray-400 whitespace-nowrap">
+              {filteredTracks.length} track{filteredTracks.length !== 1 ? "s" : ""}
+            </span>
+          </div>
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
@@ -1095,13 +1166,13 @@ export default function ManageTracks() {
             </div>
           )}
 
-          {!loading && !fetchError && tracks.length === 0 && (
+          {!loading && !fetchError && filteredTracks.length === 0 && (
             <div className="flex items-center justify-center py-20 text-gray-400 text-sm">
-              No tracks found.
+              {tracks.length === 0 ? "No tracks found." : "No tracks match this selection."}
             </div>
           )}
 
-          {!loading && !fetchError && tracks.length > 0 && (
+          {!loading && !fetchError && filteredTracks.length > 0 && (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -1115,7 +1186,7 @@ export default function ManageTracks() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {tracks.map((track) => (
+                  {filteredTracks.map((track) => (
                     <tr key={track.id} className="hover:bg-gray-50/60 transition-colors">
 
                       <td className="px-6 py-4 text-gray-400 font-mono text-xs">{track.id}</td>

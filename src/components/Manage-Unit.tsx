@@ -22,7 +22,8 @@ type Unit = {
 };
 
 type Module = { id: number; title: string; trackId: number };
-type Track = { id: number; title: string };
+type Track = { id: number; title: string; courseId: number };
+type Course = { id: number; title: string };
 
 // ── Shared styles ─────────────────────────────────────────────────────────────
 
@@ -541,7 +542,15 @@ type ModalState =
 export default function ManageUnits() {
   const [units, setUnits] = useState<Unit[]>([]);
   const [modules, setModules] = useState<Module[]>([]);
+  const [tracks, setTracks] = useState<Track[]>([]);
+  const [courses, setCourses] = useState<Course[]>([]);
+
+  // Cascading filter selections
+  const [selectedCourseId, setSelectedCourseId] = useState<number | "all">("all");
+  const [selectedTrackId, setSelectedTrackId] = useState<number | "all">("all");
   const [selectedModuleId, setSelectedModuleId] = useState<number | "all">("all");
+  const [selectedUnitId, setSelectedUnitId] = useState<number | "all">("all");
+
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState("");
   const [modal, setModal] = useState<ModalState>({ type: "none" });
@@ -559,6 +568,20 @@ export default function ManageUnits() {
     setFetchError("");
     const token = localStorage.getItem("adminAccessToken");
     try {
+      // 0. Fetch all courses
+      const coursesRes = await fetch(`${BASE}admin/courses`, {
+        headers: { Authorization: `Bearer ${token}` },
+        credentials: "include",
+      });
+      const coursesData = await coursesRes.json();
+      if (!coursesRes.ok)
+        throw new Error(coursesData.message || "Failed to load courses");
+
+      const allCourses: Course[] = Array.isArray(coursesData)
+        ? coursesData
+        : coursesData.data ?? coursesData.courses ?? [];
+      setCourses(allCourses);
+
       // 1. Fetch all tracks
       const tracksRes = await fetch(`${BASE}admin/tracks`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -571,6 +594,8 @@ export default function ManageUnits() {
       const allTracks: Track[] = Array.isArray(tracksData)
         ? tracksData
         : tracksData.data ?? tracksData.tracks ?? [];
+
+      setTracks(allTracks);
 
       if (allTracks.length === 0) {
         setModules([]);
@@ -692,13 +717,66 @@ export default function ManageUnits() {
 
   const closeModal = () => setModal({ type: "none" });
 
-  // Filter by selected module
+  // ── Cascading filter helpers ────────────────────────────────────────────────
+
+  const handleCourseSelect = (value: string) => {
+    setSelectedCourseId(value === "all" ? "all" : Number(value));
+    setSelectedTrackId("all");
+    setSelectedModuleId("all");
+    setSelectedUnitId("all");
+  };
+
+  const handleTrackSelect = (value: string) => {
+    setSelectedTrackId(value === "all" ? "all" : Number(value));
+    setSelectedModuleId("all");
+    setSelectedUnitId("all");
+  };
+
+  const handleModuleSelect = (value: string) => {
+    setSelectedModuleId(value === "all" ? "all" : Number(value));
+    setSelectedUnitId("all");
+  };
+
+  const handleUnitSelect = (value: string) => {
+    setSelectedUnitId(value === "all" ? "all" : Number(value));
+  };
+
+  // Tracks available for the Track select, narrowed by the selected course
+  const availableTracks =
+    selectedCourseId === "all"
+      ? tracks
+      : tracks.filter((t) => t.courseId === selectedCourseId);
+
+  // Modules available for the Module select, narrowed by selected track / course
+  const availableModules = modules.filter((m) => {
+    if (selectedTrackId !== "all") return m.trackId === selectedTrackId;
+    if (selectedCourseId !== "all")
+      return availableTracks.some((t) => t.id === m.trackId);
+    return true;
+  });
+
+  // Units available for the Unit select, narrowed by selected module / track / course
+  const availableUnits = units.filter((u) => {
+    const modId = u.moduleId ?? u.module?.id;
+    if (selectedModuleId !== "all") return modId === selectedModuleId;
+    if (selectedTrackId !== "all" || selectedCourseId !== "all")
+      return availableModules.some((m) => m.id === modId);
+    return true;
+  });
+
+  // Final table output — narrowed further by the specific unit selection, if any
   const filteredUnits =
-    selectedModuleId === "all"
-      ? units
-      : units.filter(
-          (u) => u.moduleId === selectedModuleId || u.module?.id === selectedModuleId
-        );
+    selectedUnitId === "all"
+      ? availableUnits
+      : availableUnits.filter((u) => u.id === selectedUnitId);
+
+  // Helper to resolve the track a given unit belongs to (via its module)
+  const getTrackForUnit = (unit: Unit): Track | undefined => {
+    const modId = unit.moduleId ?? unit.module?.id;
+    const mod = modules.find((m) => m.id === modId);
+    if (!mod) return undefined;
+    return tracks.find((t) => t.id === mod.trackId);
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -712,25 +790,63 @@ export default function ManageUnits() {
               Units are the individual lessons inside a module
             </p>
           </div>
-          <div className="flex items-center gap-3">
-            {!loading && !fetchError && modules.length > 0 && (
-              <select
-                value={selectedModuleId}
-                onChange={(e) => setSelectedModuleId(e.target.value === "all" ? "all" : Number(e.target.value))}
-                className="px-3.5 py-2 border border-gray-200 rounded-lg text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900]"
-                aria-label="Filter by module"
-              >
-                <option value="all">All modules</option>
-                {modules.map((m) => (
-                  <option key={m.id} value={m.id}>{m.title}</option>
-                ))}
-              </select>
-            )}
-            <span className="text-sm text-gray-400 whitespace-nowrap">
-              {filteredUnits.length} unit{filteredUnits.length !== 1 ? "s" : ""}
-            </span>
-          </div>
+          <span className="text-sm text-gray-400 whitespace-nowrap">
+            {filteredUnits.length} unit{filteredUnits.length !== 1 ? "s" : ""}
+          </span>
         </div>
+
+        {/* Cascading filters: Course → Track → Module → Unit */}
+        {!loading && !fetchError && (
+          <div className="flex flex-wrap items-center gap-3 mb-6">
+            <select
+              value={selectedCourseId}
+              onChange={(e) => handleCourseSelect(e.target.value)}
+              className="px-3.5 py-2 border border-gray-200 rounded-lg text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900]"
+              aria-label="Filter by course"
+            >
+              <option value="all">All courses</option>
+              {courses.map((c) => (
+                <option key={c.id} value={c.id}>{c.title}</option>
+              ))}
+            </select>
+
+            <select
+              value={selectedTrackId}
+              onChange={(e) => handleTrackSelect(e.target.value)}
+              className="px-3.5 py-2 border border-gray-200 rounded-lg text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900]"
+              aria-label="Filter by track"
+            >
+              <option value="all">All tracks</option>
+              {availableTracks.map((t) => (
+                <option key={t.id} value={t.id}>{t.title}</option>
+              ))}
+            </select>
+
+            <select
+              value={selectedModuleId}
+              onChange={(e) => handleModuleSelect(e.target.value)}
+              className="px-3.5 py-2 border border-gray-200 rounded-lg text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900]"
+              aria-label="Filter by module"
+            >
+              <option value="all">All modules</option>
+              {availableModules.map((m) => (
+                <option key={m.id} value={m.id}>{m.title}</option>
+              ))}
+            </select>
+
+            <select
+              value={selectedUnitId}
+              onChange={(e) => handleUnitSelect(e.target.value)}
+              className="px-3.5 py-2 border border-gray-200 rounded-lg text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900]"
+              aria-label="Filter by unit"
+            >
+              <option value="all">All units</option>
+              {availableUnits.map((u) => (
+                <option key={u.id} value={u.id}>{u.title}</option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {/* Table card */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
@@ -757,7 +873,7 @@ export default function ManageUnits() {
             <div className="flex items-center justify-center py-20 text-gray-400 text-sm">
               {units.length === 0
                 ? "No units found. Add units from the Manage Modules page."
-                : "No units in this module."}
+                : "No units match the selected filters."}
             </div>
           )}
 
@@ -771,6 +887,9 @@ export default function ManageUnits() {
                     </th>
                     <th className="text-left px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">
                       Unit Name
+                    </th>
+                    <th className="text-left px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                      Track
                     </th>
                     <th className="text-left px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">
                       Module
@@ -826,6 +945,13 @@ export default function ManageUnits() {
                             </span>
                           )}
                         </div>
+                      </td>
+
+                      {/* Track */}
+                      <td className="px-6 py-4">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700">
+                          {getTrackForUnit(unit)?.title ?? "—"}
+                        </span>
                       </td>
 
                       {/* Module */}
