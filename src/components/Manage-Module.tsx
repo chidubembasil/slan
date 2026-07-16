@@ -1234,10 +1234,10 @@ function AddAssessmentForm({
 }
 
 // ── Module Reflection Form ─────────────────────────────────────────────────────
-// NOTE: This posts to a PLACEHOLDER route:
-//   `${BASE}admin/modules/{moduleId}/reflection`
-// Swap the URL inside this component (search for "DUMMY ROUTE") for the real
-// endpoint once your backend has one — everything else here already works.
+// Wired to the real admin reflection endpoints:
+//   POST   /admin/modules/{moduleId}/reflection        → create reflection
+//   GET    /admin/modules/{moduleId}/reflection         → get reflection (+ response count)
+//   PATCH  /admin/reflections/{reflectionId}             → update reflection
 
 type ReflectionMode = "add" | "edit";
 
@@ -1254,33 +1254,33 @@ function ModuleReflectionForm({
 }) {
   const [description, setDescription] = useState("");
   const [criteria, setCriteria] = useState("");
+  // Needed for PATCH /admin/reflections/{reflectionId} in edit mode — comes
+  // back from GET /admin/modules/{moduleId}/reflection.
+  const [reflectionId, setReflectionId] = useState<number | null>(null);
   const [fetching, setFetching] = useState(mode === "edit");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // Best-effort pre-fill for "edit" mode. Since the real route doesn't exist
-  // yet, this will simply fail quietly and leave the fields blank — remove
-  // this effect entirely if you don't want the extra request until the
-  // route is live.
+  // Pre-fill for "edit" mode via GET /admin/modules/{moduleId}/reflection.
   useEffect(() => {
     if (mode !== "edit") return;
     let cancelled = false;
     (async () => {
       const token = localStorage.getItem("adminAccessToken");
       try {
-        // DUMMY ROUTE — replace with the real "get reflection" endpoint.
         const res = await fetch(`${BASE}admin/modules/${module.id}/reflection`, {
           headers: { Authorization: `Bearer ${token}` },
           credentials: "include",
         });
-        if (!res.ok) throw new Error();
         const data = await res.json();
+        if (!res.ok) throw new Error(data.message || "Failed to load reflection");
         if (cancelled) return;
         const refl = data?.data ?? data?.reflection ?? data;
         setDescription(refl?.description ?? "");
         setCriteria(refl?.criteria ?? "");
-      } catch {
-        // Route not implemented yet — leave fields blank.
+        setReflectionId(refl?.id ?? null);
+      } catch (err: any) {
+        if (!cancelled) setError(err.message || "Failed to load existing reflection");
       } finally {
         if (!cancelled) setFetching(false);
       }
@@ -1296,12 +1296,20 @@ function ModuleReflectionForm({
     }
     const token = localStorage.getItem("adminAccessToken");
     if (!token) { setError("Not authenticated"); return; }
+
+    if (mode === "edit" && !reflectionId) {
+      setError("Could not find an existing reflection to update");
+      return;
+    }
+
     setLoading(true);
     try {
-      // DUMMY ROUTE — replace with the real "create/update reflection"
-      // endpoint once it exists. POST is used for "add", PUT for "edit".
-      const res = await fetch(`${BASE}admin/modules/${module.id}/reflection`, {
-        method: mode === "add" ? "POST" : "PUT",
+      const url =
+        mode === "add"
+          ? `${BASE}admin/modules/${module.id}/reflection`
+          : `${BASE}admin/reflections/${reflectionId}`;
+      const res = await fetch(url, {
+        method: mode === "add" ? "POST" : "PATCH",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         credentials: "include",
         body: JSON.stringify({ description, criteria }),
@@ -1318,17 +1326,6 @@ function ModuleReflectionForm({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-start gap-2 px-3.5 py-2.5 bg-amber-50 border border-amber-100 rounded-lg">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#b45309" strokeWidth="2" className="shrink-0 mt-0.5">
-          <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
-        </svg>
-        <p className="text-xs text-amber-700 leading-relaxed">
-          This form currently posts to a placeholder route:{" "}
-          <code className="bg-amber-100 px-1 rounded">admin/modules/{module.id}/reflection</code>.
-          Swap in the real endpoint inside <code className="bg-amber-100 px-1 rounded">ModuleReflectionForm</code> once it's ready.
-        </p>
-      </div>
-
       {fetching ? (
         <p className="text-xs text-gray-400">Loading existing reflection…</p>
       ) : (

@@ -12,7 +12,7 @@ const tabs: { key: Tab; label: string }[] = [
 ];
 
 export default function ManageAssessments() {
-  const [activeTab, setActiveTab] = useState<Tab>("course");
+  const [activeTab, setActiveTab] = useState<Tab>("track");
 
   return (
     <div className="min-h-screen bg-gray-50">

@@ -1,9 +1,9 @@
 import { NavLink } from "react-router-dom"
 // import { Link } from "react-router-dom";
-// Share2
+// Share2, Headset, ChartCandlestick,
 import {
   LayoutGrid, BookOpen, Users, CheckSquare, CreditCard,
-  ChartCandlestick, LogOut, Headset, Flag, X, Award, 
+  LogOut, Flag, X, Award, 
 } from "lucide-react"
 
 type Props = {
@@ -20,8 +20,8 @@ export default function SideBar({ isOpen, onClose }: Props) {
     { path: "/users", name: "Users", icon: Users },
     { path: "/assessment", name: "Assessment", icon: CheckSquare },
     { path: "/payment", name: "Payment", icon: CreditCard },
-    { path: "/report", name: "Report", icon: ChartCandlestick },
-    { path: "/support", name: "Support Queue", icon: Headset },
+    // { path: "/report", name: "Report", icon: ChartCandlestick },
+    // { path: "/support", name: "Support Queue", icon: Headset },
     { path: "/community", name: "Community Mod", icon: Flag },
     { path: "/certificate", name: "Certificate", icon: Award },
   ]

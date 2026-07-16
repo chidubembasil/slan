@@ -1,5 +1,7 @@
-import { useLocation, Link } from 'react-router-dom'
-import { Bell, Menu } from "lucide-react"
+import { useLocation } from 'react-router-dom'
+// Link, Bell,
+
+import {  Menu } from "lucide-react"
 
 type HeaderProps = {
   onMenuClick: () => void
@@ -28,11 +30,11 @@ export default function Header({ onMenuClick }: HeaderProps) {
         </span>
       </li>
 
-      <li>
+      {/* <li>
         <Link to="/notification">
           <Bell size={22} color="gray" />
         </Link>
-      </li>
+      </li> */}
     </ul>
   )
 }

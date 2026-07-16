@@ -712,6 +712,7 @@ type ModalState =
 
 export default function ManageCourses() {
   const [courses, setCourses] = useState<Course[]>([]);
+  const [selectedCourseId, setSelectedCourseId] = useState<number | "all">("all");
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState("");
   const [modal, setModal] = useState<ModalState>({ type: "none" });
@@ -768,17 +769,38 @@ export default function ManageCourses() {
     }
   };
 
+  const filteredCourses = selectedCourseId === "all"
+    ? courses
+    : courses.filter((c) => c.id === selectedCourseId);
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-6 py-8">
 
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Manage Courses</h1>
             <p className="text-sm text-gray-500 mt-0.5">Top-level containers for the SLAN curriculum</p>
           </div>
-          <span className="text-sm text-gray-400">{courses.length} course{courses.length !== 1 ? "s" : ""}</span>
+          <div className="flex items-center gap-3">
+            {!loading && !fetchError && courses.length > 0 && (
+              <select
+                value={selectedCourseId}
+                onChange={(e) => setSelectedCourseId(e.target.value === "all" ? "all" : Number(e.target.value))}
+                className="px-3.5 py-2 border border-gray-200 rounded-lg text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900]"
+                aria-label="Filter by course"
+              >
+                <option value="all">All courses</option>
+                {courses.map((c) => (
+                  <option key={c.id} value={c.id}>{c.title}</option>
+                ))}
+              </select>
+            )}
+            <span className="text-sm text-gray-400 whitespace-nowrap">
+              {filteredCourses.length} course{filteredCourses.length !== 1 ? "s" : ""}
+            </span>
+          </div>
         </div>
 
         {/* Table card */}
@@ -797,13 +819,13 @@ export default function ManageCourses() {
             </div>
           )}
 
-          {!loading && !fetchError && courses.length === 0 && (
+          {!loading && !fetchError && filteredCourses.length === 0 && (
             <div className="flex items-center justify-center py-20 text-gray-400 text-sm">
-              No courses found.
+              {courses.length === 0 ? "No courses found." : "No course matches this selection."}
             </div>
           )}
 
-          {!loading && !fetchError && courses.length > 0 && (
+          {!loading && !fetchError && filteredCourses.length > 0 && (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -816,7 +838,7 @@ export default function ManageCourses() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {courses.map((course) => (
+                  {filteredCourses.map((course) => (
                     <tr key={course.id} className="hover:bg-gray-50/60 transition-colors">
                       <td className="px-6 py-4 text-gray-400 font-mono text-xs">{course.id}</td>
                       <td className="px-6 py-4">
