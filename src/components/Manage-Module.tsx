@@ -1288,43 +1288,45 @@ const emptyReflectionEntry = (): ReflectionEntry => ({ description: "", criteria
 // The GET /admin/modules/{moduleId}/reflection response shape isn't fully
 // pinned down (it's described as "reflection with response count", which
 // could mean the reflection fields are flattened alongside responseCount,
-// or nested under a `reflection` key). This normalizer tries every
-// reasonable wrapper/field-name combination instead of assuming one, so the
-// Edit and View modals actually populate regardless of which shape the
-// backend uses. If fields are still coming back empty after this, check the
-// browser console — the raw payload is logged there to make it easy to see
-// exactly what key holds the data.
+// or nested under a `reflection` key). Confirmed via the Network tab: the
+// actual shape is `{ success: true, data: [ {id, moduleId, description,
+// criteria, createdAt, updatedAt, responseCount}, ... ] }` — i.e. `data` is
+// an ARRAY of every reflection that's been added to the module (which lines
+// up with the "Add More Reflection" flow being able to create several).
+// This normalizer returns that whole list, sorted newest first, and is
+// tolerant of a few other wrapper shapes in case the backend changes later.
 type NormalizedReflection = {
-  id: number | null;
+  id: number;
   description: string;
   criteria: string;
   responseCount?: number;
 };
 
-function normalizeReflection(raw: any): NormalizedReflection {
-  if (!raw) return { id: null, description: "", criteria: "" };
+function normalizeReflectionList(raw: any): NormalizedReflection[] {
+  if (!raw) return [];
 
-  // Peel back whichever wrapper layer(s) are present:
-  //   { data: {...} }            → container
-  //   { data: { reflection: {} }}→ container.reflection
-  //   { reflection: {...} }      → raw.reflection
-  //   already-flat                → raw itself
   const container = raw?.data ?? raw;
-  const refl =
-    container?.reflection ??
-    container?.moduleReflection ??
-    raw?.reflection ??
-    container;
+  const rawList: any[] = Array.isArray(container)
+    ? container
+    : Array.isArray(container?.reflections)
+    ? container.reflections
+    : Array.isArray(container?.reflection)
+    ? container.reflection
+    : container?.reflection
+    ? [container.reflection]
+    : container?.id !== undefined || container?._id !== undefined
+    ? [container]
+    : [];
 
-  const id = refl?.id ?? refl?._id ?? refl?.reflectionId ?? null;
-  const description =
-    refl?.description ?? refl?.prompt ?? refl?.reflectionDescription ?? refl?.text ?? "";
-  const criteria =
-    refl?.criteria ?? refl?.reflectionCriteria ?? refl?.rubric ?? "";
-  const responseCount =
-    refl?.responseCount ?? container?.responseCount ?? raw?.responseCount;
-
-  return { id: id ?? null, description, criteria, responseCount };
+  return rawList
+    .map((refl: any): NormalizedReflection => ({
+      id: refl?.id ?? refl?._id ?? refl?.reflectionId,
+      description:
+        refl?.description ?? refl?.prompt ?? refl?.reflectionDescription ?? refl?.text ?? "",
+      criteria: refl?.criteria ?? refl?.reflectionCriteria ?? refl?.rubric ?? "",
+      responseCount: refl?.responseCount,
+    }))
+    .filter((r): r is NormalizedReflection => r.id !== undefined && r.id !== null);
 }
 
 // Same idea for the learner-responses list: try the common wrapper shapes
@@ -1355,6 +1357,7 @@ function ModuleReflectionForm({
   const [fetching, setFetching] = useState(mode === "edit");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [note, setNote] = useState("");
 
   // Pre-fill for "edit" mode via GET /admin/modules/{moduleId}/reflection.
   useEffect(() => {
@@ -1372,9 +1375,23 @@ function ModuleReflectionForm({
         if (cancelled) return;
         // eslint-disable-next-line no-console
         console.log("[reflection:edit] raw GET response:", data);
-        const refl = normalizeReflection(data);
-        setEntries([{ description: refl.description, criteria: refl.criteria }]);
-        setReflectionId(refl.id);
+        const list = normalizeReflectionList(data);
+        if (list.length === 0) {
+          setError("No existing reflection found to edit — use Add Reflection instead.");
+        } else {
+          // The module can have more than one reflection (see "Add More
+          // Reflection"). This form edits a single reflection, so we edit
+          // the most recently created one and flag if there are others —
+          // use View Reflection to manage/delete the rest individually.
+          const [mostRecent, ...rest] = list;
+          setEntries([{ description: mostRecent.description, criteria: mostRecent.criteria }]);
+          setReflectionId(mostRecent.id);
+          if (rest.length > 0) {
+            setNote(
+              `This module has ${list.length} reflections. Editing the most recent one (#${mostRecent.id}). Use "View Reflection" to manage the others.`
+            );
+          }
+        }
       } catch (err: any) {
         if (!cancelled) setError(err.message || "Failed to load existing reflection");
       } finally {
@@ -1495,6 +1512,11 @@ function ModuleReflectionForm({
         </div>
       )}
 
+      {note && (
+        <p className="text-xs text-blue-700 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
+          {note}
+        </p>
+      )}
       {error && <p className="text-xs text-red-600">{error}</p>}
       <div className="flex gap-3 pt-1">
         <button
@@ -1537,93 +1559,59 @@ type ReflectionResponse = {
   createdAt?: string;
 };
 
-function ViewModuleReflection({
-  module,
+// A single reflection, rendered as its own card with its own delete button
+// and its own learner-response list (responses are looked up per
+// reflectionId, so each card fetches independently).
+function ReflectionCard({
+  module: _module,
+  reflection,
   onDeleted,
 }: {
   module: Module;
-  onDeleted: () => void;
+  reflection: NormalizedReflection;
+  onDeleted: (id: number) => void;
 }) {
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [description, setDescription] = useState("");
-  const [criteria, setCriteria] = useState("");
-  const [reflectionId, setReflectionId] = useState<number | null>(null);
-
   const [responses, setResponses] = useState<ReflectionResponse[]>([]);
-  const [responsesLoading, setResponsesLoading] = useState(false);
+  const [responsesLoading, setResponsesLoading] = useState(true);
   const [responsesError, setResponsesError] = useState("");
 
-  // Delete-reflection state
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
-
-    const fetchResponses = async (id: number, token: string | null) => {
+    (async () => {
       setResponsesLoading(true);
       setResponsesError("");
+      const token = localStorage.getItem("adminAccessToken");
       try {
         // GET /admin/reflections/{reflectionId}/responses
-        const res = await fetch(`${BASE}admin/reflections/${id}/responses`, {
+        const res = await fetch(`${BASE}admin/reflections/${reflection.id}/responses`, {
           headers: { Authorization: `Bearer ${token}` },
           credentials: "include",
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || "Failed to load learner responses");
         if (cancelled) return;
-        // eslint-disable-next-line no-console
-        console.log("[reflection:view] raw responses payload:", data);
         setResponses(normalizeReflectionResponses(data));
       } catch (err: any) {
         if (!cancelled) setResponsesError(err.message || "Failed to load learner responses");
       } finally {
         if (!cancelled) setResponsesLoading(false);
       }
-    };
-
-    const fetchReflection = async () => {
-      setLoading(true);
-      setError("");
-      const token = localStorage.getItem("adminAccessToken");
-      try {
-        // GET /admin/modules/{moduleId}/reflection
-        const res = await fetch(`${BASE}admin/modules/${module.id}/reflection`, {
-          headers: { Authorization: `Bearer ${token}` },
-          credentials: "include",
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.message || "Failed to load reflection");
-        if (cancelled) return;
-        // eslint-disable-next-line no-console
-        console.log("[reflection:view] raw GET response:", data);
-        const refl = normalizeReflection(data);
-        setDescription(refl.description);
-        setCriteria(refl.criteria);
-        setReflectionId(refl.id);
-        if (refl.id) await fetchResponses(refl.id, token);
-      } catch (err: any) {
-        if (!cancelled) setError(err.message || "Failed to load reflection");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-
-    fetchReflection();
+    })();
     return () => { cancelled = true; };
-  }, [module.id]);
+  }, [reflection.id]);
 
-  const handleDeleteReflection = async () => {
-    if (!reflectionId) return;
+  const handleDelete = async () => {
     setDeleteError("");
     const token = localStorage.getItem("adminAccessToken");
     if (!token) { setDeleteError("Not authenticated"); return; }
     setDeleting(true);
     try {
       // DELETE /admin/reflections/{reflectionId}
-      const res = await fetch(`${BASE}admin/reflections/${reflectionId}`, {
+      const res = await fetch(`${BASE}admin/reflections/${reflection.id}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
         credentials: "include",
@@ -1633,7 +1621,7 @@ function ViewModuleReflection({
         throw new Error(data.message || "Failed to delete reflection");
       }
       setShowDeleteConfirm(false);
-      onDeleted();
+      onDeleted(reflection.id);
     } catch (err: any) {
       setDeleteError(err.message || "Something went wrong while deleting");
     } finally {
@@ -1641,8 +1629,141 @@ function ViewModuleReflection({
     }
   };
 
+  return (
+    <div className="bg-gray-50 border border-gray-200 rounded-2xl p-6 space-y-4">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-2">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#004900" strokeWidth="2">
+            <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
+            <rect x="9" y="3" width="6" height="4" rx="1" />
+          </svg>
+          <h3 className="text-sm font-semibold text-gray-700">
+            Reflection <span className="text-gray-400 font-normal">#{reflection.id}</span>
+          </h3>
+        </div>
+        <button
+          onClick={() => { setDeleteError(""); setShowDeleteConfirm(true); }}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-red-600 text-white hover:bg-red-700 transition-colors"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <polyline points="3 6 5 6 21 6" />
+            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+            <path d="M10 11v6" />
+            <path d="M14 11v6" />
+            <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+          </svg>
+          Delete Reflection
+        </button>
+      </div>
+      {deleteError && <p className="text-xs text-red-600">{deleteError}</p>}
+      <div>
+        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Description</p>
+        <p className="text-sm text-gray-800 whitespace-pre-wrap">{reflection.description || "—"}</p>
+      </div>
+      <div>
+        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Criteria</p>
+        <p className="text-sm text-gray-800 whitespace-pre-wrap">{reflection.criteria || "—"}</p>
+      </div>
+
+      {/* Learner responses for this specific reflection */}
+      <div className="pt-3 border-t border-gray-200">
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Learner Responses</p>
+          {!responsesLoading && !responsesError && (
+            <span className="text-xs text-gray-400">
+              {responses.length} response{responses.length !== 1 ? "s" : ""}
+            </span>
+          )}
+        </div>
+
+        {responsesLoading && <p className="text-xs text-gray-400">Loading learner responses…</p>}
+        {!responsesLoading && responsesError && <p className="text-xs text-red-600">{responsesError}</p>}
+        {!responsesLoading && !responsesError && responses.length === 0 && (
+          <p className="text-xs text-gray-400">No learner responses yet.</p>
+        )}
+        {!responsesLoading && !responsesError && responses.length > 0 && (
+          <div className="space-y-2">
+            {responses.map((r) => {
+              const name =
+                r.user?.fullName ||
+                r.user?.name ||
+                r.user?.email ||
+                (r.userId ? `Learner #${r.userId}` : "Learner");
+              const text = r.response ?? r.answer ?? r.content ?? "";
+              const date = r.submittedAt || r.createdAt;
+              return (
+                <div key={r.id} className="border border-gray-200 rounded-lg p-3 bg-white">
+                  <div className="flex items-center justify-between mb-1 gap-3 flex-wrap">
+                    <span className="text-xs font-medium text-gray-800">{name}</span>
+                    {date && (
+                      <span className="text-xs text-gray-400 whitespace-nowrap">
+                        {new Date(date).toLocaleString()}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-600 whitespace-pre-wrap">{text || "—"}</p>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {showDeleteConfirm && (
+        <ConfirmModal
+          message={`Are you sure you want to delete reflection #${reflection.id}? This will also remove all learner responses to it.`}
+          onConfirm={handleDelete}
+          onCancel={() => setShowDeleteConfirm(false)}
+          loading={deleting}
+        />
+      )}
+    </div>
+  );
+}
+
+function ViewModuleReflection({
+  module,
+  onDeleted,
+}: {
+  module: Module;
+  onDeleted: () => void;
+}) {
+  const [reflections, setReflections] = useState<NormalizedReflection[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const fetchReflections = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    const token = localStorage.getItem("adminAccessToken");
+    try {
+      // GET /admin/modules/{moduleId}/reflection — returns an array of every
+      // reflection added to this module.
+      const res = await fetch(`${BASE}admin/modules/${module.id}/reflection`, {
+        headers: { Authorization: `Bearer ${token}` },
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to load reflections");
+      // eslint-disable-next-line no-console
+      console.log("[reflection:view] raw GET response:", data);
+      setReflections(normalizeReflectionList(data));
+    } catch (err: any) {
+      setError(err.message || "Failed to load reflections");
+    } finally {
+      setLoading(false);
+    }
+  }, [module.id]);
+
+  useEffect(() => { fetchReflections(); }, [fetchReflections]);
+
+  const handleCardDeleted = (id: number) => {
+    setReflections((rs) => rs.filter((r) => r.id !== id));
+    onDeleted();
+  };
+
   if (loading) {
-    return <p className="text-sm text-gray-400">Loading reflection…</p>;
+    return <p className="text-sm text-gray-400">Loading reflections…</p>;
   }
 
   if (error) {
@@ -1654,113 +1775,32 @@ function ViewModuleReflection({
   }
 
   return (
-    <div className="space-y-8">
-      {/* Reflection details */}
-      <div className="bg-gray-50 border border-gray-200 rounded-2xl p-6 space-y-4">
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <div className="flex items-center gap-2">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#004900" strokeWidth="2">
-              <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
-              <rect x="9" y="3" width="6" height="4" rx="1" />
-            </svg>
-            <h3 className="text-sm font-semibold text-gray-700">
-              Reflection for "{module.title}"
-              <span className="text-gray-400 font-normal ml-1">(Module #{module.id})</span>
-            </h3>
-          </div>
-          {reflectionId && (
-            <button
-              onClick={() => { setDeleteError(""); setShowDeleteConfirm(true); }}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-red-600 text-white hover:bg-red-700 transition-colors"
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <polyline points="3 6 5 6 21 6" />
-                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                <path d="M10 11v6" />
-                <path d="M14 11v6" />
-                <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-              </svg>
-              Delete Reflection
-            </button>
-          )}
-        </div>
-        {deleteError && <p className="text-xs text-red-600">{deleteError}</p>}
-        <div>
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Description</p>
-          <p className="text-sm text-gray-800 whitespace-pre-wrap">{description || "—"}</p>
-        </div>
-        <div>
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Criteria</p>
-          <p className="text-sm text-gray-800 whitespace-pre-wrap">{criteria || "—"}</p>
-        </div>
+    <div className="space-y-6">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <h2 className="text-sm font-semibold text-gray-700">
+          Reflections for "{module.title}"
+          <span className="text-gray-400 font-normal ml-1">(Module #{module.id})</span>
+        </h2>
+        <span className="text-xs text-gray-400">
+          {reflections.length} reflection{reflections.length !== 1 ? "s" : ""}
+        </span>
       </div>
 
-      {/* Learner responses */}
-      <div>
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-gray-700">Learner Responses</h3>
-          {!responsesLoading && !responsesError && (
-            <span className="text-xs text-gray-400">
-              {responses.length} response{responses.length !== 1 ? "s" : ""}
-            </span>
-          )}
+      {reflections.length === 0 ? (
+        <div className="border border-dashed border-gray-200 rounded-xl py-10 text-center">
+          <p className="text-sm text-gray-400">No reflections yet for this module.</p>
         </div>
-
-        {!reflectionId && (
-          <p className="text-sm text-gray-400">
-            No reflection ID was returned, so learner responses can't be loaded.
-          </p>
-        )}
-
-        {reflectionId && responsesLoading && (
-          <p className="text-sm text-gray-400">Loading learner responses…</p>
-        )}
-
-        {reflectionId && !responsesLoading && responsesError && (
-          <p className="text-sm text-red-600">{responsesError}</p>
-        )}
-
-        {reflectionId && !responsesLoading && !responsesError && responses.length === 0 && (
-          <div className="border border-dashed border-gray-200 rounded-xl py-10 text-center">
-            <p className="text-sm text-gray-400">No learner responses yet.</p>
-          </div>
-        )}
-
-        {reflectionId && !responsesLoading && !responsesError && responses.length > 0 && (
-          <div className="space-y-3">
-            {responses.map((r) => {
-              const name =
-                r.user?.fullName ||
-                r.user?.name ||
-                r.user?.email ||
-                (r.userId ? `Learner #${r.userId}` : "Learner");
-              const text = r.response ?? r.answer ?? r.content ?? "";
-              const date = r.submittedAt || r.createdAt;
-              return (
-                <div key={r.id} className="border border-gray-200 rounded-xl p-4 bg-white">
-                  <div className="flex items-center justify-between mb-2 gap-3 flex-wrap">
-                    <span className="text-sm font-medium text-gray-800">{name}</span>
-                    {date && (
-                      <span className="text-xs text-gray-400 whitespace-nowrap">
-                        {new Date(date).toLocaleString()}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-sm text-gray-600 whitespace-pre-wrap">{text || "—"}</p>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {showDeleteConfirm && (
-        <ConfirmModal
-          message={`Are you sure you want to delete this reflection for "${module.title}"? This will also remove all learner responses to it.`}
-          onConfirm={handleDeleteReflection}
-          onCancel={() => setShowDeleteConfirm(false)}
-          loading={deleting}
-        />
+      ) : (
+        <div className="space-y-5">
+          {reflections.map((refl) => (
+            <ReflectionCard
+              key={refl.id}
+              module={module}
+              reflection={refl}
+              onDeleted={handleCardDeleted}
+            />
+          ))}
+        </div>
       )}
     </div>
   );
@@ -2085,15 +2125,12 @@ export default function ManageModules() {
       {/* ── View Reflection Modal (full screen, X to close) ── */}
       {modal.type === "viewReflection" && (
         <FullScreenModal
-          title={`Reflection — ${modal.module.title}`}
+          title={`Reflections — ${modal.module.title}`}
           onClose={closeModal}
         >
           <ViewModuleReflection
             module={modal.module}
-            onDeleted={() => {
-              closeModal();
-              showToast("Reflection deleted");
-            }}
+            onDeleted={() => showToast("Reflection deleted")}
           />
         </FullScreenModal>
       )}
