@@ -37,6 +37,24 @@ type Module = {
 const getModuleThumbnail = (m: Pick<Module, "thumbnail" | "thumbnailUrl">) =>
   m.thumbnail || m.thumbnailUrl || "";
 
+// GET /admin/modules/{moduleId}/reflection can come back in a few different
+// shapes depending on the endpoint version, e.g.:
+//   { description, criteria, id }
+//   { data: { description, criteria, id } }
+//   { reflection: { description, criteria, id } }
+//   { data: { reflection: { description, criteria, id }, responseCount } }  <-- the
+//      "(+ response count)" shape — this is the one that was silently breaking
+//      both the edit form and the view modal, because the old parsing logic
+//      (`data?.data ?? data?.reflection ?? data`) stopped one level too early
+//      and returned the *wrapper* object ({ reflection, responseCount })
+//      instead of the reflection itself, so `.description`, `.criteria`, and
+//      `.id` were all undefined.
+// This helper unwraps all of the above consistently.
+function extractReflection(data: any): any {
+  const payload = data?.data ?? data;
+  return payload?.reflection ?? payload;
+}
+
 type UnitForm = {
   moduleId: string;
   title: string;
@@ -852,7 +870,6 @@ function AddAssessmentForm({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [qLoading, setQLoading] = useState(false);
   const [qError, setQError] = useState("");
-  const [fileUploading, setFileUploading] = useState(false);
 
   const setC = (k: keyof typeof config, v: any) =>
     setConfig(f => ({ ...f, [k]: v }));
@@ -908,29 +925,18 @@ function AddAssessmentForm({
     setQLoading(true);
     try {
       if (mode === "file") {
-        // File → upload to Cloudinary first, then send the resulting URL to
-        // the backend as JSON.
         if (!fileRef) { setQError("Please select a CSV or Excel file"); setQLoading(false); return; }
 
-        let fileUrl = "";
-        try {
-          setFileUploading(true);
-          fileUrl = await uploadToCloudinary(fileRef, "assessment-uploads");
-        } catch (err: any) {
-          throw new Error(err.message || "Failed to upload file to Cloudinary");
-        } finally {
-          setFileUploading(false);
-        }
+        const formData = new FormData();
+        formData.append("file", fileRef);
+        formData.append("parentId", String(parentId));
+        formData.append("parentType", parentType);
 
         const res = await fetch(`${BASE}admin/assessment-items/bulk-upload`, {
           method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          headers: { Authorization: `Bearer ${token}` },
           credentials: "include",
-          body: JSON.stringify({
-            parentId,
-            parentType,
-            fileUrl,
-          }),
+          body: formData,
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || data.error || "File upload failed");
@@ -1240,9 +1246,7 @@ function AddAssessmentForm({
               className="bg-[#004900] text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-[#003700] disabled:opacity-60"
             >
               {qLoading
-                ? mode === "file"
-                  ? (fileUploading ? "Uploading file…" : "Saving…")
-                  : "Submitting…"
+                ? "Saving…"
                 : mode === "file"
                 ? "Upload & Save"
                 : mode === "bulk"
@@ -1310,7 +1314,11 @@ function ModuleReflectionForm({
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || "Failed to load reflection");
         if (cancelled) return;
-        const refl = data?.data ?? data?.reflection ?? data;
+        // Was previously `data?.data ?? data?.reflection ?? data`, which
+        // returns the WRAPPER object ({ reflection, responseCount }) when the
+        // API nests the reflection one level inside `data`. extractReflection
+        // unwraps that correctly so the fields below actually populate.
+        const refl = extractReflection(data);
         setDescription(refl?.description ?? "");
         setCriteria(refl?.criteria ?? "");
         setReflectionId(refl?.id ?? null);
@@ -1365,6 +1373,11 @@ function ModuleReflectionForm({
         <p className="text-xs text-gray-400">Loading existing reflection…</p>
       ) : (
         <>
+          {mode === "edit" && !reflectionId && !error && (
+            <p className="text-xs text-amber-600">
+              No existing reflection was found for this module — saving will not work until one exists.
+            </p>
+          )}
           <Field label="Description" required>
             <textarea
               rows={4}
@@ -1582,6 +1595,7 @@ function ViewModuleReflection({
   const [description, setDescription] = useState("");
   const [criteria, setCriteria] = useState("");
   const [reflectionId, setReflectionId] = useState<number | null>(null);
+  const [responseCount, setResponseCount] = useState<number | null>(null);
 
   const [responses, setResponses] = useState<ReflectionResponse[]>([]);
   const [responsesLoading, setResponsesLoading] = useState(false);
@@ -1631,11 +1645,22 @@ function ViewModuleReflection({
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || "Failed to load reflection");
         if (cancelled) return;
-        const refl = data?.data ?? data?.reflection ?? data;
+
+        // Same nested-shape issue as ModuleReflectionForm: the API can wrap
+        // the reflection as `{ data: { reflection: {...}, responseCount } }`,
+        // which the old code didn't unwrap far enough, leaving description /
+        // criteria / id all undefined — hence the blank modal and the
+        // missing delete button (guarded on `reflectionId`).
+        const payload = data?.data ?? data;
+        const refl = extractReflection(data);
         setDescription(refl?.description ?? "");
         setCriteria(refl?.criteria ?? "");
         const id = refl?.id ?? null;
         setReflectionId(id);
+        // Response count, when present, comes back alongside the reflection
+        // rather than inside it.
+        const count = payload?.responseCount ?? refl?.responseCount ?? null;
+        setResponseCount(typeof count === "number" ? count : null);
         if (id) await fetchResponses(id, token);
       } catch (err: any) {
         if (!cancelled) setError(err.message || "Failed to load reflection");
@@ -1717,6 +1742,11 @@ function ViewModuleReflection({
             </button>
           )}
         </div>
+        {!reflectionId && (
+          <p className="text-xs text-amber-600">
+            No reflection ID came back from the API for this module, so it can't be deleted here.
+          </p>
+        )}
         {deleteError && <p className="text-xs text-red-600">{deleteError}</p>}
         <div>
           <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Description</p>
@@ -1726,6 +1756,12 @@ function ViewModuleReflection({
           <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Criteria</p>
           <p className="text-sm text-gray-800 whitespace-pre-wrap">{criteria || "—"}</p>
         </div>
+        {responseCount !== null && (
+          <div>
+            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Response Count</p>
+            <p className="text-sm text-gray-800">{responseCount}</p>
+          </div>
+        )}
       </div>
 
       {/* Learner responses */}
