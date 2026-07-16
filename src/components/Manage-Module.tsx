@@ -214,10 +214,8 @@ function ActionsMenu({
 }
 
 // ── Cloudinary Upload ─────────────────────────────────────────────────────────
-// Shared by unit video/pdf uploads and the module thumbnail upload.
-// NOTE: the assessment CSV/Excel bulk-upload no longer uses Cloudinary — see
-// AddAssessmentForm's handleSubmitQuestions, which now sends the file
-// directly to the backend as multipart/form-data.
+// Shared by unit video/pdf uploads, the module thumbnail upload, AND the
+// assessment CSV/Excel bulk-upload file below.
 
 const uploadToCloudinary = async (file: File, folder: string = "curriculum"): Promise<string> => {
   const API_KEY = import.meta.env.VITE_API_KEY;
@@ -912,31 +910,32 @@ function AddAssessmentForm({
     setQLoading(true);
     try {
       if (mode === "file") {
-        // File → send the CSV/Excel file straight to the backend as
-        // multipart/form-data. No Cloudinary step anymore: the file itself
-        // is posted directly, not a hosted URL.
+        // File → upload to Cloudinary first, then send the resulting URL to
+        // the backend as JSON.
         if (!fileRef) { setQError("Please select a CSV or Excel file"); setQLoading(false); return; }
 
+        let fileUrl = "";
         try {
           setFileUploading(true);
-          const formData = new FormData();
-          formData.append("file", fileRef);
-          formData.append("parentId", String(parentId));
-          formData.append("parentType", parentType);
-
-          const res = await fetch(`${BASE}admin/assessment-items/bulk-upload`, {
-            method: "POST",
-            // Don't set Content-Type manually here — the browser needs to
-            // set it (including the multipart boundary) itself.
-            headers: { Authorization: `Bearer ${token}` },
-            credentials: "include",
-            body: formData,
-          });
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.message || data.error || "File upload failed");
+          fileUrl = await uploadToCloudinary(fileRef, "assessment-uploads");
+        } catch (err: any) {
+          throw new Error(err.message || "Failed to upload file to Cloudinary");
         } finally {
           setFileUploading(false);
         }
+
+        const res = await fetch(`${BASE}admin/assessment-items/bulk-upload`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          credentials: "include",
+          body: JSON.stringify({
+            parentId,
+            parentType,
+            fileUrl,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || data.error || "File upload failed");
 
       } else {
         const validationError = validateQuestions(questions);
@@ -1276,17 +1275,8 @@ function AddAssessmentForm({
 //   POST   /admin/modules/{moduleId}/reflection        → create reflection
 //   GET    /admin/modules/{moduleId}/reflection         → get reflection (+ response count)
 //   PATCH  /admin/reflections/{reflectionId}             → update reflection
-//
-// "add" mode now supports creating multiple reflections in one go via an
-// "Add More" button — each entry is submitted as its own
-// POST /admin/modules/{moduleId}/reflection call. "edit" mode still edits the
-// single existing reflection returned by the GET above.
 
 type ReflectionMode = "add" | "edit";
-
-type ReflectionEntry = { description: string; criteria: string };
-
-const emptyReflectionEntry = (): ReflectionEntry => ({ description: "", criteria: "" });
 
 function ModuleReflectionForm({
   module,
@@ -1299,7 +1289,8 @@ function ModuleReflectionForm({
   onDone: () => void;
   onCancel: () => void;
 }) {
-  const [entries, setEntries] = useState<ReflectionEntry[]>([emptyReflectionEntry()]);
+  const [description, setDescription] = useState("");
+  const [criteria, setCriteria] = useState("");
   // Needed for PATCH /admin/reflections/{reflectionId} in edit mode — comes
   // back from GET /admin/modules/{moduleId}/reflection.
   const [reflectionId, setReflectionId] = useState<number | null>(null);
@@ -1322,7 +1313,8 @@ function ModuleReflectionForm({
         if (!res.ok) throw new Error(data.message || "Failed to load reflection");
         if (cancelled) return;
         const refl = data?.data ?? data?.reflection ?? data;
-        setEntries([{ description: refl?.description ?? "", criteria: refl?.criteria ?? "" }]);
+        setDescription(refl?.description ?? "");
+        setCriteria(refl?.criteria ?? "");
         setReflectionId(refl?.id ?? null);
       } catch (err: any) {
         if (!cancelled) setError(err.message || "Failed to load existing reflection");
@@ -1333,17 +1325,10 @@ function ModuleReflectionForm({
     return () => { cancelled = true; };
   }, [mode, module.id]);
 
-  const updateEntry = (i: number, key: keyof ReflectionEntry, value: string) =>
-    setEntries((es) => es.map((e, idx) => (idx === i ? { ...e, [key]: value } : e)));
-
-  const addEntry = () => setEntries((es) => [...es, emptyReflectionEntry()]);
-  const removeEntry = (i: number) => setEntries((es) => es.filter((_, idx) => idx !== i));
-
   const handleSubmit = async () => {
     setError("");
-    const invalid = entries.some((e) => !e.description.trim() || !e.criteria.trim());
-    if (invalid) {
-      setError("Both description and criteria are required for every reflection");
+    if (!description.trim() || !criteria.trim()) {
+      setError("Both description and criteria are required");
       return;
     }
     const token = localStorage.getItem("adminAccessToken");
@@ -1356,30 +1341,18 @@ function ModuleReflectionForm({
 
     setLoading(true);
     try {
-      if (mode === "add") {
-        // One POST per entry, so "Add More" can create several reflections
-        // for this module in a single submit.
-        for (const entry of entries) {
-          const res = await fetch(`${BASE}admin/modules/${module.id}/reflection`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-            credentials: "include",
-            body: JSON.stringify({ description: entry.description, criteria: entry.criteria }),
-          });
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.message || "Failed to save reflection");
-        }
-      } else {
-        const entry = entries[0];
-        const res = await fetch(`${BASE}admin/reflections/${reflectionId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          credentials: "include",
-          body: JSON.stringify({ description: entry.description, criteria: entry.criteria }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.message || "Failed to save reflection");
-      }
+      const url =
+        mode === "add"
+          ? `${BASE}admin/modules/${module.id}/reflection`
+          : `${BASE}admin/reflections/${reflectionId}`;
+      const res = await fetch(url, {
+        method: mode === "add" ? "POST" : "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        credentials: "include",
+        body: JSON.stringify({ description, criteria }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to save reflection");
       onDone();
     } catch (err: any) {
       setError(err.message || "Something went wrong");
@@ -1394,53 +1367,24 @@ function ModuleReflectionForm({
         <p className="text-xs text-gray-400">Loading existing reflection…</p>
       ) : (
         <>
-          <div className="space-y-5">
-            {entries.map((entry, i) => (
-              <div key={i} className="border border-gray-200 rounded-xl p-4 space-y-3 bg-gray-50/50">
-                {mode === "add" && entries.length > 1 && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                      Reflection {i + 1}
-                    </span>
-                    <button
-                      onClick={() => removeEntry(i)}
-                      className="text-xs text-red-500 hover:text-red-700 font-medium"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                )}
-                <Field label="Description" required>
-                  <textarea
-                    rows={4}
-                    value={entry.description}
-                    onChange={(e) => updateEntry(i, "description", e.target.value)}
-                    className={textareaCls}
-                    placeholder="Reflection description"
-                  />
-                </Field>
-                <Field label="Criteria" required>
-                  <textarea
-                    rows={4}
-                    value={entry.criteria}
-                    onChange={(e) => updateEntry(i, "criteria", e.target.value)}
-                    className={textareaCls}
-                    placeholder="Reflection criteria"
-                  />
-                </Field>
-              </div>
-            ))}
-          </div>
-
-          {mode === "add" && (
-            <button
-              type="button"
-              onClick={addEntry}
-              className="w-full py-2.5 border-2 border-dashed border-gray-200 rounded-xl text-xs font-medium text-gray-400 hover:border-[#004900]/40 hover:text-[#004900] transition-colors"
-            >
-              + Add More
-            </button>
-          )}
+          <Field label="Description" required>
+            <textarea
+              rows={4}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className={textareaCls}
+              placeholder="Reflection description"
+            />
+          </Field>
+          <Field label="Criteria" required>
+            <textarea
+              rows={4}
+              value={criteria}
+              onChange={(e) => setCriteria(e.target.value)}
+              className={textareaCls}
+              placeholder="Reflection criteria"
+            />
+          </Field>
         </>
       )}
 
@@ -1469,8 +1413,6 @@ function ModuleReflectionForm({
 //   GET /admin/modules/{moduleId}/reflection            → description, criteria, id
 //   GET /admin/reflections/{reflectionId}/responses      → list all learner responses
 // Rendered inside <FullScreenModal>, which already provides the X close button.
-// Includes a "Delete Reflection" button that calls
-// DELETE /admin/reflections/{reflectionId}.
 
 type ReflectionResponse = {
   id: number;
