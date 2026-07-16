@@ -11,6 +11,7 @@ const inputCls =
   "w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900]";
 const textareaCls = inputCls + " resize-none";
 const statusOptions = ["draft", "published", "archived"] as const;
+const [deleting, setDeleting] = useState(false);
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -36,24 +37,6 @@ type Module = {
 // Single place that decides which field to read the module thumbnail from.
 const getModuleThumbnail = (m: Pick<Module, "thumbnail" | "thumbnailUrl">) =>
   m.thumbnail || m.thumbnailUrl || "";
-
-// GET /admin/modules/{moduleId}/reflection can come back in a few different
-// shapes depending on the endpoint version, e.g.:
-//   { description, criteria, id }
-//   { data: { description, criteria, id } }
-//   { reflection: { description, criteria, id } }
-//   { data: { reflection: { description, criteria, id }, responseCount } }  <-- the
-//      "(+ response count)" shape — this is the one that was silently breaking
-//      both the edit form and the view modal, because the old parsing logic
-//      (`data?.data ?? data?.reflection ?? data`) stopped one level too early
-//      and returned the *wrapper* object ({ reflection, responseCount })
-//      instead of the reflection itself, so `.description`, `.criteria`, and
-//      `.id` were all undefined.
-// This helper unwraps all of the above consistently.
-function extractReflection(data: any): any {
-  const payload = data?.data ?? data;
-  return payload?.reflection ?? payload;
-}
 
 type UnitForm = {
   moduleId: string;
@@ -183,6 +166,7 @@ function ConfirmModal({
   );
 }
 
+
 // ── Actions dropdown (keeps row-level buttons from getting crowded) ───────────
 
 function ActionsMenu({
@@ -230,8 +214,10 @@ function ActionsMenu({
 }
 
 // ── Cloudinary Upload ─────────────────────────────────────────────────────────
-// Shared by unit video/pdf uploads, the module thumbnail upload, AND the
-// assessment CSV/Excel bulk-upload file below.
+// Shared by unit video/pdf uploads and the module thumbnail upload.
+// NOTE: the assessment CSV/Excel bulk-upload no longer uses Cloudinary — see
+// AddAssessmentForm's handleSubmitQuestions, which now sends the file
+// directly to the backend as multipart/form-data.
 
 const uploadToCloudinary = async (file: File, folder: string = "curriculum"): Promise<string> => {
   const API_KEY = import.meta.env.VITE_API_KEY;
@@ -870,6 +856,7 @@ function AddAssessmentForm({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [qLoading, setQLoading] = useState(false);
   const [qError, setQError] = useState("");
+  const [fileUploading, setFileUploading] = useState(false);
 
   const setC = (k: keyof typeof config, v: any) =>
     setConfig(f => ({ ...f, [k]: v }));
@@ -925,21 +912,31 @@ function AddAssessmentForm({
     setQLoading(true);
     try {
       if (mode === "file") {
+        // File → send the CSV/Excel file straight to the backend as
+        // multipart/form-data. No Cloudinary step anymore: the file itself
+        // is posted directly, not a hosted URL.
         if (!fileRef) { setQError("Please select a CSV or Excel file"); setQLoading(false); return; }
 
-        const formData = new FormData();
-        formData.append("file", fileRef);
-        formData.append("parentId", String(parentId));
-        formData.append("parentType", parentType);
+        try {
+          setFileUploading(true);
+          const formData = new FormData();
+          formData.append("file", fileRef);
+          formData.append("parentId", String(parentId));
+          formData.append("parentType", parentType);
 
-        const res = await fetch(`${BASE}admin/assessment-items/bulk-upload`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
-          credentials: "include",
-          body: formData,
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.message || data.error || "File upload failed");
+          const res = await fetch(`${BASE}admin/assessment-items/bulk-upload`, {
+            method: "POST",
+            // Don't set Content-Type manually here — the browser needs to
+            // set it (including the multipart boundary) itself.
+            headers: { Authorization: `Bearer ${token}` },
+            credentials: "include",
+            body: formData,
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.message || data.error || "File upload failed");
+        } finally {
+          setFileUploading(false);
+        }
 
       } else {
         const validationError = validateQuestions(questions);
@@ -1246,7 +1243,9 @@ function AddAssessmentForm({
               className="bg-[#004900] text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-[#003700] disabled:opacity-60"
             >
               {qLoading
-                ? "Saving…"
+                ? mode === "file"
+                  ? (fileUploading ? "Uploading file…" : "Saving…")
+                  : "Submitting…"
                 : mode === "file"
                 ? "Upload & Save"
                 : mode === "bulk"
@@ -1277,8 +1276,17 @@ function AddAssessmentForm({
 //   POST   /admin/modules/{moduleId}/reflection        → create reflection
 //   GET    /admin/modules/{moduleId}/reflection         → get reflection (+ response count)
 //   PATCH  /admin/reflections/{reflectionId}             → update reflection
+//
+// "add" mode now supports creating multiple reflections in one go via an
+// "Add More" button — each entry is submitted as its own
+// POST /admin/modules/{moduleId}/reflection call. "edit" mode still edits the
+// single existing reflection returned by the GET above.
 
 type ReflectionMode = "add" | "edit";
+
+type ReflectionEntry = { description: string; criteria: string };
+
+const emptyReflectionEntry = (): ReflectionEntry => ({ description: "", criteria: "" });
 
 function ModuleReflectionForm({
   module,
@@ -1291,8 +1299,7 @@ function ModuleReflectionForm({
   onDone: () => void;
   onCancel: () => void;
 }) {
-  const [description, setDescription] = useState("");
-  const [criteria, setCriteria] = useState("");
+  const [entries, setEntries] = useState<ReflectionEntry[]>([emptyReflectionEntry()]);
   // Needed for PATCH /admin/reflections/{reflectionId} in edit mode — comes
   // back from GET /admin/modules/{moduleId}/reflection.
   const [reflectionId, setReflectionId] = useState<number | null>(null);
@@ -1314,13 +1321,8 @@ function ModuleReflectionForm({
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || "Failed to load reflection");
         if (cancelled) return;
-        // Was previously `data?.data ?? data?.reflection ?? data`, which
-        // returns the WRAPPER object ({ reflection, responseCount }) when the
-        // API nests the reflection one level inside `data`. extractReflection
-        // unwraps that correctly so the fields below actually populate.
-        const refl = extractReflection(data);
-        setDescription(refl?.description ?? "");
-        setCriteria(refl?.criteria ?? "");
+        const refl = data?.data ?? data?.reflection ?? data;
+        setEntries([{ description: refl?.description ?? "", criteria: refl?.criteria ?? "" }]);
         setReflectionId(refl?.id ?? null);
       } catch (err: any) {
         if (!cancelled) setError(err.message || "Failed to load existing reflection");
@@ -1331,10 +1333,17 @@ function ModuleReflectionForm({
     return () => { cancelled = true; };
   }, [mode, module.id]);
 
+  const updateEntry = (i: number, key: keyof ReflectionEntry, value: string) =>
+    setEntries((es) => es.map((e, idx) => (idx === i ? { ...e, [key]: value } : e)));
+
+  const addEntry = () => setEntries((es) => [...es, emptyReflectionEntry()]);
+  const removeEntry = (i: number) => setEntries((es) => es.filter((_, idx) => idx !== i));
+
   const handleSubmit = async () => {
     setError("");
-    if (!description.trim() || !criteria.trim()) {
-      setError("Both description and criteria are required");
+    const invalid = entries.some((e) => !e.description.trim() || !e.criteria.trim());
+    if (invalid) {
+      setError("Both description and criteria are required for every reflection");
       return;
     }
     const token = localStorage.getItem("adminAccessToken");
@@ -1347,18 +1356,30 @@ function ModuleReflectionForm({
 
     setLoading(true);
     try {
-      const url =
-        mode === "add"
-          ? `${BASE}admin/modules/${module.id}/reflection`
-          : `${BASE}admin/reflections/${reflectionId}`;
-      const res = await fetch(url, {
-        method: mode === "add" ? "POST" : "PATCH",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        credentials: "include",
-        body: JSON.stringify({ description, criteria }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Failed to save reflection");
+      if (mode === "add") {
+        // One POST per entry, so "Add More" can create several reflections
+        // for this module in a single submit.
+        for (const entry of entries) {
+          const res = await fetch(`${BASE}admin/modules/${module.id}/reflection`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            credentials: "include",
+            body: JSON.stringify({ description: entry.description, criteria: entry.criteria }),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.message || "Failed to save reflection");
+        }
+      } else {
+        const entry = entries[0];
+        const res = await fetch(`${BASE}admin/reflections/${reflectionId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          credentials: "include",
+          body: JSON.stringify({ description: entry.description, criteria: entry.criteria }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || "Failed to save reflection");
+      }
       onDone();
     } catch (err: any) {
       setError(err.message || "Something went wrong");
@@ -1373,29 +1394,53 @@ function ModuleReflectionForm({
         <p className="text-xs text-gray-400">Loading existing reflection…</p>
       ) : (
         <>
-          {mode === "edit" && !reflectionId && !error && (
-            <p className="text-xs text-amber-600">
-              No existing reflection was found for this module — saving will not work until one exists.
-            </p>
+          <div className="space-y-5">
+            {entries.map((entry, i) => (
+              <div key={i} className="border border-gray-200 rounded-xl p-4 space-y-3 bg-gray-50/50">
+                {mode === "add" && entries.length > 1 && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                      Reflection {i + 1}
+                    </span>
+                    <button
+                      onClick={() => removeEntry(i)}
+                      className="text-xs text-red-500 hover:text-red-700 font-medium"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                )}
+                <Field label="Description" required>
+                  <textarea
+                    rows={4}
+                    value={entry.description}
+                    onChange={(e) => updateEntry(i, "description", e.target.value)}
+                    className={textareaCls}
+                    placeholder="Reflection description"
+                  />
+                </Field>
+                <Field label="Criteria" required>
+                  <textarea
+                    rows={4}
+                    value={entry.criteria}
+                    onChange={(e) => updateEntry(i, "criteria", e.target.value)}
+                    className={textareaCls}
+                    placeholder="Reflection criteria"
+                  />
+                </Field>
+              </div>
+            ))}
+          </div>
+
+          {mode === "add" && (
+            <button
+              type="button"
+              onClick={addEntry}
+              className="w-full py-2.5 border-2 border-dashed border-gray-200 rounded-xl text-xs font-medium text-gray-400 hover:border-[#004900]/40 hover:text-[#004900] transition-colors"
+            >
+              + Add More
+            </button>
           )}
-          <Field label="Description" required>
-            <textarea
-              rows={4}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className={textareaCls}
-              placeholder="Reflection description"
-            />
-          </Field>
-          <Field label="Criteria" required>
-            <textarea
-              rows={4}
-              value={criteria}
-              onChange={(e) => setCriteria(e.target.value)}
-              className={textareaCls}
-              placeholder="Reflection criteria"
-            />
-          </Field>
         </>
       )}
 
@@ -1419,158 +1464,13 @@ function ModuleReflectionForm({
   );
 }
 
-// ── Add Multiple Module Reflections ────────────────────────────────────────────
-// New: lets an admin queue up several reflections for a module in one go via
-// an "Add Another Reflection" button, then submits them one after another to
-// the existing POST /admin/modules/{moduleId}/reflection endpoint (there's no
-// bulk-create endpoint for reflections, so each entry is posted in sequence).
-
-type ReflectionEntry = { description: string; criteria: string };
-
-const emptyReflectionEntry = (): ReflectionEntry => ({ description: "", criteria: "" });
-
-function AddModuleReflectionsForm({
-  module,
-  onDone,
-  onCancel,
-}: {
-  module: Module;
-  onDone: () => void;
-  onCancel: () => void;
-}) {
-  const [entries, setEntries] = useState<ReflectionEntry[]>([emptyReflectionEntry()]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
-
-  const updateEntry = (i: number, key: keyof ReflectionEntry, value: string) =>
-    setEntries((es) => es.map((e, idx) => (idx === i ? { ...e, [key]: value } : e)));
-
-  const addEntry = () => setEntries((es) => [...es, emptyReflectionEntry()]);
-
-  const removeEntry = (i: number) =>
-    setEntries((es) => es.filter((_, idx) => idx !== i));
-
-  const handleSubmit = async () => {
-    setError("");
-
-    for (let i = 0; i < entries.length; i++) {
-      if (!entries[i].description.trim() || !entries[i].criteria.trim()) {
-        setError(`Reflection ${i + 1} needs both a description and criteria`);
-        return;
-      }
-    }
-
-    const token = localStorage.getItem("adminAccessToken");
-    if (!token) { setError("Not authenticated"); return; }
-
-    setLoading(true);
-    setProgress({ done: 0, total: entries.length });
-    try {
-      // No bulk endpoint exists for reflections, so each entry is posted in
-      // sequence to POST /admin/modules/{moduleId}/reflection.
-      for (let i = 0; i < entries.length; i++) {
-        const entry = entries[i];
-        const res = await fetch(`${BASE}admin/modules/${module.id}/reflection`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          credentials: "include",
-          body: JSON.stringify({ description: entry.description, criteria: entry.criteria }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.message || `Failed to save reflection ${i + 1}`);
-        setProgress({ done: i + 1, total: entries.length });
-      }
-      onDone();
-    } catch (err: any) {
-      setError(err.message || "Something went wrong while saving reflections");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="space-y-5">
-      {entries.map((entry, i) => (
-        <div key={i} className="border border-gray-200 rounded-xl p-4 space-y-3 bg-gray-50/50">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-              Reflection {i + 1}
-            </span>
-            {entries.length > 1 && (
-              <button
-                onClick={() => removeEntry(i)}
-                className="text-xs text-red-500 hover:text-red-700 font-medium"
-              >
-                Remove
-              </button>
-            )}
-          </div>
-          <Field label="Description" required>
-            <textarea
-              rows={4}
-              value={entry.description}
-              onChange={(e) => updateEntry(i, "description", e.target.value)}
-              className={textareaCls}
-              placeholder="Reflection description"
-            />
-          </Field>
-          <Field label="Criteria" required>
-            <textarea
-              rows={4}
-              value={entry.criteria}
-              onChange={(e) => updateEntry(i, "criteria", e.target.value)}
-              className={textareaCls}
-              placeholder="Reflection criteria"
-            />
-          </Field>
-        </div>
-      ))}
-
-      <button
-        type="button"
-        onClick={addEntry}
-        className="w-full py-2.5 border-2 border-dashed border-gray-200 rounded-xl text-xs font-medium text-gray-400 hover:border-[#004900]/40 hover:text-[#004900] transition-colors"
-      >
-        + Add Another Reflection
-      </button>
-
-      {progress && loading && (
-        <p className="text-xs text-gray-400">
-          Saving reflection {Math.min(progress.done + 1, progress.total)} of {progress.total}…
-        </p>
-      )}
-      {error && <p className="text-xs text-red-600">{error}</p>}
-
-      <div className="flex gap-3 pt-1">
-        <button
-          onClick={handleSubmit}
-          disabled={loading}
-          className="bg-[#004900] text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-[#003700] disabled:opacity-60"
-        >
-          {loading
-            ? "Saving…"
-            : entries.length > 1
-            ? `Submit ${entries.length} Reflections`
-            : "Submit"}
-        </button>
-        <button
-          onClick={onCancel}
-          className="px-5 py-2.5 rounded-lg text-sm border border-gray-300 text-gray-600 hover:bg-gray-50"
-        >
-          Cancel
-        </button>
-      </div>
-    </div>
-  );
-}
-
 // ── View Module Reflection (full-screen) ──────────────────────────────────────
 // Read-only view wired to:
-//   GET    /admin/modules/{moduleId}/reflection            → description, criteria, id
-//   GET    /admin/reflections/{reflectionId}/responses      → list all learner responses
-//   DELETE /admin/reflections/{reflectionId}                → delete the reflection
+//   GET /admin/modules/{moduleId}/reflection            → description, criteria, id
+//   GET /admin/reflections/{reflectionId}/responses      → list all learner responses
 // Rendered inside <FullScreenModal>, which already provides the X close button.
+// Includes a "Delete Reflection" button that calls
+// DELETE /admin/reflections/{reflectionId}.
 
 type ReflectionResponse = {
   id: number;
@@ -1583,28 +1483,16 @@ type ReflectionResponse = {
   createdAt?: string;
 };
 
-function ViewModuleReflection({
-  module,
-  onDeleted,
-}: {
-  module: Module;
-  onDeleted?: () => void;
-}) {
+function ViewModuleReflection({ module }: { module: Module }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [description, setDescription] = useState("");
   const [criteria, setCriteria] = useState("");
   const [reflectionId, setReflectionId] = useState<number | null>(null);
-  const [responseCount, setResponseCount] = useState<number | null>(null);
 
   const [responses, setResponses] = useState<ReflectionResponse[]>([]);
   const [responsesLoading, setResponsesLoading] = useState(false);
   const [responsesError, setResponsesError] = useState("");
-
-  // Delete reflection state — DELETE /admin/reflections/{reflectionId}
-  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -1645,22 +1533,11 @@ function ViewModuleReflection({
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || "Failed to load reflection");
         if (cancelled) return;
-
-        // Same nested-shape issue as ModuleReflectionForm: the API can wrap
-        // the reflection as `{ data: { reflection: {...}, responseCount } }`,
-        // which the old code didn't unwrap far enough, leaving description /
-        // criteria / id all undefined — hence the blank modal and the
-        // missing delete button (guarded on `reflectionId`).
-        const payload = data?.data ?? data;
-        const refl = extractReflection(data);
+        const refl = data?.data ?? data?.reflection ?? data;
         setDescription(refl?.description ?? "");
         setCriteria(refl?.criteria ?? "");
         const id = refl?.id ?? null;
         setReflectionId(id);
-        // Response count, when present, comes back alongside the reflection
-        // rather than inside it.
-        const count = payload?.responseCount ?? refl?.responseCount ?? null;
-        setResponseCount(typeof count === "number" ? count : null);
         if (id) await fetchResponses(id, token);
       } catch (err: any) {
         if (!cancelled) setError(err.message || "Failed to load reflection");
@@ -1673,32 +1550,6 @@ function ViewModuleReflection({
     return () => { cancelled = true; };
   }, [module.id]);
 
-  // DELETE /admin/reflections/{reflectionId} — separate delete route, per the
-  // Swagger docs ("Delete a reflection (admin)").
-  const handleDeleteReflection = async () => {
-    if (!reflectionId) return;
-    setDeleteError("");
-    setDeleting(true);
-    const token = localStorage.getItem("adminAccessToken");
-    try {
-      const res = await fetch(`${BASE}admin/reflections/${reflectionId}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-        credentials: "include",
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({} as any));
-        throw new Error(data.message || "Failed to delete reflection");
-      }
-      setConfirmDeleteOpen(false);
-      onDeleted?.();
-    } catch (err: any) {
-      setDeleteError(err.message || "Failed to delete reflection");
-    } finally {
-      setDeleting(false);
-    }
-  };
-
   if (loading) {
     return <p className="text-sm text-gray-400">Loading reflection…</p>;
   }
@@ -1710,44 +1561,60 @@ function ViewModuleReflection({
       </div>
     );
   }
+  const handleDeleteReflection = async () => {
+  if (!reflectionId) return;
+
+  if (!window.confirm("Are you sure you want to delete this reflection?")) {
+    return;
+  }
+
+  const token = localStorage.getItem("adminAccessToken");
+
+  try {
+    setDeleting(true);
+
+    const res = await fetch(
+      `${BASE}admin/reflections/${reflectionId}`,
+      {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        credentials: "include",
+      }
+    );
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      throw new Error(data.message || "Failed to delete reflection");
+    }
+
+    alert("Reflection deleted successfully");
+
+    // Close the modal
+    window.location.reload(); // or call onDone() if you pass it down
+  } catch (err: any) {
+    alert(err.message || "Something went wrong");
+  } finally {
+    setDeleting(false);
+  }
+};
 
   return (
     <div className="space-y-8">
       {/* Reflection details */}
       <div className="bg-gray-50 border border-gray-200 rounded-2xl p-6 space-y-4">
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <div className="flex items-center gap-2">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#004900" strokeWidth="2">
-              <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
-              <rect x="9" y="3" width="6" height="4" rx="1" />
-            </svg>
-            <h3 className="text-sm font-semibold text-gray-700">
-              Reflection for "{module.title}"
-              <span className="text-gray-400 font-normal ml-1">(Module #{module.id})</span>
-            </h3>
-          </div>
-          {reflectionId && (
-            <button
-              onClick={() => { setDeleteError(""); setConfirmDeleteOpen(true); }}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-red-200 text-red-600 hover:bg-red-50 transition-colors"
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <polyline points="3 6 5 6 21 6" />
-                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                <path d="M10 11v6" />
-                <path d="M14 11v6" />
-                <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-              </svg>
-              Delete Reflection
-            </button>
-          )}
+        <div className="flex items-center gap-2">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#004900" strokeWidth="2">
+            <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
+            <rect x="9" y="3" width="6" height="4" rx="1" />
+          </svg>
+          <h3 className="text-sm font-semibold text-gray-700">
+            Reflection for "{module.title}"
+            <span className="text-gray-400 font-normal ml-1">(Module #{module.id})</span>
+          </h3>
         </div>
-        {!reflectionId && (
-          <p className="text-xs text-amber-600">
-            No reflection ID came back from the API for this module, so it can't be deleted here.
-          </p>
-        )}
-        {deleteError && <p className="text-xs text-red-600">{deleteError}</p>}
         <div>
           <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Description</p>
           <p className="text-sm text-gray-800 whitespace-pre-wrap">{description || "—"}</p>
@@ -1756,12 +1623,15 @@ function ViewModuleReflection({
           <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Criteria</p>
           <p className="text-sm text-gray-800 whitespace-pre-wrap">{criteria || "—"}</p>
         </div>
-        {responseCount !== null && (
-          <div>
-            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Response Count</p>
-            <p className="text-sm text-gray-800">{responseCount}</p>
-          </div>
-        )}
+        <div className="flex justify-end mb-6">
+        <button
+          onClick={handleDeleteReflection}
+          disabled={deleting}
+          className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-60"
+        >
+          {deleting ? "Deleting..." : "Delete Reflection"}
+        </button>
+      </div>
       </div>
 
       {/* Learner responses */}
@@ -1822,16 +1692,6 @@ function ViewModuleReflection({
           </div>
         )}
       </div>
-
-      {/* Delete confirmation */}
-      {confirmDeleteOpen && (
-        <ConfirmModal
-          message={`Are you sure you want to delete the reflection for "${module.title}"? This will also remove its learner responses.`}
-          onConfirm={handleDeleteReflection}
-          onCancel={() => setConfirmDeleteOpen(false)}
-          loading={deleting}
-        />
-      )}
     </div>
   );
 }
@@ -2122,14 +1982,15 @@ export default function ManageModules() {
         </Modal>
       )}
 
-      {/* ── Add Reflection Modal (supports adding multiple reflections) ── */}
+      {/* ── Add Reflection Modal ── */}
       {modal.type === "addReflection" && (
         <Modal title={`Add Reflection — ${modal.module.title}`} onClose={closeModal}>
-          <AddModuleReflectionsForm
+          <ModuleReflectionForm
             module={modal.module}
+            mode="add"
             onDone={() => {
               closeModal();
-              showToast("Reflection(s) saved");
+              showToast("Reflection saved");
             }}
             onCancel={closeModal}
           />
@@ -2151,23 +2012,17 @@ export default function ManageModules() {
         </Modal>
       )}
 
-      {/* ── View Reflection Modal (full screen, X to close, delete button inside) ── */}
+      {/* ── View Reflection Modal (full screen, X to close) ── */}
       {modal.type === "viewReflection" && (
         <FullScreenModal
           title={`Reflection — ${modal.module.title}`}
           onClose={closeModal}
         >
-          <ViewModuleReflection
-            module={modal.module}
-            onDeleted={() => {
-              closeModal();
-              showToast("Reflection deleted");
-            }}
-          />
+          <ViewModuleReflection module={modal.module} />
         </FullScreenModal>
       )}
 
-      {/* ── Delete Confirm (module) ── */}
+      {/* ── Delete Confirm ── */}
       {modal.type === "delete" && (
         <ConfirmModal
           message={`Are you sure you want to delete "${modal.module.title}"? This will also remove all its units and assessments.`}
