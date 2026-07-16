@@ -1272,16 +1272,23 @@ function AddAssessmentForm({
 // ── Module Reflection Form ─────────────────────────────────────────────────────
 // Wired to the real admin reflection endpoints:
 //   POST   /admin/modules/{moduleId}/reflection        → create reflection
-//   GET    /admin/modules/{moduleId}/reflection         → get reflection (+ response count)
+//   GET    /admin/modules/{moduleId}/reflection         → get reflections (array, + response count)
 //   PATCH  /admin/reflections/{reflectionId}             → update reflection
 //
-// In "add" mode the form now supports queuing up multiple reflections
-// (description + criteria pairs) via the "+ Add More Reflection" button,
-// which are each submitted with their own POST call on Submit. "edit" mode
-// is unchanged — it still edits the single existing reflection.
+// In "add" mode the form supports queuing up multiple reflections
+// (description + criteria pairs) via the "+ Add Reflection" button, each
+// submitted with its own POST call on Submit.
+//
+// In "edit" mode the form now loads and displays EVERY existing reflection
+// for the module (not just the most recent one), each pre-filled with its
+// own description/criteria and its own id. It also has a "+ Add Reflection"
+// button to queue up brand new reflections alongside the existing ones.
+// On submit: entries that already have an id are PATCH'd individually,
+// entries without an id (newly added here) are POST'd — all in one Save
+// action.
 
 type ReflectionMode = "add" | "edit";
-type ReflectionEntry = { description: string; criteria: string };
+type ReflectionEntry = { id?: number; description: string; criteria: string };
 
 const emptyReflectionEntry = (): ReflectionEntry => ({ description: "", criteria: "" });
 
@@ -1351,15 +1358,13 @@ function ModuleReflectionForm({
   onCancel: () => void;
 }) {
   const [entries, setEntries] = useState<ReflectionEntry[]>([emptyReflectionEntry()]);
-  // Needed for PATCH /admin/reflections/{reflectionId} in edit mode — comes
-  // back from GET /admin/modules/{moduleId}/reflection.
-  const [reflectionId, setReflectionId] = useState<number | null>(null);
   const [fetching, setFetching] = useState(mode === "edit");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [note, setNote] = useState("");
 
-  // Pre-fill for "edit" mode via GET /admin/modules/{moduleId}/reflection.
+  // Edit mode: load EVERY reflection for this module via
+  // GET /admin/modules/{moduleId}/reflection, each with its own id so we
+  // know whether to PATCH (existing) or POST (newly added here) on submit.
   useEffect(() => {
     if (mode !== "edit") return;
     let cancelled = false;
@@ -1371,29 +1376,18 @@ function ModuleReflectionForm({
           credentials: "include",
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.message || "Failed to load reflection");
+        if (!res.ok) throw new Error(data.message || "Failed to load reflections");
         if (cancelled) return;
-        // eslint-disable-next-line no-console
-        console.log("[reflection:edit] raw GET response:", data);
         const list = normalizeReflectionList(data);
         if (list.length === 0) {
-          setError("No existing reflection found to edit — use Add Reflection instead.");
+          setError("No existing reflections found to edit — use Add Reflection instead.");
         } else {
-          // The module can have more than one reflection (see "Add More
-          // Reflection"). This form edits a single reflection, so we edit
-          // the most recently created one and flag if there are others —
-          // use View Reflection to manage/delete the rest individually.
-          const [mostRecent, ...rest] = list;
-          setEntries([{ description: mostRecent.description, criteria: mostRecent.criteria }]);
-          setReflectionId(mostRecent.id);
-          if (rest.length > 0) {
-            setNote(
-              `This module has ${list.length} reflections. Editing the most recent one (#${mostRecent.id}). Use "View Reflection" to manage the others.`
-            );
-          }
+          setEntries(
+            list.map((r) => ({ id: r.id, description: r.description, criteria: r.criteria }))
+          );
         }
       } catch (err: any) {
-        if (!cancelled) setError(err.message || "Failed to load existing reflection");
+        if (!cancelled) setError(err.message || "Failed to load existing reflections");
       } finally {
         if (!cancelled) setFetching(false);
       }
@@ -1407,6 +1401,9 @@ function ModuleReflectionForm({
   const addEntry = () =>
     setEntries((es) => [...es, emptyReflectionEntry()]);
 
+  // Only ever removes UNSAVED entries (no id) — existing reflections are
+  // deleted from the View Reflection modal instead, to avoid duplicating
+  // that flow here.
   const removeEntry = (i: number) =>
     setEntries((es) => es.filter((_, idx) => idx !== i));
 
@@ -1421,16 +1418,21 @@ function ModuleReflectionForm({
     const token = localStorage.getItem("adminAccessToken");
     if (!token) { setError("Not authenticated"); return; }
 
-    if (mode === "edit" && !reflectionId) {
-      setError("Could not find an existing reflection to update");
-      return;
-    }
-
     setLoading(true);
     try {
-      if (mode === "add") {
-        // Submit each queued reflection with its own POST call.
-        for (const entry of entries) {
+      for (const entry of entries) {
+        if (entry.id) {
+          // Existing reflection → PATCH /admin/reflections/{reflectionId}
+          const res = await fetch(`${BASE}admin/reflections/${entry.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            credentials: "include",
+            body: JSON.stringify({ description: entry.description, criteria: entry.criteria }),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.message || "Failed to update reflection");
+        } else {
+          // New reflection → POST /admin/modules/{moduleId}/reflection
           const res = await fetch(`${BASE}admin/modules/${module.id}/reflection`, {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -1440,16 +1442,6 @@ function ModuleReflectionForm({
           const data = await res.json();
           if (!res.ok) throw new Error(data.message || "Failed to save reflection");
         }
-      } else {
-        const entry = entries[0];
-        const res = await fetch(`${BASE}admin/reflections/${reflectionId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          credentials: "include",
-          body: JSON.stringify({ description: entry.description, criteria: entry.criteria }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.message || "Failed to save reflection");
       }
       onDone();
     } catch (err: any) {
@@ -1462,24 +1454,24 @@ function ModuleReflectionForm({
   return (
     <div className="space-y-4">
       {fetching ? (
-        <p className="text-xs text-gray-400">Loading existing reflection…</p>
+        <p className="text-xs text-gray-400">Loading existing reflections…</p>
       ) : (
         <div className="space-y-5">
           {entries.map((entry, i) => (
-            <div key={i} className={entries.length > 1 ? "border border-gray-200 rounded-xl p-4 space-y-4 bg-gray-50/50" : "space-y-4"}>
-              {mode === "add" && entries.length > 1 && (
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                    Reflection {i + 1}
-                  </span>
+            <div key={entry.id ?? `new-${i}`} className="border border-gray-200 rounded-xl p-4 space-y-4 bg-gray-50/50">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  {entry.id ? `Reflection #${entry.id}` : "New Reflection"}
+                </span>
+                {!entry.id && (
                   <button
                     onClick={() => removeEntry(i)}
                     className="text-xs text-red-500 hover:text-red-700 font-medium"
                   >
                     Remove
                   </button>
-                </div>
-              )}
+                )}
+              </div>
               <Field label="Description" required>
                 <textarea
                   rows={4}
@@ -1501,22 +1493,15 @@ function ModuleReflectionForm({
             </div>
           ))}
 
-          {mode === "add" && (
-            <button
-              onClick={addEntry}
-              className="w-full py-2.5 border-2 border-dashed border-gray-200 rounded-xl text-xs font-medium text-gray-400 hover:border-[#004900]/40 hover:text-[#004900] transition-colors"
-            >
-              + Add More Reflection
-            </button>
-          )}
+          <button
+            onClick={addEntry}
+            className="w-full py-2.5 border-2 border-dashed border-gray-200 rounded-xl text-xs font-medium text-gray-400 hover:border-[#004900]/40 hover:text-[#004900] transition-colors"
+          >
+            + Add Reflection
+          </button>
         </div>
       )}
 
-      {note && (
-        <p className="text-xs text-blue-700 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
-          {note}
-        </p>
-      )}
       {error && <p className="text-xs text-red-600">{error}</p>}
       <div className="flex gap-3 pt-1">
         <button
@@ -1528,7 +1513,7 @@ function ModuleReflectionForm({
             ? "Saving…"
             : mode === "add"
             ? `Submit ${entries.length} Reflection${entries.length !== 1 ? "s" : ""}`
-            : "Save Changes"}
+            : "Save All Changes"}
         </button>
         <button
           onClick={onCancel}
@@ -1745,8 +1730,6 @@ function ViewModuleReflection({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed to load reflections");
-      // eslint-disable-next-line no-console
-      console.log("[reflection:view] raw GET response:", data);
       setReflections(normalizeReflectionList(data));
     } catch (err: any) {
       setError(err.message || "Failed to load reflections");
