@@ -670,7 +670,7 @@ export default function ModuleAssessments() {
   }
 
   // Sets a row's active status on the backend and mirrors it in local state.
-  // This is the shared mechanism behind Archive (-> false) and Restore (-> true).
+  // Used by Restore (-> true) via PUT.
   async function setRowActive(row: ModuleAssessmentRow, isActive: boolean) {
     try {
       const res = await fetch(`${API_BASE}admin/modules/${row.moduleId}/assessment`, {
@@ -689,9 +689,21 @@ export default function ModuleAssessments() {
     }
   }
 
+  // Archiving hits the DELETE /admin/modules/{moduleId}/assessment route
+  // directly (per the API docs, DELETE on this route archives the whole
+  // module assessment config) rather than PUT { isActive: false }.
   async function handleArchive(row: ModuleAssessmentRow) {
     if (!confirm(`Move assessment "${row.title}" for ${row.moduleName} to the archive?`)) return;
-    await setRowActive(row, false);
+    try {
+      const res = await fetch(`${API_BASE}admin/modules/${row.moduleId}/assessment`, {
+        method: "DELETE",
+        headers: authHeaders(false),
+      });
+      if (!res.ok) throw new Error("Failed to move assessment to archive");
+      setRows((prev) => prev.map((r) => (r.id === row.id ? { ...r, isActive: false } : r)));
+    } catch (e: any) {
+      alert(e.message || "Something went wrong");
+    }
   }
 
   async function handleRestore(row: ModuleAssessmentRow) {
@@ -752,6 +764,8 @@ export default function ModuleAssessments() {
     setItems((prev) => [...prev, emptyItem()]);
   }
 
+  // Deleting an individual question always uses the assessment-items route,
+  // never the parent assessment archive routes above.
   async function removeItem(index: number) {
     const item = items[index];
     if (item.id) {

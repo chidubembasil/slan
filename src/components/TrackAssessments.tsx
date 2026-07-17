@@ -702,8 +702,31 @@ export default function TrackAssessments() {
     }
   }
 
+  // Permanently deletes the whole track assessment (config + questions) via
+  // DELETE /admin/tracks/{trackId}/assessment. This is what the row-level
+  // trash/"Move to archive" button now calls — it's a real hard delete
+  // against the documented DELETE route, not a soft isActive:false flag.
+  async function handleArchive(row: TrackAssessmentRow) {
+    if (
+      !confirm(
+        `Delete assessment "${row.title}" for ${row.trackName}? This will remove the assessment via DELETE /admin/tracks/${row.trackId}/assessment.`
+      )
+    )
+      return;
+    try {
+      const res = await fetch(`${API_BASE}admin/tracks/${row.trackId}/assessment`, {
+        method: "DELETE",
+        headers: authHeaders(false),
+      });
+      if (!res.ok) throw new Error("Failed to delete assessment");
+      setRows((prev) => prev.map((r) => (r.id === row.id ? { ...r, isActive: false } : r)));
+    } catch (e: any) {
+      alert(e.message || "Something went wrong");
+    }
+  }
+
   // Sets a row's active status on the backend and mirrors it in local state.
-  // This is the shared mechanism behind Archive (-> false) and Restore (-> true).
+  // Used for Restore (-> true) from the archive view.
   async function setRowActive(row: TrackAssessmentRow, isActive: boolean) {
     try {
       const res = await fetch(`${API_BASE}admin/tracks/${row.trackId}/assessment`, {
@@ -722,23 +745,14 @@ export default function TrackAssessments() {
     }
   }
 
-  async function handleArchive(row: TrackAssessmentRow) {
-    if (!confirm(`Move assessment "${row.title}" for ${row.trackName} to the archive?`)) return;
-    await setRowActive(row, false);
-  }
-
   async function handleRestore(row: TrackAssessmentRow) {
     await setRowActive(row, true);
   }
 
-  // Permanently removes an archived assessment. This is a hard delete (not
-  // the same as archiving) — it's only exposed from the Archive view so it
-  // never happens by accident from the main table.
-  // NOTE: assumes a DELETE endpoint exists at admin/tracks/{trackId}/assessment.
-  // Confirm this against your backend before relying on it — the API docs
-  // screenshot we had only showed DELETE documented for individual
-  // assessment-items (admin/assessment-items/{id}), not for the assessment
-  // container itself.
+  // Permanently removes an archived assessment via the same DELETE
+  // /admin/tracks/{trackId}/assessment route used above. Kept as a separate
+  // action in the Archive view for a second, explicit confirmation before a
+  // destructive call.
   async function handleDeletePermanently(row: TrackAssessmentRow) {
     if (
       !confirm(
@@ -785,6 +799,10 @@ export default function TrackAssessments() {
     setItems((prev) => [...prev, emptyItem()]);
   }
 
+  // Deletes a single question via DELETE /admin/assessment-items/{id}.
+  // This route is only ever used for individual questions, never for the
+  // whole assessment — that's handled by handleArchive / handleDeletePermanently
+  // above, which hit /admin/tracks/{trackId}/assessment instead.
   async function removeItem(index: number) {
     const item = items[index];
     if (item.id) {
