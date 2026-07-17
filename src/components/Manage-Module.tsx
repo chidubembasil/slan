@@ -1762,7 +1762,7 @@ function ViewModuleReflection({
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h2 className="text-sm font-semibold text-gray-700">
           Reflections for "{module.title}"
-          <span className="text-gray-400 font-normal ml-1">(Module #{module.id})</span>
+          {/* <span className="text-gray-400 font-normal ml-1">(Module #{module.id})</span> */}
         </h2>
         <span className="text-xs text-gray-400">
           {reflections.length} reflection{reflections.length !== 1 ? "s" : ""}
