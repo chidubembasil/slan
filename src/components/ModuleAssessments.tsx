@@ -15,11 +15,17 @@ const API_BASE = import.meta.env.VITE_BASE_URL;
 
 type QuestionType = "single" | "multiple" | "upload";
 
+interface Track {
+  id: number;
+  name: string;
+}
+
 interface ModuleAssessmentRow {
   id: number;
   title: string;
   moduleId: number;
   moduleName: string;
+  trackId: number | null;
   trackName: string;
   questionType: QuestionType; // used to decide which editor UI to show
   displayLabel: string; // used to render the actual badge in the table
@@ -272,6 +278,12 @@ export default function ModuleAssessments() {
   const [query, setQuery] = useState("");
   const [archiveOpen, setArchiveOpen] = useState(false);
 
+  // All tracks, used to populate the track filter select. Selecting a
+  // track filters the (active) table down to modules under that track;
+  // "All tracks" (empty string) shows everything, same as before.
+  const [tracks, setTracks] = useState<Track[]>([]);
+  const [selectedTrackId, setSelectedTrackId] = useState<string>("");
+
   const [editingRow, setEditingRow] = useState<ModuleAssessmentRow | null>(null);
   const [editForm, setEditForm] = useState({
     title: "",
@@ -317,6 +329,14 @@ export default function ModuleAssessments() {
       const tracksData = await tracksRes.json();
       const trackList = Array.isArray(tracksData) ? tracksData : tracksData.data || [];
 
+      // Keep a simple id/name list around for the filter select.
+      setTracks(
+        trackList.map((t: any) => ({
+          id: t.id,
+          name: t.title || t.name || `Track #${t.id}`,
+        }))
+      );
+
       const moduleListsNested = await Promise.all(
         trackList.map(async (track: any) => {
           try {
@@ -328,8 +348,9 @@ export default function ModuleAssessments() {
             const mods = Array.isArray(data) ? data : data.data || [];
             const trackName = track.title || track.name || `Track #${track.id}`;
             // Tag each module with the track it came from so the row (and
-            // the archive table) can show which track it belongs to.
-            return mods.map((m: any) => ({ ...m, __trackName: trackName }));
+            // the archive table) can show which track it belongs to, and
+            // so the filter select can match on trackId.
+            return mods.map((m: any) => ({ ...m, __trackName: trackName, __trackId: track.id }));
           } catch {
             return [];
           }
@@ -373,6 +394,7 @@ export default function ModuleAssessments() {
               title: assessment.title || "Untitled Assessment",
               moduleId: mod.id,
               moduleName: mod.title || mod.name || `Module #${mod.id}`,
+              trackId: mod.__trackId ?? null,
               trackName: mod.__trackName || "—",
               questionType,
               displayLabel: getDisplayLabel(itemsForRow),
@@ -402,16 +424,20 @@ export default function ModuleAssessments() {
 
   const filteredRows = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return activeRows;
-    return activeRows.filter(
-      (r) =>
+    return activeRows.filter((r) => {
+      const matchesTrack =
+        !selectedTrackId || String(r.trackId ?? "") === selectedTrackId;
+      if (!matchesTrack) return false;
+      if (!q) return true;
+      return (
         r.title.toLowerCase().includes(q) ||
         r.moduleName.toLowerCase().includes(q) ||
         r.trackName.toLowerCase().includes(q) ||
         r.displayLabel.toLowerCase().includes(q) ||
         String(r.id).includes(q)
-    );
-  }, [activeRows, query]);
+      );
+    });
+  }, [activeRows, query, selectedTrackId]);
 
   async function openEdit(row: ModuleAssessmentRow) {
     setEditingRow(row);
@@ -757,6 +783,19 @@ export default function ModuleAssessments() {
             className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#004900]/30 focus:border-[#004900]"
           />
         </div>
+        <select
+          value={selectedTrackId}
+          onChange={(e) => setSelectedTrackId(e.target.value)}
+          className="px-3 py-2 text-sm border border-gray-200 rounded-lg text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#004900]/30 focus:border-[#004900]"
+          title="Filter by track"
+        >
+          <option value="">All Tracks</option>
+          {tracks.map((t) => (
+            <option key={t.id} value={String(t.id)}>
+              {t.name}
+            </option>
+          ))}
+        </select>
         <button
           onClick={() => setArchiveOpen(true)}
           className="inline-flex items-center gap-2 px-3 py-2 text-sm border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50"

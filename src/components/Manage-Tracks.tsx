@@ -712,10 +712,13 @@ function QuestionEditor({
 
 // ── Add Assessment Form (Track) ───────────────────────────────────────────────
 // Track assessments only support the "multiple questions" flow — no single
-// question and no CSV upload — and always submit via
-// POST /admin/assessment-items/bulk.
+// question — and Step 2 offers two ways to submit questions:
+//   • MCQ  → build questions in the UI, submits via POST /admin/assessment-items/bulk
+//   • CSV  → upload a .csv/.xlsx file directly, submits via
+//            POST /admin/assessment-items/bulk-upload (multipart/form-data)
 
 type AssessmentStep = 1 | 2;
+type QuestionInputMode = "mcq" | "csv";
 
 function AddAssessmentForm({
   track,
@@ -742,10 +745,19 @@ function AddAssessmentForm({
   const [configErrors, setConfigErrors] = useState<Record<string, string>>({});
   const [assessmentId, setAssessmentId] = useState<number | null>(null);
 
-  // Step 2 — questions
+  // Step 2 — question input mode toggle
+  const [inputMode, setInputMode] = useState<QuestionInputMode>("mcq");
+
+  // Step 2a — MCQ (manual) questions
   const [questions, setQuestions] = useState<SingleQuestion[]>([emptyQuestion(0)]);
   const [qLoading, setQLoading] = useState(false);
   const [qError, setQError] = useState("");
+
+  // Step 2b — CSV/Excel bulk upload
+  const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [csvLoading, setCsvLoading] = useState(false);
+  const [csvError, setCsvError] = useState("");
+  const csvInputRef = useRef<HTMLInputElement>(null);
 
   const setC = (k: keyof typeof config, v: any) =>
     setConfig(f => ({ ...f, [k]: v }));
@@ -790,7 +802,7 @@ function AddAssessmentForm({
     }
   };
 
-  // ── Step 2: submit questions — POST /admin/assessment-items/bulk ────────────
+  // ── Step 2a: submit MCQ questions — POST /admin/assessment-items/bulk ───────
   const handleSubmitQuestions = async () => {
     setQError("");
     const token = localStorage.getItem("adminAccessToken");
@@ -829,6 +841,51 @@ function AddAssessmentForm({
       setQError(err.message);
     } finally {
       setQLoading(false);
+    }
+  };
+
+  // ── Step 2b: submit CSV/Excel file — POST /admin/assessment-items/bulk-upload ──
+  // Required columns: question_text, question_type, correct_answer
+  // Optional columns: option_a, option_b, option_c, option_d, explanation
+  // question_type: multiple_choice | true_false
+  // correct_answer (multiple_choice): 1-based option number (1 = option_a, 2 = option_b, ...)
+  // correct_answer (true_false): True/False (or legacy 1=True/0/2=False)
+  // parentId and parentType are sent as form fields alongside the file.
+  const handleCsvFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCsvError("");
+    setCsvFile(file);
+  };
+
+  const handleCsvSubmit = async () => {
+    setCsvError("");
+    if (!csvFile) { setCsvError("Please select a CSV or Excel file"); return; }
+    const token = localStorage.getItem("adminAccessToken");
+    if (!token) { setCsvError("Not authenticated"); return; }
+    if (!assessmentId) { setCsvError("Missing assessment id — go back and try again"); return; }
+
+    setCsvLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", csvFile);
+      formData.append("parentId", String(assessmentId));
+      formData.append("parentType", "track_assessment");
+
+      const res = await fetch(`${BASE}admin/assessment-items/bulk-upload`, {
+        method: "POST",
+        // No Content-Type header — the browser sets the multipart boundary.
+        headers: { Authorization: `Bearer ${token}` },
+        credentials: "include",
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || data.error || "CSV upload failed");
+      onDone();
+    } catch (err: any) {
+      setCsvError(err.message);
+    } finally {
+      setCsvLoading(false);
     }
   };
 
@@ -963,63 +1020,169 @@ function AddAssessmentForm({
         </div>
       )}
 
-      {/* ── STEP 2: Questions (multiple only) ── */}
+      {/* ── STEP 2: Questions (MCQ builder or CSV upload) ── */}
       {step === 2 && (
         <div className="space-y-5">
-          <div className="flex items-center gap-2 px-3.5 py-2.5 bg-[#004900]/5 border border-[#004900]/20 rounded-lg">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#004900" strokeWidth="2">
-              <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
-              <rect x="9" y="3" width="6" height="4" rx="1" />
-            </svg>
-            <p className="text-xs text-[#004900] font-medium">
-              Track assessments are always submitted as a batch of multiple-choice questions.
-            </p>
+
+          {/* Input mode toggle */}
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1.5">Add questions via</label>
+            <div className="flex gap-0 border border-gray-200 rounded-xl overflow-hidden w-full sm:w-72">
+              <button
+                onClick={() => setInputMode("mcq")}
+                className={`flex-1 py-2 text-xs font-semibold transition-colors ${
+                  inputMode === "mcq"
+                    ? "bg-[#004900] text-white"
+                    : "bg-white text-gray-500 hover:bg-gray-50"
+                }`}
+              >
+                MCQ Builder
+              </button>
+              <button
+                onClick={() => setInputMode("csv")}
+                className={`flex-1 py-2 text-xs font-semibold transition-colors ${
+                  inputMode === "csv"
+                    ? "bg-[#004900] text-white"
+                    : "bg-white text-gray-500 hover:bg-gray-50"
+                }`}
+              >
+                CSV / Excel Upload
+              </button>
+            </div>
           </div>
 
-          <div className="space-y-4">
-            {questions.map((q, i) => (
-              <QuestionEditor
-                key={i}
-                q={q}
-                index={i}
-                onChange={updated => updateQuestion(i, updated)}
-                onRemove={() => removeQuestion(i)}
-                showRemove={questions.length > 1}
-              />
-            ))}
-            <button
-              onClick={addQuestion}
-              className="w-full py-2.5 border-2 border-dashed border-gray-200 rounded-xl text-xs font-medium text-gray-400 hover:border-[#004900]/40 hover:text-[#004900] transition-colors"
-            >
-              + Add Another Question
-            </button>
-          </div>
+          {/* ── MCQ builder ── */}
+          {inputMode === "mcq" && (
+            <div className="space-y-5">
+              <div className="flex items-center gap-2 px-3.5 py-2.5 bg-[#004900]/5 border border-[#004900]/20 rounded-lg">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#004900" strokeWidth="2">
+                  <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
+                  <rect x="9" y="3" width="6" height="4" rx="1" />
+                </svg>
+                <p className="text-xs text-[#004900] font-medium">
+                  Build questions here — submitted as a batch of multiple-choice questions.
+                </p>
+              </div>
 
-          {qError && <p className="text-xs text-red-600">{qError}</p>}
+              <div className="space-y-4">
+                {questions.map((q, i) => (
+                  <QuestionEditor
+                    key={i}
+                    q={q}
+                    index={i}
+                    onChange={updated => updateQuestion(i, updated)}
+                    onRemove={() => removeQuestion(i)}
+                    showRemove={questions.length > 1}
+                  />
+                ))}
+                <button
+                  onClick={addQuestion}
+                  className="w-full py-2.5 border-2 border-dashed border-gray-200 rounded-xl text-xs font-medium text-gray-400 hover:border-[#004900]/40 hover:text-[#004900] transition-colors"
+                >
+                  + Add Another Question
+                </button>
+              </div>
 
-          <div className="flex gap-3 pt-2">
-            <button
-              onClick={handleSubmitQuestions}
-              disabled={qLoading}
-              className="bg-[#004900] text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-[#003700] disabled:opacity-60"
-            >
-              {qLoading
-                ? "Submitting…"
-                : `Save ${questions.length} Question${questions.length !== 1 ? "s" : ""}`}
-            </button>
-            <button
-              onClick={() => setStep(1)}
-              className="px-5 py-2.5 rounded-lg text-sm border border-gray-300 text-gray-600 hover:bg-gray-50"
-            >
-              ← Back
-            </button>
-            <button
-              onClick={onCancel}
-              className="px-5 py-2.5 rounded-lg text-sm border border-gray-300 text-gray-600 hover:bg-gray-50"
-            >
-              Cancel
-            </button>
-          </div>
+              {qError && <p className="text-xs text-red-600">{qError}</p>}
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={handleSubmitQuestions}
+                  disabled={qLoading}
+                  className="bg-[#004900] text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-[#003700] disabled:opacity-60"
+                >
+                  {qLoading
+                    ? "Submitting…"
+                    : `Save ${questions.length} Question${questions.length !== 1 ? "s" : ""}`}
+                </button>
+                <button
+                  onClick={() => setStep(1)}
+                  className="px-5 py-2.5 rounded-lg text-sm border border-gray-300 text-gray-600 hover:bg-gray-50"
+                >
+                  ← Back
+                </button>
+                <button
+                  onClick={onCancel}
+                  className="px-5 py-2.5 rounded-lg text-sm border border-gray-300 text-gray-600 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── CSV / Excel upload ── */}
+          {inputMode === "csv" && (
+            <div className="space-y-5">
+              <div className="px-3.5 py-3 bg-purple-50 border border-purple-200 rounded-lg space-y-1.5">
+                <p className="text-xs text-purple-800 font-medium">
+                  Upload a .csv or .xlsx file. Each row is one question. Max 5MB.
+                </p>
+                <p className="text-xs text-purple-700">
+                  <span className="font-semibold">Required columns:</span> question_text, question_type, correct_answer
+                </p>
+                <p className="text-xs text-purple-700">
+                  <span className="font-semibold">Optional columns:</span> option_a, option_b, option_c, option_d, explanation
+                </p>
+                <p className="text-xs text-purple-700">
+                  <span className="font-semibold">question_type:</span> multiple_choice or true_false
+                </p>
+                <p className="text-xs text-purple-700">
+                  <span className="font-semibold">correct_answer:</span> for multiple_choice, a 1-based option number (1 = option_a, 2 = option_b, …). For true_false, True/False.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                  File <span className="text-red-500">*</span>
+                </label>
+                <div className="flex items-center gap-4">
+                  <button
+                    onClick={() => csvInputRef.current?.click()}
+                    disabled={csvLoading}
+                    className="px-4 py-2 rounded-lg text-xs font-medium border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-60"
+                  >
+                    {csvFile ? "Change File" : "Choose File"}
+                  </button>
+                  <input
+                    ref={csvInputRef}
+                    type="file"
+                    accept=".csv,.xlsx,.xls"
+                    className="hidden"
+                    onChange={handleCsvFileSelect}
+                    title="csv-file-input"
+                  />
+                  {csvFile && (
+                    <span className="text-xs text-gray-600 truncate max-w-xs">{csvFile.name}</span>
+                  )}
+                </div>
+              </div>
+
+              {csvError && <p className="text-xs text-red-600">{csvError}</p>}
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={handleCsvSubmit}
+                  disabled={csvLoading || !csvFile}
+                  className="bg-[#004900] text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-[#003700] disabled:opacity-60"
+                >
+                  {csvLoading ? "Uploading…" : "Upload & Save Questions"}
+                </button>
+                <button
+                  onClick={() => setStep(1)}
+                  className="px-5 py-2.5 rounded-lg text-sm border border-gray-300 text-gray-600 hover:bg-gray-50"
+                >
+                  ← Back
+                </button>
+                <button
+                  onClick={onCancel}
+                  className="px-5 py-2.5 rounded-lg text-sm border border-gray-300 text-gray-600 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

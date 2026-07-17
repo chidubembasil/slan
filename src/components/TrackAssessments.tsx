@@ -9,6 +9,7 @@ import {
   Trash,
   Archive,
   RotateCcw,
+  BookOpen,
 } from "lucide-react";
 
 const API_BASE = import.meta.env.VITE_BASE_URL;
@@ -38,6 +39,23 @@ interface AssessmentItem {
   explanation?: string;
   orderIndex?: number;
   points: number;
+}
+
+// Minimal shape for the course dropdown — courses may come back from the
+// API with either `title` or `name`, so both are supported when rendering.
+interface Course {
+  id: number;
+  title?: string;
+  name?: string;
+}
+
+// Minimal shape for a course's modules, rendered in the list below the
+// course select. Supports either `title` or `name` for the module label.
+interface CourseModule {
+  id: number;
+  title?: string;
+  name?: string;
+  description?: string;
 }
 
 const PARENT_TYPE = "track_assessment";
@@ -274,6 +292,15 @@ export default function TrackAssessments() {
   const [query, setQuery] = useState("");
   const [archiveOpen, setArchiveOpen] = useState(false);
 
+  // Course -> Modules filter section shown above the main table.
+  // Selecting a course fetches and lists its modules below the select.
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [coursesLoading, setCoursesLoading] = useState(false);
+  const [selectedCourseId, setSelectedCourseId] = useState<string>("");
+  const [courseModules, setCourseModules] = useState<CourseModule[]>([]);
+  const [modulesLoading, setModulesLoading] = useState(false);
+  const [modulesError, setModulesError] = useState<string | null>(null);
+
   const [editingRow, setEditingRow] = useState<TrackAssessmentRow | null>(null);
   const [editForm, setEditForm] = useState({
     title: "",
@@ -374,8 +401,55 @@ export default function TrackAssessments() {
     }
   }
 
+  // Fetches the list of courses for the filter dropdown. Mirrors the same
+  // "handle either a bare array or a { data: [...] } envelope" pattern used
+  // for tracks above.
+  async function fetchCourses() {
+    setCoursesLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}admin/courses`, {
+        headers: authHeaders(false),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      const list = Array.isArray(data) ? data : data.data || [];
+      setCourses(list);
+    } catch {
+      // leave courses empty; the select will just show the placeholder
+    } finally {
+      setCoursesLoading(false);
+    }
+  }
+
+  // Fetches modules for the selected course and renders them in the list
+  // below the select. Clearing the select (choosing the placeholder)
+  // clears the module list without hitting the API.
+  async function handleCourseSelect(courseId: string) {
+    setSelectedCourseId(courseId);
+    setCourseModules([]);
+    setModulesError(null);
+
+    if (!courseId) return;
+
+    setModulesLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}admin/courses/${courseId}/modules`, {
+        headers: authHeaders(false),
+      });
+      if (!res.ok) throw new Error("Failed to load modules for this course");
+      const data = await res.json();
+      const list = Array.isArray(data) ? data : data.data || [];
+      setCourseModules(list);
+    } catch (e: any) {
+      setModulesError(e.message || "Failed to load modules for this course");
+    } finally {
+      setModulesLoading(false);
+    }
+  }
+
   useEffect(() => {
     fetchTrackAssessments();
+    fetchCourses();
   }, []);
 
   const activeRows = useMemo(() => rows.filter((r) => r.isActive), [rows]);
@@ -731,6 +805,61 @@ export default function TrackAssessments() {
 
   return (
     <div>
+      {/* Course -> Modules filter. Picking a course fetches and lists its
+          modules below the select; this is purely a browsing aid and does
+          not filter the assessments table below. */}
+      <div className="mb-5 bg-white border border-gray-200 rounded-xl p-4">
+        <label className="text-xs font-medium text-gray-600 mb-1.5 flex items-center gap-1.5">
+          <BookOpen className="w-3.5 h-3.5" />
+          Browse by Course
+        </label>
+        <select
+          value={selectedCourseId}
+          onChange={(e) => handleCourseSelect(e.target.value)}
+          className="w-full max-w-sm px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/30 focus:border-[#004900]"
+          title="select course"
+          disabled={coursesLoading}
+        >
+          <option value="">
+            {coursesLoading ? "Loading courses..." : "Select a course..."}
+          </option>
+          {courses.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.title || c.name || `Course #${c.id}`}
+            </option>
+          ))}
+        </select>
+
+        {selectedCourseId && (
+          <div className="mt-3">
+            {modulesLoading && (
+              <p className="text-sm text-gray-400 py-2">Loading modules...</p>
+            )}
+            {!modulesLoading && modulesError && (
+              <p className="text-sm text-red-500 py-2">{modulesError}</p>
+            )}
+            {!modulesLoading && !modulesError && courseModules.length === 0 && (
+              <p className="text-sm text-gray-400 py-2">No modules found for this course.</p>
+            )}
+            {!modulesLoading && !modulesError && courseModules.length > 0 && (
+              <ul className="space-y-1.5">
+                {courseModules.map((m) => (
+                  <li
+                    key={m.id}
+                    className="px-3 py-2 bg-gray-50 border border-gray-100 rounded-lg text-sm text-gray-700"
+                  >
+                    {m.title || m.name || `Module #${m.id}`}
+                    {m.description && (
+                      <p className="text-xs text-gray-400 mt-0.5">{m.description}</p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </div>
+
       <div className="flex items-center gap-3 mb-4">
         <div className="relative max-w-sm flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
