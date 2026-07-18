@@ -58,6 +58,22 @@ interface CourseModule {
   description?: string;
 }
 
+// A single archived question, surfaced in the Archive modal. Sourced from
+// GET /admin/assessments (which returns every track assessment together
+// with its items, including archived ones) by keeping only items where
+// isArchived === true. trackName is looked up from the already-loaded
+// `rows` state (matched by assessment id) since the /admin/assessments
+// payload only carries trackId, not the track's display name.
+interface ArchivedQuestionRow {
+  id: number;
+  questionText: string;
+  questionType: string;
+  assessmentId: number;
+  assessmentTitle: string;
+  trackName: string;
+  archivedAt?: string | null;
+}
+
 const PARENT_TYPE = "track_assessment";
 
 function emptyItem(): AssessmentItem {
@@ -327,6 +343,14 @@ export default function TrackAssessments() {
   const [loadingItems, setLoadingItems] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  // Archived QUESTIONS (individual items with isArchived === true), pulled
+  // from GET /admin/assessments — separate from archived ASSESSMENT
+  // CONFIGS (the `!isActive` rows below). Loaded when the Archive modal is
+  // opened.
+  const [archivedQuestions, setArchivedQuestions] = useState<ArchivedQuestionRow[]>([]);
+  const [archivedQuestionsLoading, setArchivedQuestionsLoading] = useState(false);
+  const [archivedQuestionsError, setArchivedQuestionsError] = useState<string | null>(null);
+
   const token = localStorage.getItem("adminAccessToken") || "";
 
   function authHeaders(json = true) {
@@ -466,6 +490,58 @@ export default function TrackAssessments() {
         String(r.id).includes(q)
     );
   }, [activeRows, query]);
+
+  // Loads every archived QUESTION across every track assessment via
+  // GET /admin/assessments (docs: "List all assessments and assessment
+  // items (including archived)"). The endpoint returns each track
+  // assessment together with its `items`; we flatten those and keep only
+  // items where isArchived === true. trackName isn't part of that payload
+  // (only trackId is), so it's looked up from `rows` (matched by
+  // assessment id) which already has that info from fetchTrackAssessments().
+  async function fetchArchivedQuestions() {
+    setArchivedQuestionsLoading(true);
+    setArchivedQuestionsError(null);
+    try {
+      const res = await fetch(`${API_BASE}admin/assessments`, {
+        headers: authHeaders(false),
+      });
+      if (!res.ok) throw new Error("Failed to load archived questions");
+      const data = await res.json();
+      const trackAssessments = data?.data?.tracks || data?.tracks || [];
+
+      const result: ArchivedQuestionRow[] = [];
+      trackAssessments.forEach((assessment: any) => {
+        const assessmentItems = Array.isArray(assessment.items) ? assessment.items : [];
+        const matchingRow = rows.find((r) => r.id === assessment.id);
+        assessmentItems.forEach((it: any) => {
+          if (!it?.isArchived) return;
+          result.push({
+            id: it.id,
+            questionText: it.questionText || "",
+            questionType: it.questionType || "",
+            assessmentId: assessment.id,
+            assessmentTitle: matchingRow?.title || assessment.title || "Untitled Assessment",
+            trackName: matchingRow?.trackName || `Track #${assessment.trackId}`,
+            archivedAt: it.archivedAt ?? null,
+          });
+        });
+      });
+
+      setArchivedQuestions(result);
+    } catch (e: any) {
+      setArchivedQuestionsError(e.message || "Failed to load archived questions");
+    } finally {
+      setArchivedQuestionsLoading(false);
+    }
+  }
+
+  // Opens the Archive modal and loads both archived assessment configs
+  // (already in `rows`, via archivedRows above) and archived questions
+  // (fetched fresh from /admin/assessments so the list is always current).
+  function openArchive() {
+    setArchiveOpen(true);
+    fetchArchivedQuestions();
+  }
 
   async function openEdit(row: TrackAssessmentRow) {
     setEditingRow(row);
@@ -725,28 +801,20 @@ export default function TrackAssessments() {
     }
   }
 
-  // Sets a row's active status on the backend and mirrors it in local state.
-  // Used for Restore (-> true) from the archive view.
-  async function setRowActive(row: TrackAssessmentRow, isActive: boolean) {
+  // Restoring an archived track assessment config uses the dedicated
+  // POST /admin/tracks/{trackId}/assessment/restore route (per the API
+  // docs) rather than PUT { isActive: true }.
+  async function handleRestore(row: TrackAssessmentRow) {
     try {
-      const res = await fetch(`${API_BASE}admin/tracks/${row.trackId}/assessment`, {
-        method: "PUT",
-        headers: authHeaders(),
-        body: JSON.stringify({ isActive }),
+      const res = await fetch(`${API_BASE}admin/tracks/${row.trackId}/assessment/restore`, {
+        method: "POST",
+        headers: authHeaders(false),
       });
-      if (!res.ok) {
-        throw new Error(
-          isActive ? "Failed to restore assessment" : "Failed to move assessment to archive"
-        );
-      }
-      setRows((prev) => prev.map((r) => (r.id === row.id ? { ...r, isActive } : r)));
+      if (!res.ok) throw new Error("Failed to restore assessment");
+      setRows((prev) => prev.map((r) => (r.id === row.id ? { ...r, isActive: true } : r)));
     } catch (e: any) {
       alert(e.message || "Something went wrong");
     }
-  }
-
-  async function handleRestore(row: TrackAssessmentRow) {
-    await setRowActive(row, true);
   }
 
   // Permanently removes an archived assessment via the same DELETE
@@ -767,6 +835,24 @@ export default function TrackAssessments() {
       });
       if (!res.ok) throw new Error("Failed to delete assessment");
       setRows((prev) => prev.filter((r) => r.id !== row.id));
+    } catch (e: any) {
+      alert(e.message || "Something went wrong");
+    }
+  }
+
+  // Restores a single archived QUESTION via POST
+  // /admin/assessment-items/{id}/restore (distinct from restoring a whole
+  // assessment config above). Removes it from the archived-questions list
+  // and refreshes the main table so its question count/badge stay in sync.
+  async function handleRestoreQuestion(item: ArchivedQuestionRow) {
+    try {
+      const res = await fetch(`${API_BASE}admin/assessment-items/${item.id}/restore`, {
+        method: "POST",
+        headers: authHeaders(false),
+      });
+      if (!res.ok) throw new Error("Failed to restore question");
+      setArchivedQuestions((prev) => prev.filter((q) => q.id !== item.id));
+      fetchTrackAssessments();
     } catch (e: any) {
       alert(e.message || "Something went wrong");
     }
@@ -800,7 +886,8 @@ export default function TrackAssessments() {
   }
 
   // Deletes a single question via DELETE /admin/assessment-items/{id}.
-  // This route is only ever used for individual questions, never for the
+  // This route archives the question (see "Archive a question" in the API
+  // docs) and is only ever used for individual questions, never for the
   // whole assessment — that's handled by handleArchive / handleDeletePermanently
   // above, which hit /admin/tracks/{trackId}/assessment instead.
   async function removeItem(index: number) {
@@ -890,15 +977,15 @@ export default function TrackAssessments() {
           />
         </div>
         <button
-          onClick={() => setArchiveOpen(true)}
+          onClick={openArchive}
           className="inline-flex items-center gap-2 px-3 py-2 text-sm border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50"
           title="View archive"
         >
           <Archive className="w-4 h-4" />
           Archive
-          {archivedRows.length > 0 && (
+          {(archivedRows.length > 0 || archivedQuestions.length > 0) && (
             <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[11px] rounded-full bg-gray-200 text-gray-700">
-              {archivedRows.length}
+              {archivedRows.length + archivedQuestions.length}
             </span>
           )}
         </button>
@@ -1173,7 +1260,7 @@ export default function TrackAssessments() {
 
       {archiveOpen && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl w-full max-w-3xl p-6 relative max-h-[85vh] overflow-y-auto">
+          <div className="bg-white rounded-xl w-full max-w-4xl p-6 relative max-h-[85vh] overflow-y-auto">
             <button
               onClick={() => setArchiveOpen(false)}
               className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
@@ -1183,10 +1270,80 @@ export default function TrackAssessments() {
             </button>
             <h3 className="text-lg font-semibold mb-1">Assessment Archive</h3>
             <p className="text-sm text-gray-500 mb-4">
-              Archived track assessments. Restore one to make it active again, or delete it
-              permanently.
+              Archived track assessments and archived individual questions. Restore either to
+              make it active again.
             </p>
 
+            {/* Archived QUESTIONS — sourced from GET /admin/assessments,
+                filtered to items with isArchived === true. Restored via
+                POST /admin/assessment-items/{id}/restore. */}
+            <div className="mb-6">
+              <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">
+                Archived Questions
+              </p>
+              {archivedQuestionsLoading && (
+                <p className="text-sm text-gray-400 text-center py-6">
+                  Loading archived questions...
+                </p>
+              )}
+              {!archivedQuestionsLoading && archivedQuestionsError && (
+                <p className="text-sm text-red-500 text-center py-6">{archivedQuestionsError}</p>
+              )}
+              {!archivedQuestionsLoading &&
+                !archivedQuestionsError &&
+                archivedQuestions.length === 0 && (
+                  <p className="text-sm text-gray-400 text-center py-6">
+                    No archived questions.
+                  </p>
+                )}
+              {!archivedQuestionsLoading &&
+                !archivedQuestionsError &&
+                archivedQuestions.length > 0 && (
+                  <div className="border border-gray-200 rounded-xl overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-gray-50 border-b border-gray-200 text-left text-gray-500">
+                          <th className="px-4 py-3 font-medium">Question</th>
+                          <th className="px-4 py-3 font-medium">Assessment</th>
+                          <th className="px-4 py-3 font-medium">Track</th>
+                          <th className="px-4 py-3 font-medium text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {archivedQuestions.map((q) => (
+                          <tr key={q.id} className="border-b border-gray-100 hover:bg-gray-50">
+                            <td
+                              className="px-4 py-3 text-gray-700 max-w-xs truncate"
+                              title={q.questionText}
+                            >
+                              {q.questionText || `Question #${q.id}`}
+                            </td>
+                            <td className="px-4 py-3 text-gray-700">{q.assessmentTitle}</td>
+                            <td className="px-4 py-3 text-gray-700">{q.trackName}</td>
+                            <td className="px-4 py-3 text-right">
+                              <button
+                                onClick={() => handleRestoreQuestion(q)}
+                                className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-[#004900] hover:bg-green-50"
+                                title="Restore question"
+                              >
+                                <RotateCcw className="w-4 h-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+            </div>
+
+            <hr className="my-5 border-gray-100" />
+
+            {/* Archived ASSESSMENT CONFIGS — restored via
+                POST /admin/tracks/{trackId}/assessment/restore. */}
+            <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">
+              Archived Assessments
+            </p>
             {archivedRows.length === 0 ? (
               <p className="text-sm text-gray-400 text-center py-10">Archive is empty.</p>
             ) : (
