@@ -1,6 +1,17 @@
 // Dashboard.tsx
 import { useEffect, useState } from "react";
-import { Users, BookOpen, GitBranch, Layers, Boxes } from "lucide-react";
+import {
+  Users,
+  BookOpen,
+  GitBranch,
+  Layers,
+  Boxes,
+  LayoutGrid,
+  CheckSquare,
+  CreditCard,
+  Flag,
+  Award,
+} from "lucide-react";
 import { useAuthGuard } from "../hooks/useAuthGuard"
 
 const BASE = import.meta.env.VITE_BASE_URL ?? "";
@@ -30,30 +41,45 @@ interface Alert {
 const token = () => localStorage.getItem("adminAccessToken") || "";
 const authHeaders = () => ({ Authorization: `Bearer ${token()}` });
 
-// Normalizes either { success, data: [...] } or a raw array response
+// Normalizes several possible response shapes into a plain array:
+// - a raw array
+// - { success, data: [...] }
+// - { success, data: { users: [...] } } / { data: { items: [...] } } (paginated list endpoints)
 function extractArray(json: any): any[] {
   if (Array.isArray(json)) return json;
-  if (json?.success && Array.isArray(json.data)) return json.data;
   if (Array.isArray(json?.data)) return json.data;
+  if (Array.isArray(json?.data?.users)) return json.data.users;
+  if (Array.isArray(json?.data?.items)) return json.data.items;
+  if (Array.isArray(json?.data?.results)) return json.data.results;
   return [];
 }
 
-// Returns both the array and whether the fetch actually succeeded,
-// so a failed request can be distinguished from a genuinely empty list.
-async function fetchArray(url: string): Promise<{ data: any[]; ok: boolean }> {
+async function fetchArray(url: string): Promise<any[]> {
   try {
     const res = await fetch(url, { headers: authHeaders() });
     if (!res.ok) {
       console.error(`Failed to fetch ${url}: ${res.status} ${res.statusText}`);
-      return { data: [], ok: false };
+      return [];
     }
     const json = await res.json();
-    return { data: extractArray(json), ok: true };
+    return extractArray(json);
   } catch (err) {
     console.error("Failed to fetch:", url, err);
-    return { data: [], ok: false };
+    return [];
   }
 }
+
+const shortcuts = [
+  { path: "/dashboard", name: "Dashboard", icon: LayoutGrid },
+  { path: "/course", name: "Courses", icon: BookOpen },
+  { path: "/users", name: "Users", icon: Users },
+  { path: "/assessment", name: "Assessment", icon: CheckSquare },
+  { path: "/payment", name: "Payment", icon: CreditCard },
+  // { path: "/report", name: "Report", icon: ChartCandlestick },
+  // { path: "/support", name: "Support Queue", icon: Headset },
+  { path: "/community", name: "Community Mod", icon: Flag },
+  { path: "/certificate", name: "Certificate", icon: Award },
+];
 
 export default function Dashboard() {
   useAuthGuard();
@@ -67,7 +93,6 @@ export default function Dashboard() {
   const [recentUsers, setRecentUsers] = useState<RecentUser[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [loading, setLoading] = useState(true);
-  const [statErrors, setStatErrors] = useState<string[]>([]);
 
   useEffect(() => {
     loadDashboard();
@@ -76,41 +101,30 @@ export default function Dashboard() {
   async function loadDashboard() {
     try {
       setLoading(true);
-      const failedFetches: string[] = [];
 
-      const [usersRes, coursesRes, tracksRes] = await Promise.all([
-        fetchArray(`${BASE}/admin/users`),
-        fetchArray(`${BASE}/admin/courses`),
-        fetchArray(`${BASE}/admin/tracks`),
+      const [users, courses, tracks] = await Promise.all([
+        fetchArray(`${BASE}admin/users`),
+        fetchArray(`${BASE}admin/courses`),
+        fetchArray(`${BASE}admin/tracks`),
       ]);
-
-      if (!usersRes.ok) failedFetches.push("Users");
-      if (!coursesRes.ok) failedFetches.push("Courses");
-      if (!tracksRes.ok) failedFetches.push("Tracks");
-
-      const users = usersRes.data;
-      const courses = coursesRes.data;
-      const tracks = tracksRes.data;
 
       // Modules are listed per-track (GET /admin/tracks/{trackId}/modules),
       // so total modules = sum of modules across every track.
       const modulesByTrack = await Promise.all(
         tracks.map((track: any) =>
-          fetchArray(`${BASE}/admin/tracks/${track.id}/modules`)
+          fetchArray(`${BASE}admin/tracks/${track.id}/modules`)
         )
       );
-      if (modulesByTrack.some((r) => !r.ok)) failedFetches.push("Modules");
-      const allModules = modulesByTrack.flatMap((r) => r.data);
+      const allModules = modulesByTrack.flat();
 
       // Units are listed per-module (GET /admin/modules/{moduleId}/units),
       // so total units = sum of units across every module.
       const unitsByModule = await Promise.all(
         allModules.map((mod: any) =>
-          fetchArray(`${BASE}/admin/modules/${mod.id}/units`)
+          fetchArray(`${BASE}admin/modules/${mod.id}/units`)
         )
       );
-      if (unitsByModule.some((r) => !r.ok)) failedFetches.push("Units");
-      const allUnits = unitsByModule.flatMap((r) => r.data);
+      const allUnits = unitsByModule.flat();
 
       setStats({
         totalUsers: users.length,
@@ -120,8 +134,6 @@ export default function Dashboard() {
         totalUnits: allUnits.length,
       });
 
-      setStatErrors(failedFetches);
-
       const sortedUsers = [...users].sort(
         (a: any, b: any) =>
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
@@ -129,7 +141,7 @@ export default function Dashboard() {
       setRecentUsers(sortedUsers.slice(0, 6));
 
       try {
-        const alertsRes = await fetch(`${BASE}/admin/dashboard/alerts`, {
+        const alertsRes = await fetch(`${BASE}admin/dashboard/alerts`, {
           headers: authHeaders(),
         });
         if (alertsRes.ok) setAlerts(await alertsRes.json());
@@ -199,13 +211,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Stat fetch warning */}
-        {statErrors.length > 0 && (
-          <div className="mb-4 bg-red-50 border border-red-200 rounded-lg px-4 py-2.5 text-xs text-red-700">
-            Couldn't load: {statErrors.join(", ")}. Numbers for these may show as 0.
-          </div>
-        )}
-
         {/* Stats */}
         <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-5 gap-4 mb-6">
           {statCards.map((card) => {
@@ -264,20 +269,11 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Quick Actions */}
-         {/*  <div className="bg-[#f3f5f4] rounded-xl border border-gray-200 p-5">
-            <h2 className="font-semibold text-slate-900 mb-4">Quick Actions</h2>
+          {/* Quick Links */}
+          <div className="bg-[#f3f5f4] rounded-xl border border-gray-200 p-5">
+            <h2 className="font-semibold text-slate-900 mb-4">Quick Links</h2>
             <div className="space-y-2.5">
-              {[
-                { path: "/", name: "Dashboard", icon: LayoutGrid },
-                { path: "/course", name: "Course", icon: BookOpen },
-                { path: "/users", name: "Users", icon: Users },
-                { path: "/assessment", name: "Assessment", icon: CheckSquare },
-                { path: "/payment", name: "Payment", icon: CreditCard },
-                { path: "/report", name: "Report", icon: ChartCandlestick },
-                { path: "/support", name: "Support Queue", icon: Headset },
-                { path: "/community", name: "Community Mod", icon: Flag }
-              ].map((action) => (
+              {shortcuts.map((action) => (
                 <a
                   key={action.name}
                   href={action.path}
@@ -288,7 +284,7 @@ export default function Dashboard() {
                 </a>
               ))}
             </div>
-          </div> */}
+          </div>
         </div>
 
         {/* System Alerts */}
