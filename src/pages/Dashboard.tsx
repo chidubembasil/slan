@@ -38,15 +38,20 @@ function extractArray(json: any): any[] {
   return [];
 }
 
-async function fetchArray(url: string): Promise<any[]> {
+// Returns both the array and whether the fetch actually succeeded,
+// so a failed request can be distinguished from a genuinely empty list.
+async function fetchArray(url: string): Promise<{ data: any[]; ok: boolean }> {
   try {
     const res = await fetch(url, { headers: authHeaders() });
-    if (!res.ok) return [];
+    if (!res.ok) {
+      console.error(`Failed to fetch ${url}: ${res.status} ${res.statusText}`);
+      return { data: [], ok: false };
+    }
     const json = await res.json();
-    return extractArray(json);
+    return { data: extractArray(json), ok: true };
   } catch (err) {
     console.error("Failed to fetch:", url, err);
-    return [];
+    return { data: [], ok: false };
   }
 }
 
@@ -62,6 +67,7 @@ export default function Dashboard() {
   const [recentUsers, setRecentUsers] = useState<RecentUser[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [loading, setLoading] = useState(true);
+  const [statErrors, setStatErrors] = useState<string[]>([]);
 
   useEffect(() => {
     loadDashboard();
@@ -70,12 +76,21 @@ export default function Dashboard() {
   async function loadDashboard() {
     try {
       setLoading(true);
+      const failedFetches: string[] = [];
 
-      const [users, courses, tracks] = await Promise.all([
+      const [usersRes, coursesRes, tracksRes] = await Promise.all([
         fetchArray(`${BASE}/admin/users`),
         fetchArray(`${BASE}/admin/courses`),
         fetchArray(`${BASE}/admin/tracks`),
       ]);
+
+      if (!usersRes.ok) failedFetches.push("Users");
+      if (!coursesRes.ok) failedFetches.push("Courses");
+      if (!tracksRes.ok) failedFetches.push("Tracks");
+
+      const users = usersRes.data;
+      const courses = coursesRes.data;
+      const tracks = tracksRes.data;
 
       // Modules are listed per-track (GET /admin/tracks/{trackId}/modules),
       // so total modules = sum of modules across every track.
@@ -84,7 +99,8 @@ export default function Dashboard() {
           fetchArray(`${BASE}/admin/tracks/${track.id}/modules`)
         )
       );
-      const allModules = modulesByTrack.flat();
+      if (modulesByTrack.some((r) => !r.ok)) failedFetches.push("Modules");
+      const allModules = modulesByTrack.flatMap((r) => r.data);
 
       // Units are listed per-module (GET /admin/modules/{moduleId}/units),
       // so total units = sum of units across every module.
@@ -93,7 +109,8 @@ export default function Dashboard() {
           fetchArray(`${BASE}/admin/modules/${mod.id}/units`)
         )
       );
-      const allUnits = unitsByModule.flat();
+      if (unitsByModule.some((r) => !r.ok)) failedFetches.push("Units");
+      const allUnits = unitsByModule.flatMap((r) => r.data);
 
       setStats({
         totalUsers: users.length,
@@ -103,6 +120,8 @@ export default function Dashboard() {
         totalUnits: allUnits.length,
       });
 
+      setStatErrors(failedFetches);
+
       const sortedUsers = [...users].sort(
         (a: any, b: any) =>
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
@@ -110,7 +129,7 @@ export default function Dashboard() {
       setRecentUsers(sortedUsers.slice(0, 6));
 
       try {
-        const alertsRes = await fetch(`${BASE}/api/dashboard/alerts`, {
+        const alertsRes = await fetch(`${BASE}/admin/dashboard/alerts`, {
           headers: authHeaders(),
         });
         if (alertsRes.ok) setAlerts(await alertsRes.json());
@@ -179,6 +198,13 @@ export default function Dashboard() {
             <p className="text-md text-white/80 mt-1">Manage courses, learners, and track platform performance</p>
           </div>
         </div>
+
+        {/* Stat fetch warning */}
+        {statErrors.length > 0 && (
+          <div className="mb-4 bg-red-50 border border-red-200 rounded-lg px-4 py-2.5 text-xs text-red-700">
+            Couldn't load: {statErrors.join(", ")}. Numbers for these may show as 0.
+          </div>
+        )}
 
         {/* Stats */}
         <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-5 gap-4 mb-6">

@@ -1,6 +1,6 @@
 // UsersTable.tsx
 import { useEffect, useState } from "react";
-import { Search, Eye, Pencil, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, ChevronLeft, ChevronRight } from "lucide-react";
 import { useAuthGuard } from "../hooks/useAuthGuard";
 
 interface User {
@@ -34,7 +34,6 @@ const COLUMNS: Column[] = [
   { key: "role", label: "Role" },
   { key: "verified", label: "Verified" },
   { key: "status", label: "Status" },
-  { key: "actions", label: "Actions" },
 ];
 
 const PAGE_SIZE = 10;
@@ -47,7 +46,6 @@ export default function Users() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   // Every other admin page reads the admin token and sends it as a Bearer
   // header — this page was the one exception, which is exactly why
@@ -134,45 +132,6 @@ export default function Users() {
     setCurrentPage(page);
   };
 
-  // ---- Action handlers ----
-  const handleView = (user: User) => {
-    // TODO: wire to your view route/modal, e.g. navigate(`/users/${user.id}`)
-    console.log("View user:", user);
-  };
-
-  const handleEdit = (user: User) => {
-    // TODO: wire to your edit route/modal, e.g. navigate(`/users/${user.id}/edit`)
-    console.log("Edit user:", user);
-  };
-
-  const handleDelete = async (user: User) => {
-    const confirmed = window.confirm(
-      `Delete ${user.fullName}? This action cannot be undone.`
-    );
-    if (!confirmed) return;
-
-    try {
-      setDeletingId(user.id);
-      const res = await fetch(`${API_BASE}admin/users/${user.id}`, {
-        method: "DELETE",
-        headers: authHeaders(),
-      });
-
-      if (!res.ok) {
-        console.error("Failed to delete user:", res.status);
-        setError(`Failed to delete user (${res.status})`);
-        return;
-      }
-
-      setUsers((prev) => prev.filter((u) => u.id !== user.id));
-    } catch (err) {
-      console.error("Failed to delete user:", err);
-      setError("Failed to reach the server while deleting");
-    } finally {
-      setDeletingId(null);
-    }
-  };
-
   const renderCell = (user: User, key: string) => {
     switch (key) {
       case "user":
@@ -227,33 +186,6 @@ export default function Users() {
           >
             {user.isActive ? "Active" : "Inactive"}
           </span>
-        );
-      case "actions":
-        return (
-          <div className="flex gap-1">
-            <button
-              onClick={() => handleView(user)}
-              className="p-1.5 hover:bg-gray-100 rounded transition"
-              title="View"
-            >
-              <Eye size={16} className="text-gray-600" />
-            </button>
-            <button
-              onClick={() => handleEdit(user)}
-              className="p-1.5 hover:bg-gray-100 rounded transition"
-              title="Edit"
-            >
-              <Pencil size={16} className="text-gray-600" />
-            </button>
-            <button
-              onClick={() => handleDelete(user)}
-              disabled={deletingId === user.id}
-              className="p-1.5 hover:bg-red-50 rounded transition disabled:opacity-50"
-              title="Delete"
-            >
-              <Trash2 size={16} className="text-red-500" />
-            </button>
-          </div>
         );
       default:
         return null;

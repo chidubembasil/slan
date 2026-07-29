@@ -1,5 +1,6 @@
 import { useLocation } from 'react-router-dom'
-// Link, Bell,
+import { Link } from "react-router-dom"
+import { Share } from 'lucide-react'
 
 import {  Menu } from "lucide-react"
 
@@ -30,11 +31,11 @@ export default function Header({ onMenuClick }: HeaderProps) {
         </span>
       </li>
 
-      {/* <li>
-        <Link to="/notification">
-          <Bell size={22} color="gray" />
+      <li>
+        <Link to="/share">
+          <Share size={22} color="gray" />
         </Link>
-      </li> */}
+      </li>
     </ul>
   )
 }
