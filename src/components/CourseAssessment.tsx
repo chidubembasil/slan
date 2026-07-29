@@ -743,7 +743,7 @@ export default function CourseAssessments() {
           <Archive className="w-4 h-4" />
           Archive
           {archivedRows.length > 0 && (
-            <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[11px] rounded-full bg-gray-200 text-gray-700">
+            <span className="inline-flex items-center justify-center min-w-4.5 h-4.5 px-1 text-[11px] rounded-full bg-gray-200 text-gray-700">
               {archivedRows.length}
             </span>
           )}
@@ -1235,7 +1235,7 @@ function SingleQuestionEditor({
           type="number"
           value={item.points}
           onChange={(e) => onChange({ points: Number(e.target.value) })}
-          className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm max-w-[140px]"
+          className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm max-w-35"
           title="points"
         />
       </div>

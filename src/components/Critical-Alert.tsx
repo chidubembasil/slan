@@ -56,7 +56,7 @@ export default function CriticalAlerts() {
 
   return (
     <div className="w-full h-fit bg-card p-4">
-      <h2 className="text-xl font-semibold mb-4 border-b-1 border-b-gray">Critical Alerts</h2>
+      <h2 className="text-xl font-semibold mb-4 border-b border-b-gray">Critical Alerts</h2>
       <div className="space-y-3">
         {alerts.map(a => {
           const Icon = iconMap[a.type];

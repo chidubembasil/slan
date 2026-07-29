@@ -1,6 +1,6 @@
 // UsersTable.tsx
 import { useEffect, useState } from "react";
-import { Search, Eye, Pencil, Trash2 } from "lucide-react";
+import { Search, Eye, Pencil, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import { useAuthGuard } from "../hooks/useAuthGuard";
 
 interface User {
@@ -37,15 +37,17 @@ const COLUMNS: Column[] = [
   { key: "actions", label: "Actions" },
 ];
 
+const PAGE_SIZE = 10;
+
 export default function Users() {
   useAuthGuard();
   const [users, setUsers] = useState<User[]>([]);
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
-  const [roleFilter, setRoleFilter] = useState("All");
-  const [appliedRole, setAppliedRole] = useState("All");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   // Every other admin page reads the admin token and sends it as a Bearer
   // header — this page was the one exception, which is exactly why
@@ -107,17 +109,68 @@ export default function Users() {
       user.schoolName?.toLowerCase().includes(q) ||
       user.state?.toLowerCase().includes(q);
 
-    const matchesRole = appliedRole === "All" || user.role === appliedRole;
-    return matchesSearch && matchesRole;
+    return matchesSearch;
   });
+
+  // Pagination derived from the filtered set
+  const totalPages = Math.max(1, Math.ceil(filteredUsers.length / PAGE_SIZE));
+  const safePage = Math.min(currentPage, totalPages);
+  const paginatedUsers = filteredUsers.slice(
+    (safePage - 1) * PAGE_SIZE,
+    safePage * PAGE_SIZE
+  );
 
   const handleSearch = () => {
     setSearchQuery(searchInput);
-    setAppliedRole(roleFilter);
+    setCurrentPage(1);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") handleSearch();
+  };
+
+  const goToPage = (page: number) => {
+    if (page < 1 || page > totalPages) return;
+    setCurrentPage(page);
+  };
+
+  // ---- Action handlers ----
+  const handleView = (user: User) => {
+    // TODO: wire to your view route/modal, e.g. navigate(`/users/${user.id}`)
+    console.log("View user:", user);
+  };
+
+  const handleEdit = (user: User) => {
+    // TODO: wire to your edit route/modal, e.g. navigate(`/users/${user.id}/edit`)
+    console.log("Edit user:", user);
+  };
+
+  const handleDelete = async (user: User) => {
+    const confirmed = window.confirm(
+      `Delete ${user.fullName}? This action cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    try {
+      setDeletingId(user.id);
+      const res = await fetch(`${API_BASE}admin/users/${user.id}`, {
+        method: "DELETE",
+        headers: authHeaders(),
+      });
+
+      if (!res.ok) {
+        console.error("Failed to delete user:", res.status);
+        setError(`Failed to delete user (${res.status})`);
+        return;
+      }
+
+      setUsers((prev) => prev.filter((u) => u.id !== user.id));
+    } catch (err) {
+      console.error("Failed to delete user:", err);
+      setError("Failed to reach the server while deleting");
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   const renderCell = (user: User, key: string) => {
@@ -178,13 +231,26 @@ export default function Users() {
       case "actions":
         return (
           <div className="flex gap-1">
-            <button className="p-1.5 hover:bg-gray-100 rounded transition" title="View">
+            <button
+              onClick={() => handleView(user)}
+              className="p-1.5 hover:bg-gray-100 rounded transition"
+              title="View"
+            >
               <Eye size={16} className="text-gray-600" />
             </button>
-            <button className="p-1.5 hover:bg-gray-100 rounded transition" title="Edit">
+            <button
+              onClick={() => handleEdit(user)}
+              className="p-1.5 hover:bg-gray-100 rounded transition"
+              title="Edit"
+            >
               <Pencil size={16} className="text-gray-600" />
             </button>
-            <button className="p-1.5 hover:bg-red-50 rounded transition" title="Delete">
+            <button
+              onClick={() => handleDelete(user)}
+              disabled={deletingId === user.id}
+              className="p-1.5 hover:bg-red-50 rounded transition disabled:opacity-50"
+              title="Delete"
+            >
               <Trash2 size={16} className="text-red-500" />
             </button>
           </div>
@@ -203,7 +269,7 @@ export default function Users() {
         </span>
       </div>
 
-      {/* Search + Filter */}
+      {/* Search */}
       <div className="flex gap-3 mb-5">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
@@ -216,21 +282,6 @@ export default function Users() {
           />
         </div>
 
-        <select
-          className="border border-gray-300 px-4 h-11 rounded-lg bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20"
-          value={roleFilter}
-          onChange={(e) => setRoleFilter(e.target.value)}
-          aria-label="select"
-        >
-          <option value="All">All Roles</option>
-          <option value="Principal">Principal</option>
-          <option value="Vice Principal">Vice Principal</option>
-          <option value="Head Teacher">Head Teacher</option>
-          <option value="Teacher">Teacher</option>
-          <option value="Aspiring Head">Aspiring Head</option>
-          <option value="Proprietor">Proprietor</option>
-        </select>
-
         <button
           onClick={handleSearch}
           className="bg-[#004900] hover:bg-[#003600] text-white px-5 h-11 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 whitespace-nowrap"
@@ -241,37 +292,22 @@ export default function Users() {
       </div>
 
       {/* Active filters */}
-      {(searchQuery || appliedRole !== "All") && (
+      {searchQuery && (
         <div className="flex items-center gap-2 mb-4 text-xs">
           <span className="text-gray-500">Filters:</span>
-          {searchQuery && (
-            <span className="inline-flex items-center gap-1 bg-[#004900]/10 text-[#004900] px-2.5 py-1 rounded-md">
-              "{searchQuery}"
-              <button
-                onClick={() => {
-                  setSearchInput("");
-                  setSearchQuery("");
-                }}
-                className="hover:text-[#003600]"
-              >
-                ×
-              </button>
-            </span>
-          )}
-          {appliedRole !== "All" && (
-            <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 px-2.5 py-1 rounded-md">
-              {appliedRole}
-              <button
-                onClick={() => {
-                  setRoleFilter("All");
-                  setAppliedRole("All");
-                }}
-                className="hover:text-blue-900"
-              >
-                ×
-              </button>
-            </span>
-          )}
+          <span className="inline-flex items-center gap-1 bg-[#004900]/10 text-[#004900] px-2.5 py-1 rounded-md">
+            "{searchQuery}"
+            <button
+              onClick={() => {
+                setSearchInput("");
+                setSearchQuery("");
+                setCurrentPage(1);
+              }}
+              className="hover:text-[#003600]"
+            >
+              ×
+            </button>
+          </span>
         </div>
       )}
 
@@ -306,7 +342,7 @@ export default function Users() {
                   </div>
                 </td>
               </tr>
-            ) : filteredUsers.length === 0 ? (
+            ) : paginatedUsers.length === 0 ? (
               <tr>
                 <td colSpan={COLUMNS.length} className="py-16 text-center">
                   <p className="text-sm text-gray-500">No users found</p>
@@ -316,7 +352,7 @@ export default function Users() {
                 </td>
               </tr>
             ) : (
-              filteredUsers.map((user) => (
+              paginatedUsers.map((user) => (
                 <tr key={user.id} className="hover:bg-gray-50/50 transition-colors">
                   {COLUMNS.map((col) => (
                     <td key={col.key} className="py-3.5 px-4 align-middle">
@@ -329,6 +365,68 @@ export default function Users() {
           </tbody>
         </table>
       </div>
+
+      {/* PAGINATION */}
+      {!loading && filteredUsers.length > 0 && (
+        <div className="flex items-center justify-between mt-4">
+          <span className="text-xs text-gray-500">
+            Page {safePage} of {totalPages}
+          </span>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => goToPage(safePage - 1)}
+              disabled={safePage === 1}
+              className="p-1.5 border border-gray-300 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 transition"
+              title="Previous page"
+            >
+              <ChevronLeft size={16} className="text-gray-600" />
+            </button>
+
+            {Array.from({ length: totalPages }, (_, i) => i + 1)
+              .filter(
+                (page) =>
+                  page === 1 ||
+                  page === totalPages ||
+                  Math.abs(page - safePage) <= 1
+              )
+              .reduce<number[]>((acc, page) => {
+                if (acc.length && page - acc[acc.length - 1] > 1) {
+                  acc.push(-1); // ellipsis marker
+                }
+                acc.push(page);
+                return acc;
+              }, [])
+              .map((page, idx) =>
+                page === -1 ? (
+                  <span key={`ellipsis-${idx}`} className="px-2 text-gray-400 text-sm">
+                    …
+                  </span>
+                ) : (
+                  <button
+                    key={page}
+                    onClick={() => goToPage(page)}
+                    className={`min-w-8 h-8 px-2 rounded-lg text-sm font-medium transition ${
+                      page === safePage
+                        ? "bg-[#004900] text-white"
+                        : "border border-gray-300 text-gray-700 hover:bg-gray-50"
+                    }`}
+                  >
+                    {page}
+                  </button>
+                )
+              )}
+
+            <button
+              onClick={() => goToPage(safePage + 1)}
+              disabled={safePage === totalPages}
+              className="p-1.5 border border-gray-300 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 transition"
+              title="Next page"
+            >
+              <ChevronRight size={16} className="text-gray-600" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

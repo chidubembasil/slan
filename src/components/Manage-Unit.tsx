@@ -412,7 +412,7 @@ function EditUnitForm({
                 href={existingVideoUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="text-xs text-purple-700 underline truncate max-w-[160px]"
+                className="text-xs text-purple-700 underline truncate max-w-40"
               >
                 Current video
               </a>
@@ -453,7 +453,7 @@ function EditUnitForm({
                 href={existingPdfUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="text-xs text-red-700 underline truncate max-w-[160px]"
+                className="text-xs text-red-700 underline truncate max-w-40"
               >
                 Current PDF
               </a>

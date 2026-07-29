@@ -141,7 +141,7 @@ function StatCard({
   loading: boolean;
 }) {
   return (
-    <div className="flex-1 min-w-[120px] border rounded-xl p-4 text-center bg-white">
+    <div className="flex-1 min-w-30 border rounded-xl p-4 text-center bg-white">
       {loading ? (
         <Skeleton h={28} w="60%" />
       ) : (

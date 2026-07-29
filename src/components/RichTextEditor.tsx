@@ -300,7 +300,7 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Prop
 
         <EditorContent
           editor={editor}
-          className="prose max-w-none p-3 min-h-[150px] focus-within:outline-none"
+          className="prose max-w-none p-3 min-h-37.5 focus-within:outline-none"
         />
       </div>
     </>
