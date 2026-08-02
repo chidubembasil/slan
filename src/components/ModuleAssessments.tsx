@@ -9,6 +9,7 @@ import {
   Trash,
   Archive,
   RotateCcw,
+  ClipboardList,
 } from "lucide-react";
 
 const API_BASE = import.meta.env.VITE_BASE_URL;
@@ -63,6 +64,22 @@ interface ArchivedQuestionRow {
   moduleName: string;
   trackName: string;
   archivedAt?: string | null;
+}
+
+// A single learner's attempt at a module assessment, as returned by
+// GET /admin/attempts?assessmentType=module_assessment&assessmentId={id}.
+// Shown in the "Attempts" modal opened from the Actions column.
+interface AttemptRow {
+  id: number;
+  user?: {
+    id?: number;
+    fullName?: string;
+    email?: string;
+  };
+  status?: string;
+  score?: number;
+  percentage?: number;
+  passed?: boolean;
 }
 
 const PARENT_TYPE = "module_assessment";
@@ -336,6 +353,20 @@ export default function ModuleAssessments() {
   const [archivedQuestionsLoading, setArchivedQuestionsLoading] = useState(false);
   const [archivedQuestionsError, setArchivedQuestionsError] = useState<string | null>(null);
 
+  // Attempts modal — lists every learner attempt for a module assessment
+  // (GET /admin/attempts?assessmentType=module_assessment&assessmentId={id})
+  // and, per attempt, lazily loads the enriched result
+  // (GET /admin/attempts/{attemptId}/result) when the admin expands it.
+  const [attemptsOpen, setAttemptsOpen] = useState(false);
+  const [attemptsRow, setAttemptsRow] = useState<ModuleAssessmentRow | null>(null);
+  const [attemptsList, setAttemptsList] = useState<AttemptRow[]>([]);
+  const [attemptsLoading, setAttemptsLoading] = useState(false);
+  const [attemptsError, setAttemptsError] = useState<string | null>(null);
+  const [expandedAttemptId, setExpandedAttemptId] = useState<number | null>(null);
+  const [attemptDetails, setAttemptDetails] = useState<Record<number, any>>({});
+  const [attemptDetailLoadingId, setAttemptDetailLoadingId] = useState<number | null>(null);
+  const [attemptDetailError, setAttemptDetailError] = useState<string | null>(null);
+
   const token = localStorage.getItem("adminAccessToken") || "";
 
   function authHeaders(json = true) {
@@ -517,6 +548,73 @@ export default function ModuleAssessments() {
   function openArchive() {
     setArchiveOpen(true);
     fetchArchivedQuestions();
+  }
+
+  // Opens the Attempts modal for a row and loads the list of learner
+  // attempts for that assessment via
+  // GET /admin/attempts?assessmentType=module_assessment&assessmentId={id}.
+  async function openAttempts(row: ModuleAssessmentRow) {
+    setAttemptsRow(row);
+    setAttemptsOpen(true);
+    setAttemptsList([]);
+    setAttemptsError(null);
+    setExpandedAttemptId(null);
+    setAttemptDetails({});
+    setAttemptDetailError(null);
+    setAttemptsLoading(true);
+    try {
+      const res = await fetch(
+        `${API_BASE}admin/attempts?assessmentType=${PARENT_TYPE}&assessmentId=${row.id}`,
+        { headers: authHeaders(false) }
+      );
+      if (!res.ok) throw new Error("Failed to load attempts");
+      const data = await res.json();
+      const list = Array.isArray(data) ? data : data.data || [];
+      setAttemptsList(list);
+    } catch (e: any) {
+      setAttemptsError(e.message || "Failed to load attempts");
+    } finally {
+      setAttemptsLoading(false);
+    }
+  }
+
+  function closeAttempts() {
+    setAttemptsOpen(false);
+    setAttemptsRow(null);
+    setAttemptsList([]);
+    setAttemptsError(null);
+    setExpandedAttemptId(null);
+    setAttemptDetails({});
+    setAttemptDetailError(null);
+  }
+
+  // Expands/collapses a single attempt card. On first expand, lazily
+  // fetches the enriched result via
+  // GET /admin/attempts/{attemptId}/result and caches it so re-expanding
+  // doesn't refetch.
+  async function toggleAttemptDetail(attemptId: number) {
+    if (expandedAttemptId === attemptId) {
+      setExpandedAttemptId(null);
+      return;
+    }
+    setExpandedAttemptId(attemptId);
+    if (attemptDetails[attemptId]) return;
+
+    setAttemptDetailLoadingId(attemptId);
+    setAttemptDetailError(null);
+    try {
+      const res = await fetch(`${API_BASE}admin/attempts/${attemptId}/result`, {
+        headers: authHeaders(false),
+      });
+      if (!res.ok) throw new Error("Failed to load attempt result");
+      const data = await res.json();
+      const detail = data?.data || data;
+      setAttemptDetails((prev) => ({ ...prev, [attemptId]: detail }));
+    } catch (e: any) {
+      setAttemptDetailError(e.message || "Failed to load attempt result");
+    } finally {
+      setAttemptDetailLoadingId(null);
+    }
   }
 
   async function openEdit(row: ModuleAssessmentRow) {
@@ -978,6 +1076,13 @@ export default function ModuleAssessments() {
                       <Pencil className="w-4 h-4" />
                     </button>
                     <button
+                      onClick={() => openAttempts(row)}
+                      className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-blue-600 hover:bg-blue-50 mr-1"
+                      title="View attempts"
+                    >
+                      <ClipboardList className="w-4 h-4" />
+                    </button>
+                    <button
                       onClick={() => handleArchive(row)}
                       className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-red-500 hover:bg-red-50"
                       title="Move to archive"
@@ -1320,6 +1425,206 @@ export default function ModuleAssessments() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Attempts modal — opened from the "View attempts" button in the
+          Actions column. Shows every learner attempt for the selected
+          module assessment as an expandable card: click a card to lazily
+          load and reveal that attempt's enriched, question-by-question
+          result. */}
+      {attemptsOpen && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl w-full max-w-3xl p-6 relative max-h-[85vh] overflow-y-auto">
+            <button
+              onClick={closeAttempts}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+              title="close"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-2 mb-1">
+              <ClipboardList className="w-5 h-5 text-[#004900]" />
+              <h3 className="text-lg font-semibold">Attempts</h3>
+            </div>
+            <div className="flex items-center gap-2 mb-5 flex-wrap">
+              <p className="text-sm text-gray-500">{attemptsRow?.title}</p>
+              <span className="text-gray-300">•</span>
+              <p className="text-sm text-gray-500">{attemptsRow?.moduleName}</p>
+              <span className="text-gray-300">•</span>
+              <p className="text-sm text-gray-500">{attemptsRow?.trackName}</p>
+              {!attemptsLoading && !attemptsError && (
+                <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-full text-[11px] bg-gray-100 text-gray-600 ml-auto">
+                  {attemptsList.length} attempt{attemptsList.length === 1 ? "" : "s"}
+                </span>
+              )}
+            </div>
+
+            {attemptsLoading && (
+              <p className="text-sm text-gray-400 text-center py-10">Loading attempts...</p>
+            )}
+            {!attemptsLoading && attemptsError && (
+              <p className="text-sm text-red-500 text-center py-10">{attemptsError}</p>
+            )}
+            {!attemptsLoading && !attemptsError && attemptsList.length === 0 && (
+              <p className="text-sm text-gray-400 text-center py-10">
+                No learner attempts yet for this assessment.
+              </p>
+            )}
+
+            {!attemptsLoading && !attemptsError && attemptsList.length > 0 && (
+              <div className="space-y-3">
+                {attemptsList.map((attempt) => {
+                  const isExpanded = expandedAttemptId === attempt.id;
+                  const fullName = attempt.user?.fullName || `User #${attempt.user?.id ?? "—"}`;
+                  const initials =
+                    fullName
+                      .split(" ")
+                      .map((p) => p[0])
+                      .filter(Boolean)
+                      .slice(0, 2)
+                      .join("")
+                      .toUpperCase() || "?";
+                  const detail = attemptDetails[attempt.id];
+
+                  return (
+                    <div
+                      key={attempt.id}
+                      className="border border-gray-200 rounded-lg overflow-hidden"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => toggleAttemptDetail(attempt.id)}
+                        className="w-full flex items-center gap-3 p-3 text-left hover:bg-gray-50"
+                      >
+                        <div className="w-9 h-9 rounded-full bg-[#004900]/10 text-[#004900] flex items-center justify-center text-xs font-semibold shrink-0">
+                          {initials}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">
+                            {fullName}
+                          </p>
+                          <p className="text-xs text-gray-400 truncate">
+                            {attempt.user?.email || "—"}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {attempt.status && (
+                            <span className="text-xs text-gray-500 capitalize">
+                              {attempt.status}
+                            </span>
+                          )}
+                          <span
+                            className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
+                              attempt.passed
+                                ? "bg-green-50 text-green-700"
+                                : "bg-red-50 text-red-600"
+                            }`}
+                          >
+                            {attempt.percentage != null ? `${attempt.percentage}%` : "—"}
+                          </span>
+                          <span
+                            className={`text-gray-400 transition-transform inline-block ${
+                              isExpanded ? "rotate-180" : ""
+                            }`}
+                          >
+                            ▾
+                          </span>
+                        </div>
+                      </button>
+
+                      {isExpanded && (
+                        <div className="border-t border-gray-100 bg-gray-50/60 p-3">
+                          {attemptDetailLoadingId === attempt.id && (
+                            <p className="text-xs text-gray-400 text-center py-4">
+                              Loading answers...
+                            </p>
+                          )}
+                          {attemptDetailLoadingId !== attempt.id &&
+                            attemptDetailError &&
+                            !detail && (
+                              <p className="text-xs text-red-500 text-center py-4">
+                                {attemptDetailError}
+                              </p>
+                            )}
+                          {detail && (
+                            <div className="space-y-2">
+                              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 mb-2">
+                                <span>
+                                  Score:{" "}
+                                  <strong className="text-gray-700">
+                                    {detail.score ?? "—"}
+                                  </strong>
+                                </span>
+                                <span>
+                                  Percentage:{" "}
+                                  <strong className="text-gray-700">
+                                    {detail.percentage ?? "—"}%
+                                  </strong>
+                                </span>
+                                <span>
+                                  Result:{" "}
+                                  <strong
+                                    className={
+                                      detail.passed ? "text-green-700" : "text-red-600"
+                                    }
+                                  >
+                                    {detail.passed ? "Passed" : "Failed"}
+                                  </strong>
+                                </span>
+                              </div>
+                              {(detail.answers || []).map((ans: any, i: number) => (
+                                <div
+                                  key={ans.id ?? ans.answerId ?? i}
+                                  className="bg-white border border-gray-200 rounded-lg p-2.5"
+                                >
+                                  <p className="text-xs font-medium text-gray-700 mb-1">
+                                    {i + 1}.{" "}
+                                    {ans.questionText || ans.question || `Question ${i + 1}`}
+                                  </p>
+                                  <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-[11px] text-gray-500">
+                                    <span>
+                                      Answer given:{" "}
+                                      <span className="text-gray-700">
+                                        {ans.givenAnswer ?? ans.selectedAnswer ?? ans.answer ?? "—"}
+                                      </span>
+                                    </span>
+                                    <span>
+                                      Correct answer:{" "}
+                                      <span className="text-gray-700">
+                                        {ans.correctAnswer ?? ans.correctAnswerText ?? "—"}
+                                      </span>
+                                    </span>
+                                    {typeof ans.isCorrect === "boolean" && (
+                                      <span
+                                        className={
+                                          ans.isCorrect
+                                            ? "text-green-600 font-medium"
+                                            : "text-red-500 font-medium"
+                                        }
+                                      >
+                                        {ans.isCorrect ? "Correct" : "Incorrect"}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                              {(!detail.answers || detail.answers.length === 0) && (
+                                <p className="text-xs text-gray-400 text-center py-2">
+                                  No answer details available.
+                                </p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>

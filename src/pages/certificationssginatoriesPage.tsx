@@ -17,11 +17,24 @@ import React, { useEffect, useState, useCallback, useRef } from "react";
  *   GET    /admin/signatories/{id}
  *   PUT    /admin/signatories/{id}           (multipart/form-data)
  *   DELETE /admin/signatories/{id}
+ *   GET    /admin/users?search=&limit=&offset=   (confirmed real, replaces old decoy)
+ *   GET    /admin/courses                        (list all courses, all statuses)
+ *   GET    /admin/tracks                         (list all tracks)
  *
- * One endpoint does NOT exist in your docs yet — searching users to grab
- * a userId. I stubbed it as a DECOY route below (`/admin/users/search`).
- * Swap DECOY_USER_SEARCH_ENDPOINT for the real one whenever it's ready;
- * everything else in this file will keep working unchanged.
+ * certType is now restricted to "course" | "track" only, per confirmed
+ * scope — module/unit certs are not issued through this page.
+ *
+ * NOTE / assumptions (flag if wrong, easy one-line fixes):
+ *  - /admin/users response items are assumed to have `fullName` + `email`
+ *    (per the docs description: "search on fullName or email"). I fall
+ *    back to `name` if that's what actually comes back.
+ *  - /admin/courses and /admin/tracks list endpoints didn't show a
+ *    `search` query param in your docs, so I fetch the full list once
+ *    per tab-open and filter client-side as the admin types. If those
+ *    endpoints DO support ?search=, swap the fetch call in
+ *    ReferenceSearchSelect's `runSearch`/load effect to use it instead.
+ *  - Course/track list items are assumed to at least have `{id, title}`
+ *    (inferred from the certificate-issue response shape).
  * ------------------------------------------------------------------
  */
 
@@ -30,11 +43,6 @@ import React, { useEffect, useState, useCallback, useRef } from "react";
 // ---------------------------------------------------------------------------
 
 const API_BASE = import.meta.env.VITE_API_KEY;
-
-
-// 🔶 DECOY / PLACEHOLDER — not a real confirmed endpoint yet.
-// Expected shape once real: GET /admin/users/search?query=xxx -> User[]
-// const DECOY_USER_SEARCH_ENDPOINT = "/admin/users";
 
 function authHeaders(extra: Record<string, string> = {}) {
   const token =
@@ -79,12 +87,26 @@ async function apiFetch<T>(
 // Types
 // ---------------------------------------------------------------------------
 
-type CertType = "course" | "track" | "module" | "unit";
+type CertType = "course" | "track";
 
 interface UserLite {
   id: number;
   name: string;
   email: string;
+}
+
+// Raw shape as it might come back from /admin/users — normalized into
+// UserLite immediately after fetching.
+interface RawUser {
+  id: number;
+  fullName?: string;
+  name?: string;
+  email: string;
+}
+
+interface ReferenceLite {
+  id: number;
+  title: string;
 }
 
 interface Certificate {
@@ -176,6 +198,14 @@ function Spinner({ className = "" }: { className?: string }) {
   );
 }
 
+function normalizeUser(u: RawUser): UserLite {
+  return {
+    id: u.id,
+    name: u.fullName || u.name || "Unnamed user",
+    email: u.email,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // User search / select (feeds userId into the Issue Certificate form)
 // ---------------------------------------------------------------------------
@@ -214,16 +244,18 @@ function UserSearchSelect({
     }
     setLoading(true);
     try {
-      // 🔶 DECOY ROUTE — replace with the real "search/list users" endpoint
-      // once confirmed. Shape assumed: { users: UserLite[] } or UserLite[].
-      const data = await apiFetch<UserLite[] | { users: UserLite[] }>(
-        `${API_BASE}/admin/users?query=${encodeURIComponent(q)}`
+      const data = await apiFetch<
+        RawUser[] | { users: RawUser[] } | { data: RawUser[] }
+      >(
+        `/admin/users?search=${encodeURIComponent(q)}&limit=20&offset=0`
       );
-      const list = Array.isArray(data) ? data : data.users || [];
-      setResults(list);
+      const list = Array.isArray(data)
+        ? data
+        : (data as { users?: RawUser[] }).users ||
+          (data as { data?: RawUser[] }).data ||
+          [];
+      setResults(list.map(normalizeUser));
     } catch (err) {
-      // Silently fail in the dropdown — surfaced via empty state, not a toast,
-      // since this is a placeholder endpoint that may not exist yet.
       setResults([]);
     } finally {
       setLoading(false);
@@ -308,14 +340,177 @@ function UserSearchSelect({
 }
 
 // ---------------------------------------------------------------------------
+// Reference search / select — picks a course or a track depending on
+// whichever certType is currently selected. Fetches the full list once
+// per certType (cached), filters client-side as the admin types.
+// ---------------------------------------------------------------------------
+
+const REFERENCE_ENDPOINT: Record<CertType, string> = {
+  course: "/admin/courses",
+  track: "/admin/tracks",
+};
+
+function ReferenceSearchSelect({
+  certType,
+  value,
+  onChange,
+}: {
+  certType: CertType;
+  value: ReferenceLite | null;
+  onChange: (ref: ReferenceLite | null) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [allItems, setAllItems] = useState<ReferenceLite[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const cacheRef = useRef<Map<CertType, ReferenceLite[]>>(new Map());
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(e.target as Node)
+      ) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // Reset selection + query whenever the cert type changes, then load
+  // (or reuse cached) list for the new type.
+  useEffect(() => {
+    onChange(null);
+    setQuery("");
+    setLoadError(false);
+
+    const cached = cacheRef.current.get(certType);
+    if (cached) {
+      setAllItems(cached);
+      return;
+    }
+
+    let cancelled = false;
+    setLoading(true);
+    apiFetch<ReferenceLite[] | { data: ReferenceLite[] }>(
+      REFERENCE_ENDPOINT[certType]
+    )
+      .then((data) => {
+        if (cancelled) return;
+        const list = Array.isArray(data) ? data : data.data || [];
+        cacheRef.current.set(certType, list);
+        setAllItems(list);
+      })
+      .catch(() => {
+        if (!cancelled) setLoadError(true);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [certType]);
+
+  const filtered = query.trim()
+    ? allItems.filter((item) =>
+        item.title.toLowerCase().includes(query.trim().toLowerCase())
+      )
+    : allItems;
+
+  const typeLabel = certType === "course" ? "course" : "track";
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <label className="block text-sm font-medium text-gray-700 mb-1">
+        {certType === "course" ? "Course" : "Track"}{" "}
+        <span className="text-red-500">*</span>
+      </label>
+
+      {value ? (
+        <div className="flex items-center justify-between border border-gray-300 rounded-md px-3 py-2 bg-gray-50">
+          <div>
+            <p className="text-sm font-medium text-gray-900">{value.title}</p>
+            <p className="text-xs text-gray-500">ID {value.id}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              onChange(null);
+              setQuery("");
+            }}
+            className="text-xs text-red-600 hover:underline"
+          >
+            Change
+          </button>
+        </div>
+      ) : (
+        <>
+          <input
+            type="text"
+            value={query}
+            onFocus={() => setOpen(true)}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setOpen(true);
+            }}
+            placeholder={`Search ${typeLabel}s by title...`}
+            disabled={loading}
+            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-600 disabled:bg-gray-50"
+          />
+          {open && (
+            <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-56 overflow-y-auto">
+              {loading && (
+                <div className="flex items-center gap-2 px-3 py-2 text-sm text-gray-500">
+                  <Spinner /> Loading {typeLabel}s...
+                </div>
+              )}
+              {!loading && loadError && (
+                <div className="px-3 py-2 text-sm text-red-500">
+                  Couldn't load {typeLabel}s. Try again.
+                </div>
+              )}
+              {!loading && !loadError && filtered.length === 0 && (
+                <div className="px-3 py-2 text-sm text-gray-400">
+                  No {typeLabel}s found.
+                </div>
+              )}
+              {!loading &&
+                !loadError &&
+                filtered.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => {
+                      onChange(item);
+                      setOpen(false);
+                    }}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-green-50"
+                  >
+                    <p className="font-medium text-gray-900">{item.title}</p>
+                    <p className="text-xs text-gray-500">ID {item.id}</p>
+                  </button>
+                ))}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Certifications tab
 // ---------------------------------------------------------------------------
 
 const CERT_TYPES: { value: CertType; label: string }[] = [
   { value: "course", label: "Course" },
   { value: "track", label: "Track" },
-  { value: "module", label: "Module" },
-  { value: "unit", label: "Unit" },
 ];
 
 function CertificationsTab({
@@ -325,7 +520,8 @@ function CertificationsTab({
 }) {
   const [selectedUser, setSelectedUser] = useState<UserLite | null>(null);
   const [certType, setCertType] = useState<CertType>("course");
-  const [referenceId, setReferenceId] = useState("");
+  const [selectedReference, setSelectedReference] =
+    useState<ReferenceLite | null>(null);
   const [issuing, setIssuing] = useState(false);
 
   const [lookupId, setLookupId] = useState("");
@@ -338,8 +534,11 @@ function CertificationsTab({
       showToast("Select a user before issuing a certificate.", "error");
       return;
     }
-    if (!referenceId) {
-      showToast("Enter the reference ID for the selected cert type.", "error");
+    if (!selectedReference) {
+      showToast(
+        `Select the ${certType} being certified.`,
+        "error"
+      );
       return;
     }
 
@@ -351,12 +550,12 @@ function CertificationsTab({
         body: JSON.stringify({
           userId: selectedUser.id,
           certType,
-          referenceId: Number(referenceId),
+          referenceId: selectedReference.id,
         }),
       });
       showToast(`Certificate issued to ${selectedUser.name}.`, "success");
       setSelectedUser(null);
-      setReferenceId("");
+      setSelectedReference(null);
       setCertType("course");
     } catch (err: any) {
       showToast(err.message || "Failed to issue certificate.", "error");
@@ -416,7 +615,7 @@ function CertificationsTab({
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Certificate type <span className="text-red-500">*</span>
             </label>
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               {CERT_TYPES.map((ct) => (
                 <button
                   type="button"
@@ -434,21 +633,11 @@ function CertificationsTab({
             </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Reference ID <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="number"
-              value={referenceId}
-              onChange={(e) => setReferenceId(e.target.value)}
-              placeholder={`ID of the ${certType} being certified`}
-              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-600"
-            />
-            <p className="text-xs text-gray-400 mt-1">
-              e.g. if certType is "course", this is the course's ID.
-            </p>
-          </div>
+          <ReferenceSearchSelect
+            certType={certType}
+            value={selectedReference}
+            onChange={setSelectedReference}
+          />
 
           <button
             type="submit"
