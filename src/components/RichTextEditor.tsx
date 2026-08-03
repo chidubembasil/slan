@@ -544,9 +544,10 @@ function Toolbar() {
     })
   }
 
-  const insertTable = () => {
-    editor.dispatchCommand(INSERT_TABLE_COMMAND, { rows: '3', columns: '3', includeHeaders: true })
-  }
+ const insertTable = () => {
+  editor.focus() // ensure the editor has focus/selection before dispatching
+  editor.dispatchCommand(INSERT_TABLE_COMMAND, { rows: '3', columns: '3', includeHeaders: true })
+}
 
   // Applies fill color to every selected cell (multi-cell drag) or the
   // single cell the cursor is in.
