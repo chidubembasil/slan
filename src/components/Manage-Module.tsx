@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { RichTextEditor } from "./RichTextEditor"
+import { RichTextEditor, reinforceParagraphBreaks } from "./RichTextEditor"
 
 const BASE = import.meta.env.VITE_BASE_URL;
 
@@ -539,7 +539,7 @@ function UnitCreateModal({
         body: JSON.stringify({
           title: form.title,
           description: form.description,
-          content: form.content || undefined,
+          content: form.content ? reinforceParagraphBreaks(form.content) : undefined,
           summary: form.summary || undefined,
           caseStudy: form.caseStudy || undefined,
           discussionPrompt: form.discussionPrompt || undefined,

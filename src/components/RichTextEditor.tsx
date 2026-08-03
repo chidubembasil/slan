@@ -82,8 +82,6 @@ function ensureParagraphs(html: string): string {
       'UL', 'OL', 'LI', 'BLOCKQUOTE', 'PRE',
     ])
 
-    // Promote simple top-level <div> paragraphs to <p> (common when
-    // copying from web pages that use divs instead of paragraph tags).
     Array.from(body.children).forEach((el) => {
       if (
         el.tagName === 'DIV' &&
@@ -95,25 +93,41 @@ function ensureParagraphs(html: string): string {
       }
     })
 
-    // If there's any stray top-level inline content (bare text nodes, or
-    // elements that aren't block-level), wrap the whole body's content into
-    // paragraphs split on double <br> — this is the "one big blob" case.
-    const hasLooseInline = Array.from(body.childNodes).some((n) => {
-      if (n.nodeType === Node.TEXT_NODE) return !!n.textContent?.trim()
-      const tag = (n as Element).tagName
-      return tag ? !blockTags.has(tag) : false
-    })
+    const children = Array.from(body.childNodes)
+    const fragment = doc.createDocumentFragment()
+    let buffer: ChildNode[] = []
 
-    if (hasLooseInline) {
-      const innerHtml = body.innerHTML
-      const chunks = innerHtml.split(/(?:<br\s*\/?>\s*){2,}/i)
-      body.innerHTML = chunks
-        .map((chunk) => chunk.trim())
+    const flushBuffer = () => {
+      if (buffer.length === 0) return
+      const wrapper = doc.createElement('div')
+      buffer.forEach((n) => wrapper.appendChild(n))
+      wrapper.innerHTML
+        .split(/(?:<br\s*\/?>\s*){2,}/i)
+        .map((c) => c.trim())
         .filter(Boolean)
-        .map((chunk) => `<p>${chunk}</p>`)
-        .join('')
+        .forEach((chunk) => {
+          const p = doc.createElement('p')
+          p.innerHTML = chunk
+          fragment.appendChild(p)
+        })
+      buffer = []
     }
 
+    children.forEach((node) => {
+      const isBlock = node.nodeType === Node.ELEMENT_NODE && blockTags.has((node as Element).tagName)
+      const isText = node.nodeType === Node.TEXT_NODE && !!node.textContent?.trim()
+      const isInlineEl = node.nodeType === Node.ELEMENT_NODE && !isBlock
+      if (isBlock) {
+        flushBuffer()
+        fragment.appendChild(node)
+      } else if (isText || isInlineEl) {
+        buffer.push(node)
+      }
+    })
+    flushBuffer()
+
+    body.innerHTML = ''
+    body.appendChild(fragment)
     return body.innerHTML
   } catch {
     return html
@@ -906,4 +920,36 @@ function ToolbarButton({
       {children}
     </button>
   )
+}
+// ── Reinforces paragraph/block breaks with explicit <br><br> markers ──
+// Defends against learner-side sanitizers that strip <p>/<div>/<table>
+// wrappers but leave basic inline tags like <br> untouched. Safe to run
+// on Lexical-generated HTML right before it's sent to the backend.
+export function reinforceParagraphBreaks(html: string): string {
+  try {
+    const doc = new DOMParser().parseFromString(html, 'text/html')
+    const body = doc.body
+    const topLevelBlocks = Array.from(body.children)
+
+    topLevelBlocks.forEach((el, i) => {
+      const isLast = i === topLevelBlocks.length - 1
+      if (isLast) return
+
+      // Don't stack <br><br> next to a table — insert once, right after it,
+      // not inside it, and skip if the next sibling is already a break.
+      const next = el.nextSibling
+      const nextIsBreak =
+        next?.nodeType === Node.ELEMENT_NODE && (next as Element).tagName === 'BR'
+      if (nextIsBreak) return
+
+      const br1 = doc.createElement('br')
+      const br2 = doc.createElement('br')
+      el.insertAdjacentElement('afterend', br2)
+      el.insertAdjacentElement('afterend', br1)
+    })
+
+    return body.innerHTML
+  } catch {
+    return html
+  }
 }
