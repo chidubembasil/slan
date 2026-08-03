@@ -1,11 +1,11 @@
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
-import { Table }from '@tiptap/extension-table'
+import { Table } from '@tiptap/extension-table'
 import TableRow from '@tiptap/extension-table-row'
 import TableHeader from '@tiptap/extension-table-header'
 import TableCell from '@tiptap/extension-table-cell'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 interface Props {
   value: string
@@ -14,8 +14,52 @@ interface Props {
   className?: string
 }
 
+// ── Extend TableCell so each cell can carry a background color ──
+const StyledTableCell = TableCell.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      backgroundColor: {
+        default: null,
+        parseHTML: (element) => element.style.backgroundColor || null,
+        renderHTML: (attributes) => {
+          if (!attributes.backgroundColor) return {}
+          return { style: `background-color: ${attributes.backgroundColor}` }
+        },
+      },
+    }
+  },
+})
+
+const StyledTableHeader = TableHeader.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      backgroundColor: {
+        default: null,
+        parseHTML: (element) => element.style.backgroundColor || null,
+        renderHTML: (attributes) => {
+          if (!attributes.backgroundColor) return {}
+          return { style: `background-color: ${attributes.backgroundColor}` }
+        },
+      },
+    }
+  },
+})
+
+// Swatches offered for table cell styling
+const CELL_COLORS = [
+  { label: 'None', value: null },
+  { label: 'Gray', value: '#f3f4f6' },
+  { label: 'Blue', value: '#dbeafe' },
+  { label: 'Green', value: '#dcfce7' },
+  { label: 'Yellow', value: '#fef9c3' },
+  { label: 'Red', value: '#fee2e2' },
+]
+
 export function RichTextEditor({ value, onChange, placeholder, className }: Props) {
   const isInternalUpdate = useRef(false)
+  const [showCellColors, setShowCellColors] = useState(false)
 
   const editor = useEditor({
     extensions: [
@@ -28,8 +72,8 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Prop
         },
       }),
       TableRow,
-      TableHeader,
-      TableCell,
+      StyledTableHeader,
+      StyledTableCell,
     ],
     content: value,
     editorProps: {
@@ -62,6 +106,36 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Prop
   }, [value, editor])
 
   const isInTable = editor?.isActive('table') ?? false
+
+  // Convert the current selection (if any) into a table.
+  // If text is selected, that text becomes the content of the first cell.
+  // If nothing is selected, a blank table is inserted at the cursor.
+  const convertSelectionToTable = () => {
+    if (!editor) return
+    const { from, to, empty } = editor.state.selection
+    const selectedText = empty ? '' : editor.state.doc.textBetween(from, to, '\n')
+
+    const chain = editor.chain().focus()
+    if (!empty) chain.deleteSelection()
+    chain.insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
+
+    // insertTable places the cursor inside the first cell automatically,
+    // so we can drop the captured text right back in.
+    if (selectedText) {
+      editor.chain().focus().insertContent(selectedText).run()
+    }
+  }
+
+  // Convert the current selection to a plain paragraph
+  // (clears headings, lists, blockquotes, code blocks, etc. on it).
+  const convertSelectionToParagraph = () => {
+    editor?.chain().focus().setParagraph().run()
+  }
+
+  const applyCellColor = (color: string | null) => {
+    editor?.chain().focus().setCellAttribute('backgroundColor', color).run()
+    setShowCellColors(false)
+  }
 
   return (
     <>
@@ -150,6 +224,16 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Prop
             H3
           </ToolbarButton>
 
+          {/* Paragraph — select any block (heading, list item, quote, etc.)
+              and click this to convert it back to a plain paragraph */}
+          <ToolbarButton
+            onClick={convertSelectionToParagraph}
+            active={editor?.isActive('paragraph')}
+            title="Convert to paragraph"
+          >
+            ¶ Paragraph
+          </ToolbarButton>
+
           <Divider />
 
           {/* Lists & blocks */}
@@ -185,18 +269,14 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Prop
           <Divider />
 
           {/* ── Table controls ── */}
-          {/* Insert table — only when not already in one */}
+          {/* Insert/convert to table — works whether or not text is selected.
+              Select a paragraph of text and click this to turn it into a table,
+              with the selected text dropped into the first cell. */}
           {!isInTable && (
             <ToolbarButton
-              onClick={() =>
-                editor
-                  ?.chain()
-                  .focus()
-                  .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
-                  .run()
-              }
+              onClick={convertSelectionToTable}
               active={false}
-              title="Insert table"
+              title="Convert selection to table"
             >
               ⊞ Table
             </ToolbarButton>
@@ -268,6 +348,32 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Prop
               >
                 Split
               </ToolbarButton>
+
+              {/* Style the table: pick a background color for the current cell */}
+              <div className="relative">
+                <ToolbarButton
+                  onClick={() => setShowCellColors((s) => !s)}
+                  active={showCellColors}
+                  title="Style cell"
+                >
+                  🎨 Style
+                </ToolbarButton>
+                {showCellColors && (
+                  <div className="absolute z-10 top-full mt-1 left-0 flex gap-1 p-2 bg-white border rounded-md shadow-md">
+                    {CELL_COLORS.map((c) => (
+                      <button
+                        key={c.label}
+                        type="button"
+                        title={c.label}
+                        onClick={() => applyCellColor(c.value)}
+                        className="w-6 h-6 rounded border border-gray-300"
+                        style={{ backgroundColor: c.value ?? '#ffffff' }}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+
               <ToolbarButton
                 onClick={() => editor?.chain().focus().deleteTable().run()}
                 active={false}
