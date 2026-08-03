@@ -5,7 +5,17 @@ import { Table } from '@tiptap/extension-table'
 import TableRow from '@tiptap/extension-table-row'
 import TableHeader from '@tiptap/extension-table-header'
 import TableCell from '@tiptap/extension-table-cell'
+import { DOMParser as ProseMirrorDOMParser } from '@tiptap/pm/model'
 import { useEffect, useRef, useState } from 'react'
+
+// Minimal HTML-escaping for text we're about to inject into a hand-built
+// <table> string (from tab-delimited plain text paste — see handlePaste below).
+function escapeHtml(str: string) {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
 
 interface Props {
   value: string
@@ -104,6 +114,99 @@ const BORDER_WIDTHS = [
   { label: 'Thick', value: '3px' },
 ]
 
+// ── Shared table cleanup ──
+// Used both when pasting AND when loading already-saved content into the
+// editor. Word/WPS write inconsistent per-cell border styles that, being
+// inline, override our `.rte-table` grid CSS — producing tables with only a
+// stray border on one side. This walks any <table> in the given HTML,
+// captures a representative stroke color/width from whatever the source
+// used, keeps each cell's own background-color, and drops the rest of the
+// noise (fixed widths, padding, mso leftovers, inconsistent per-side borders).
+// Running this on LOAD too (not just paste) matters because content that was
+// already saved to the database before this cleanup existed would otherwise
+// stay broken forever — redeploying the editor code can't retroactively fix
+// HTML that's already stored server-side.
+function sanitizeTableHtml(html: string): string {
+  if (!html || !/<table/i.test(html)) return html
+
+  try {
+    const doc = new DOMParser().parseFromString(html, 'text/html')
+
+    const extractBorder = (styleText: string): { color?: string; width?: string } => {
+      if (!styleText || /:\s*none|:\s*hidden/i.test(styleText)) return {}
+      const colorMatch = styleText.match(/#[0-9a-fA-F]{3,8}|rgb\([^)]*\)|windowtext/i)
+      const widthMatch = styleText.match(/(\d+(?:\.\d+)?)(pt|px)/i)
+      return {
+        color: colorMatch
+          ? colorMatch[0].toLowerCase() === 'windowtext'
+            ? '#000000'
+            : colorMatch[0]
+          : undefined,
+        width: widthMatch ? `${widthMatch[1]}${widthMatch[2]}` : undefined,
+      }
+    }
+
+    doc.querySelectorAll('table').forEach((table) => {
+      // Already-clean tables (our own saved output, from a previous run of
+      // this same cleanup) carry the CSS vars directly — leave those alone
+      // rather than re-detecting from cells.
+      const tableEl = table as HTMLElement
+      const alreadyStyled =
+        tableEl.style.getPropertyValue('--table-border-color') ||
+        tableEl.style.getPropertyValue('--table-border-width')
+
+      let detectedColor: string | undefined
+      let detectedWidth: string | undefined
+      if (!alreadyStyled) {
+        table.querySelectorAll('td, th').forEach((cell) => {
+          if (detectedColor && detectedWidth) return
+          const styleAttr = (cell as HTMLElement).getAttribute('style') || ''
+          if (/border/i.test(styleAttr)) {
+            const { color, width } = extractBorder(styleAttr)
+            if (color && !detectedColor) detectedColor = color
+            if (width && !detectedWidth) detectedWidth = width
+          }
+        })
+      }
+
+      // Clean every cell: keep background-color only, drop the rest
+      // (borders, padding, mso leftovers, fixed widths, etc.)
+      table.querySelectorAll('tr, td, th').forEach((el) => {
+        const element = el as HTMLElement
+        const bg = element.style.backgroundColor
+        element.removeAttribute('style')
+        element.removeAttribute('border')
+        element.removeAttribute('cellpadding')
+        element.removeAttribute('cellspacing')
+        element.removeAttribute('width')
+        element.removeAttribute('valign')
+        if (bg) element.style.backgroundColor = bg
+      })
+
+      const preservedColor = alreadyStyled
+        ? tableEl.style.getPropertyValue('--table-border-color')
+        : detectedColor
+      const preservedWidth = alreadyStyled
+        ? tableEl.style.getPropertyValue('--table-border-width')
+        : detectedWidth
+
+      tableEl.removeAttribute('style')
+      tableEl.removeAttribute('border')
+      tableEl.removeAttribute('cellpadding')
+      tableEl.removeAttribute('cellspacing')
+      tableEl.removeAttribute('width')
+      tableEl.classList.add('rte-table')
+      if (preservedColor) tableEl.style.setProperty('--table-border-color', preservedColor)
+      if (preservedWidth) tableEl.style.setProperty('--table-border-width', preservedWidth)
+    })
+
+    return doc.body.innerHTML
+  } catch {
+    // If DOM parsing fails for any reason, return the input untouched
+    return html
+  }
+}
+
 export function RichTextEditor({ value, onChange, placeholder, className }: Props) {
   const isInternalUpdate = useRef(false)
   const [showCellColors, setShowCellColors] = useState(false)
@@ -123,11 +226,65 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Prop
       StyledTableHeader,
       StyledTableCell,
     ],
-    content: value,
+    // Run existing saved content through the same table cleanup used for
+    // paste, so units saved before this fix existed get repaired the moment
+    // they're opened (not just newly pasted tables).
+    content: sanitizeTableHtml(value),
     editorProps: {
+      // Some sources — or some OS/browser clipboard combos — don't hand over
+      // real <table> HTML at all, just plain text with columns separated by
+      // tabs and rows separated by line breaks (this is how Excel, Google
+      // Sheets, and sometimes Word/WPS fall back when the HTML clipboard
+      // format isn't available). Detect that shape and build an actual table
+      // node from it, instead of letting it land as plain paragraphs with no
+      // structure left to style at all.
+      handlePaste(view, event) {
+        const html = event.clipboardData?.getData('text/html') || ''
+        if (/<table/i.test(html)) return false // real table HTML — let transformPastedHTML handle it
+
+        const text = event.clipboardData?.getData('text/plain') || ''
+        if (!text.includes('\t')) return false // no tab columns — not table-shaped
+
+        const rows = text
+          .replace(/\r\n/g, '\n')
+          .split('\n')
+          .filter((r) => r.trim().length > 0)
+          .map((r) => r.split('\t'))
+
+        // Require at least 2 rows, with at least one having 2+ columns —
+        // otherwise this is probably just a stray tab in normal text.
+        if (rows.length < 2 || !rows.some((r) => r.length > 1)) return false
+
+        const cols = Math.max(...rows.map((r) => r.length))
+        const tableHtml =
+          '<table><tbody>' +
+          rows
+            .map((r, i) => {
+              const tag = i === 0 ? 'th' : 'td'
+              const cells = Array.from(
+                { length: cols },
+                (_, c) => `<${tag}>${escapeHtml(r[c] ?? '')}</${tag}>`
+              ).join('')
+              return `<tr>${cells}</tr>`
+            })
+            .join('') +
+          '</tbody></table>'
+
+        try {
+          const dom = new window.DOMParser().parseFromString(tableHtml, 'text/html')
+          const parser = ProseMirrorDOMParser.fromSchema(view.state.schema)
+          const slice = parser.parseSlice(dom.body)
+          view.dispatch(view.state.tr.replaceSelection(slice))
+        } catch {
+          return false // anything goes wrong — fall back to default paste behavior
+        }
+
+        event.preventDefault()
+        return true
+      },
       transformPastedHTML(html) {
         // Strip Word/WPS junk but keep real formatting (bold, headings, lists, tables)
-        let cleaned = html
+        const cleaned = html
           .replace(/<o:p>.*?<\/o:p>/gi, '')
           .replace(/<w:[^>]+>.*?<\/w:[^>]+>/gi, '')
           .replace(/<m:[^>]+>.*?<\/m:[^>]+>/gi, '')
@@ -135,31 +292,7 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Prop
           .replace(/<span[^>]*mso[^>]*>(.*?)<\/span>/gi, '$1')
           .replace(/class="Mso[^"]*"/gi, '')
 
-        // Word/WPS also write plain (non-"mso") inline border/padding styles
-        // directly on <table>/<tr>/<td>/<th> — e.g. `border-bottom:solid #000
-        // 1pt; border-top:none;...`. Those don't contain "mso" so the regexes
-        // above miss them, and since they're inline they win over our
-        // `.rte-table` CSS, producing a half-bordered table (only the stray
-        // bottom rule survives). Strip all inline style/border attributes off
-        // table structural tags so our stylesheet is the only thing drawing
-        // the grid, regardless of which app the table was copied from.
-        try {
-          const doc = new DOMParser().parseFromString(cleaned, 'text/html')
-          doc.querySelectorAll('table, tr, td, th').forEach((el) => {
-            el.removeAttribute('style')
-            el.removeAttribute('border')
-            el.removeAttribute('cellpadding')
-            el.removeAttribute('cellspacing')
-            el.removeAttribute('width')
-            el.removeAttribute('valign')
-          })
-          doc.querySelectorAll('table').forEach((el) => el.classList.add('rte-table'))
-          cleaned = doc.body.innerHTML
-        } catch {
-          // If DOM parsing fails for any reason, fall back to the regex-only cleanup above
-        }
-
-        return cleaned
+        return sanitizeTableHtml(cleaned)
       },
     },
     onUpdate({ editor }) {
@@ -175,7 +308,7 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Prop
       return
     }
     if (value !== editor.getHTML()) {
-      editor.commands.setContent(value || '')
+      editor.commands.setContent(sanitizeTableHtml(value) || '')
     }
   }, [value, editor])
 
