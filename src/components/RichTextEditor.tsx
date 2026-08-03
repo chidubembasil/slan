@@ -562,7 +562,7 @@ function ToolbarButton({
             ? 'text-red-500 hover:bg-red-50'
             : active
             ? 'bg-gray-200 text-gray-900'
-            : 'text-gray-600 hover:bg-gray-100'
+            : 'text-gray-600 hover:bg-gray-100' 
         }`}
     >
       {children}
