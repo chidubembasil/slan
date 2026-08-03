@@ -14,7 +14,38 @@ interface Props {
   className?: string
 }
 
-// ── Extend TableCell so each cell can carry a background color ──
+// ── Extend Table so the whole table can carry a border color + width ──
+// Both are packed into one JSON attribute (rather than two separate ones)
+// because Tiptap's renderHTML merges attribute outputs shallowly — two
+// attributes each returning a `style` key would clobber one another.
+const StyledTable = Table.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      borderColor: {
+        default: '#d1d5db',
+        parseHTML: (element) =>
+          element.style.getPropertyValue('--table-border-color') || null,
+        renderHTML: (attributes) => {
+          const color = attributes.borderColor || '#d1d5db'
+          const width = attributes.borderWidth || '1px'
+          return {
+            style: `--table-border-color: ${color}; --table-border-width: ${width};`,
+          }
+        },
+      },
+      borderWidth: {
+        default: '1px',
+        parseHTML: (element) =>
+          element.style.getPropertyValue('--table-border-width') || null,
+        // No renderHTML here on purpose — borderColor's renderHTML above
+        // already writes both variables into a single style string.
+      },
+    }
+  },
+})
+
+// ── Extend TableCell so each cell can carry its own background color ──
 const StyledTableCell = TableCell.extend({
   addAttributes() {
     return {
@@ -47,7 +78,7 @@ const StyledTableHeader = TableHeader.extend({
   },
 })
 
-// Swatches offered for table cell styling
+// Swatches offered for table cell fill
 const CELL_COLORS = [
   { label: 'None', value: null },
   { label: 'Gray', value: '#f3f4f6' },
@@ -57,15 +88,32 @@ const CELL_COLORS = [
   { label: 'Red', value: '#fee2e2' },
 ]
 
+// Swatches offered for the table's border/stroke color
+const BORDER_COLORS = [
+  { label: 'Gray', value: '#d1d5db' },
+  { label: 'Black', value: '#1f2937' },
+  { label: 'Blue', value: '#3b82f6' },
+  { label: 'Green', value: '#16a34a' },
+  { label: 'Red', value: '#dc2626' },
+]
+
+// Options offered for the table's border/stroke width
+const BORDER_WIDTHS = [
+  { label: 'Thin', value: '1px' },
+  { label: 'Medium', value: '2px' },
+  { label: 'Thick', value: '3px' },
+]
+
 export function RichTextEditor({ value, onChange, placeholder, className }: Props) {
   const isInternalUpdate = useRef(false)
   const [showCellColors, setShowCellColors] = useState(false)
+  const [showBorderPanel, setShowBorderPanel] = useState(false)
 
   const editor = useEditor({
     extensions: [
       StarterKit,
       Placeholder.configure({ placeholder }),
-      Table.configure({
+      StyledTable.configure({
         resizable: true,
         HTMLAttributes: {
           class: 'rte-table',
@@ -137,6 +185,20 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Prop
     setShowCellColors(false)
   }
 
+  // Reads the current table's border attrs so the panel can show what's active
+  const currentBorderColor: string =
+    editor?.getAttributes('table')?.borderColor || '#d1d5db'
+  const currentBorderWidth: string =
+    editor?.getAttributes('table')?.borderWidth || '1px'
+
+  const applyBorderColor = (color: string) => {
+    editor?.chain().focus().updateAttributes('table', { borderColor: color }).run()
+  }
+
+  const applyBorderWidth = (width: string) => {
+    editor?.chain().focus().updateAttributes('table', { borderWidth: width }).run()
+  }
+
   return (
     <>
       {/* Table styles injected once */}
@@ -149,7 +211,7 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Prop
         }
         .rte-table th,
         .rte-table td {
-          border: 1px solid #d1d5db;
+          border: var(--table-border-width, 1px) solid var(--table-border-color, #d1d5db);
           padding: 6px 10px;
           text-align: left;
           vertical-align: top;
@@ -349,14 +411,17 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Prop
                 Split
               </ToolbarButton>
 
-              {/* Style the table: pick a background color for the current cell */}
+              {/* Cell fill color */}
               <div className="relative">
                 <ToolbarButton
-                  onClick={() => setShowCellColors((s) => !s)}
+                  onClick={() => {
+                    setShowCellColors((s) => !s)
+                    setShowBorderPanel(false)
+                  }}
                   active={showCellColors}
-                  title="Style cell"
+                  title="Cell fill color"
                 >
-                  🎨 Style
+                  🎨 Fill
                 </ToolbarButton>
                 {showCellColors && (
                   <div className="absolute z-10 top-full mt-1 left-0 flex gap-1 p-2 bg-white border rounded-md shadow-md">
@@ -370,6 +435,60 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Prop
                         style={{ backgroundColor: c.value ?? '#ffffff' }}
                       />
                     ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Border / stroke color + width — applies to the whole table */}
+              <div className="relative">
+                <ToolbarButton
+                  onClick={() => {
+                    setShowBorderPanel((s) => !s)
+                    setShowCellColors(false)
+                  }}
+                  active={showBorderPanel}
+                  title="Table borders"
+                >
+                  ▦ Borders
+                </ToolbarButton>
+                {showBorderPanel && (
+                  <div className="absolute z-10 top-full mt-1 left-0 w-56 p-3 bg-white border rounded-md shadow-md space-y-3">
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 mb-1.5">Stroke color</p>
+                      <div className="flex gap-1.5">
+                        {BORDER_COLORS.map((c) => (
+                          <button
+                            key={c.label}
+                            type="button"
+                            title={c.label}
+                            onClick={() => applyBorderColor(c.value)}
+                            className={`w-6 h-6 rounded-full border-2 ${
+                              currentBorderColor === c.value ? 'border-gray-900' : 'border-gray-200'
+                            }`}
+                            style={{ backgroundColor: c.value }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 mb-1.5">Stroke width</p>
+                      <div className="flex gap-1.5">
+                        {BORDER_WIDTHS.map((w) => (
+                          <button
+                            key={w.label}
+                            type="button"
+                            onClick={() => applyBorderWidth(w.value)}
+                            className={`px-2 py-1 rounded text-xs border ${
+                              currentBorderWidth === w.value
+                                ? 'border-gray-900 bg-gray-100 text-gray-900'
+                                : 'border-gray-200 text-gray-500 hover:bg-gray-50'
+                            }`}
+                          >
+                            {w.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
