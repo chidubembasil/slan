@@ -127,13 +127,39 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Prop
     editorProps: {
       transformPastedHTML(html) {
         // Strip Word/WPS junk but keep real formatting (bold, headings, lists, tables)
-        return html
+        let cleaned = html
           .replace(/<o:p>.*?<\/o:p>/gi, '')
           .replace(/<w:[^>]+>.*?<\/w:[^>]+>/gi, '')
           .replace(/<m:[^>]+>.*?<\/m:[^>]+>/gi, '')
           .replace(/style="[^"]*mso[^"]*"/gi, '')
           .replace(/<span[^>]*mso[^>]*>(.*?)<\/span>/gi, '$1')
           .replace(/class="Mso[^"]*"/gi, '')
+
+        // Word/WPS also write plain (non-"mso") inline border/padding styles
+        // directly on <table>/<tr>/<td>/<th> — e.g. `border-bottom:solid #000
+        // 1pt; border-top:none;...`. Those don't contain "mso" so the regexes
+        // above miss them, and since they're inline they win over our
+        // `.rte-table` CSS, producing a half-bordered table (only the stray
+        // bottom rule survives). Strip all inline style/border attributes off
+        // table structural tags so our stylesheet is the only thing drawing
+        // the grid, regardless of which app the table was copied from.
+        try {
+          const doc = new DOMParser().parseFromString(cleaned, 'text/html')
+          doc.querySelectorAll('table, tr, td, th').forEach((el) => {
+            el.removeAttribute('style')
+            el.removeAttribute('border')
+            el.removeAttribute('cellpadding')
+            el.removeAttribute('cellspacing')
+            el.removeAttribute('width')
+            el.removeAttribute('valign')
+          })
+          doc.querySelectorAll('table').forEach((el) => el.classList.add('rte-table'))
+          cleaned = doc.body.innerHTML
+        } catch {
+          // If DOM parsing fails for any reason, fall back to the regex-only cleanup above
+        }
+
+        return cleaned
       },
     },
     onUpdate({ editor }) {
@@ -211,8 +237,8 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Prop
         }
         .rte-table th,
         .rte-table td {
-          border: var(--table-border-width, 1px) solid var(--table-border-color, #d1d5db);
-          padding: 6px 10px;
+          border: var(--table-border-width, 1px) solid var(--table-border-color, #d1d5db) !important;
+          padding: 6px 10px !important;
           text-align: left;
           vertical-align: top;
           min-width: 60px;
@@ -562,7 +588,7 @@ function ToolbarButton({
             ? 'text-red-500 hover:bg-red-50'
             : active
             ? 'bg-gray-200 text-gray-900'
-            : 'text-gray-600 hover:bg-gray-100' 
+            : 'text-gray-600 hover:bg-gray-100'
         }`}
     >
       {children}
