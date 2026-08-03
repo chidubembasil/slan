@@ -1,21 +1,51 @@
-import { useEditor, EditorContent } from '@tiptap/react'
-import StarterKit from '@tiptap/starter-kit'
-import Placeholder from '@tiptap/extension-placeholder'
-import { Table } from '@tiptap/extension-table'
-import TableRow from '@tiptap/extension-table-row'
-import TableHeader from '@tiptap/extension-table-header'
-import TableCell from '@tiptap/extension-table-cell'
-import { DOMParser as ProseMirrorDOMParser } from '@tiptap/pm/model'
-import { useEffect, useRef, useState } from 'react'
-
-// Minimal HTML-escaping for text we're about to inject into a hand-built
-// <table> string (from tab-delimited plain text paste — see handlePaste below).
-function escapeHtml(str: string) {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-}
+import {
+  $getRoot,
+  $getSelection,
+  $isRangeSelection,
+  $createParagraphNode,
+  $createTextNode,
+  $createLineBreakNode,
+  FORMAT_TEXT_COMMAND,
+  UNDO_COMMAND,
+  REDO_COMMAND,
+  type EditorState,
+  type EditorConfig,
+  type LexicalEditor,
+  type LexicalNode,
+  type NodeKey,
+  type DOMConversionMap,
+  type DOMExportOutput,
+  type Spread,
+} from 'lexical'
+import { $generateHtmlFromNodes, $generateNodesFromDOM } from '@lexical/html'
+import { LexicalComposer } from '@lexical/react/LexicalComposer'
+import { RichTextPlugin } from '@lexical/react/LexicalRichTextPlugin'
+import { ContentEditable } from '@lexical/react/LexicalContentEditable'
+import { HistoryPlugin } from '@lexical/react/LexicalHistoryPlugin'
+import { ListPlugin } from '@lexical/react/LexicalListPlugin'
+import { TablePlugin } from '@lexical/react/LexicalTablePlugin'
+import { OnChangePlugin } from '@lexical/react/LexicalOnChangePlugin'
+import {LexicalErrorBoundary} from '@lexical/react/LexicalErrorBoundary'
+import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
+import { HeadingNode, QuoteNode, $createHeadingNode, $createQuoteNode } from '@lexical/rich-text'
+import {
+  ListNode,
+  ListItemNode,
+  INSERT_UNORDERED_LIST_COMMAND,
+  INSERT_ORDERED_LIST_COMMAND,
+} from '@lexical/list'
+import { CodeNode, $createCodeNode } from '@lexical/code'
+import {
+  TableNode,
+  TableCellNode,
+  TableRowNode,
+  INSERT_TABLE_COMMAND,
+  $isTableSelection,
+  type SerializedTableNode,
+} from '@lexical/table'
+import { $setBlocksType } from '@lexical/selection'
+import { $getNearestNodeOfType, mergeRegister } from '@lexical/utils'
+import { useEffect, useRef, useState, useCallback } from 'react'
 
 interface Props {
   value: string
@@ -24,71 +54,193 @@ interface Props {
   className?: string
 }
 
-// ── Extend Table so the whole table can carry a border color + width ──
-// Both are packed into one JSON attribute (rather than two separate ones)
-// because Tiptap's renderHTML merges attribute outputs shallowly — two
-// attributes each returning a `style` key would clobber one another.
-const StyledTable = Table.extend({
-  addAttributes() {
+// ── Strip Word/WPS junk before it hits the DOM parser ──
+function cleanPastedHtml(html: string): string {
+  return html
+    .replace(/<o:p>.*?<\/o:p>/gi, '')
+    .replace(/<w:[^>]+>.*?<\/w:[^>]+>/gi, '')
+    .replace(/<m:[^>]+>.*?<\/m:[^>]+>/gi, '')
+    .replace(/style="[^"]*mso[^"]*"/gi, '')
+    .replace(/<span[^>]*mso[^>]*>(.*?)<\/span>/gi, '$1')
+    .replace(/class="Mso[^"]*"/gi, '')
+}
+
+// ── Guarantees pasted content lands as real paragraphs ──
+// Some sources (plain web copy, notes apps) hand over HTML that has no <p>
+// tags at all — either bare text, <span>/<br> chains, or top-level <div>s
+// used as paragraph containers. Lexical's HTML importer expects real <p>
+// elements to create separate ParagraphNodes, so without this the whole
+// article can land as one flat block. This promotes <div> paragraphs to
+// <p>, and wraps any remaining loose inline content into <p> tags split on
+// double line breaks.
+function ensureParagraphs(html: string): string {
+  try {
+    const doc = new DOMParser().parseFromString(html, 'text/html')
+    const body = doc.body
+    const blockTags = new Set([
+      'P', 'DIV', 'TABLE', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6',
+      'UL', 'OL', 'LI', 'BLOCKQUOTE', 'PRE',
+    ])
+
+    // Promote simple top-level <div> paragraphs to <p> (common when
+    // copying from web pages that use divs instead of paragraph tags).
+    Array.from(body.children).forEach((el) => {
+      if (
+        el.tagName === 'DIV' &&
+        !el.querySelector('table, ul, ol, blockquote, div, h1, h2, h3, h4, h5, h6')
+      ) {
+        const p = doc.createElement('p')
+        p.innerHTML = el.innerHTML
+        el.replaceWith(p)
+      }
+    })
+
+    // If there's any stray top-level inline content (bare text nodes, or
+    // elements that aren't block-level), wrap the whole body's content into
+    // paragraphs split on double <br> — this is the "one big blob" case.
+    const hasLooseInline = Array.from(body.childNodes).some((n) => {
+      if (n.nodeType === Node.TEXT_NODE) return !!n.textContent?.trim()
+      const tag = (n as Element).tagName
+      return tag ? !blockTags.has(tag) : false
+    })
+
+    if (hasLooseInline) {
+      const innerHtml = body.innerHTML
+      const chunks = innerHtml.split(/(?:<br\s*\/?>\s*){2,}/i)
+      body.innerHTML = chunks
+        .map((chunk) => chunk.trim())
+        .filter(Boolean)
+        .map((chunk) => `<p>${chunk}</p>`)
+        .join('')
+    }
+
+    return body.innerHTML
+  } catch {
+    return html
+  }
+}
+
+// ── Custom TableNode: adds a per-table border color + width ──
+// Packed as CSS custom properties on the table element (--table-border-color,
+// --table-border-width) so a single style attribute drives every cell's
+// border via the .rte-table CSS below — same approach as the Tiptap version.
+export type SerializedStyledTableNode = Spread<
+  { borderColor: string; borderWidth: string },
+  SerializedTableNode
+>
+
+export class StyledTableNode extends TableNode {
+  __borderColor: string
+  __borderWidth: string
+
+  constructor(borderColor: string = '#000000', borderWidth: string = '1px', key?: NodeKey) {
+    super(key)
+    this.__borderColor = borderColor
+    this.__borderWidth = borderWidth
+  }
+
+  static getType(): string {
+    return 'table'
+  }
+
+  static clone(node: StyledTableNode): StyledTableNode {
+    return new StyledTableNode(node.__borderColor, node.__borderWidth, node.__key)
+  }
+
+  static importJSON(serializedNode: SerializedStyledTableNode): StyledTableNode {
+    return new StyledTableNode(serializedNode.borderColor, serializedNode.borderWidth)
+  }
+
+  exportJSON(): SerializedStyledTableNode {
     return {
-      ...this.parent?.(),
-      borderColor: {
-        default: '#d1d5db',
-        parseHTML: (element) =>
-          element.style.getPropertyValue('--table-border-color') || null,
-        renderHTML: (attributes) => {
-          const color = attributes.borderColor || '#d1d5db'
-          const width = attributes.borderWidth || '1px'
-          return {
-            style: `--table-border-color: ${color}; --table-border-width: ${width};`,
-          }
-        },
-      },
-      borderWidth: {
-        default: '1px',
-        parseHTML: (element) =>
-          element.style.getPropertyValue('--table-border-width') || null,
-        // No renderHTML here on purpose — borderColor's renderHTML above
-        // already writes both variables into a single style string.
+      ...super.exportJSON(),
+      borderColor: this.__borderColor,
+      borderWidth: this.__borderWidth,
+    }
+  }
+
+  getBorderColor(): string {
+    return this.getLatest().__borderColor
+  }
+
+  getBorderWidth(): string {
+    return this.getLatest().__borderWidth
+  }
+
+  setBorderColor(color: string): void {
+    this.getWritable().__borderColor = color
+  }
+
+  setBorderWidth(width: string): void {
+    this.getWritable().__borderWidth = width
+  }
+
+  createDOM(config: EditorConfig, editor?: LexicalEditor): HTMLElement {
+    const dom = super.createDOM(config, editor)
+    dom.classList.add('rte-table')
+    dom.style.setProperty('--table-border-color', this.__borderColor)
+    dom.style.setProperty('--table-border-width', this.__borderWidth)
+    return dom
+  }
+
+
+updateDOM(prevNode: this, dom: HTMLElement, config: EditorConfig): boolean {
+  const updated = super.updateDOM(prevNode, dom, config)
+  if (
+    prevNode.__borderColor !== this.__borderColor ||
+    prevNode.__borderWidth !== this.__borderWidth
+  ) {
+    dom.style.setProperty('--table-border-color', this.__borderColor)
+    dom.style.setProperty('--table-border-width', this.__borderWidth)
+  }
+  return updated
+}
+
+  exportDOM(editor: LexicalEditor): DOMExportOutput {
+    const output = super.exportDOM(editor)
+    const element = output.element
+    if (element instanceof HTMLElement) {
+      element.classList.add('rte-table')
+      element.style.setProperty('--table-border-color', this.__borderColor)
+      element.style.setProperty('--table-border-width', this.__borderWidth)
+    }
+    return output
+  }
+
+  static importDOM(): DOMConversionMap | null {
+    const parentImport = TableNode.importDOM?.()
+    const tableImport = parentImport?.table
+    if (!tableImport) return parentImport ?? null
+    return {
+      ...parentImport,
+      table: (node: HTMLElement) => {
+        const parentConversion = tableImport(node)
+        if (!parentConversion) return null
+        return {
+          ...parentConversion,
+          conversion: (element: HTMLElement) => {
+            const output = parentConversion.conversion(element)
+            if (!output || !output.node) return output
+            const borderColor = element.style.getPropertyValue('--table-border-color').trim() || '#000000'
+            const borderWidth = element.style.getPropertyValue('--table-border-width').trim() || '1px'
+            const tableNode = output.node as StyledTableNode
+            if (typeof tableNode.setBorderColor === 'function') {
+              tableNode.setBorderColor(borderColor)
+              tableNode.setBorderWidth(borderWidth)
+            }
+            return output
+          },
+        }
       },
     }
-  },
-})
+  }
+}
 
-// ── Extend TableCell so each cell can carry its own background color ──
-const StyledTableCell = TableCell.extend({
-  addAttributes() {
-    return {
-      ...this.parent?.(),
-      backgroundColor: {
-        default: null,
-        parseHTML: (element) => element.style.backgroundColor || null,
-        renderHTML: (attributes) => {
-          if (!attributes.backgroundColor) return {}
-          return { style: `background-color: ${attributes.backgroundColor}` }
-        },
-      },
-    }
-  },
-})
+export function $isStyledTableNode(node: LexicalNode | null | undefined): node is StyledTableNode {
+  return node instanceof StyledTableNode
+}
 
-const StyledTableHeader = TableHeader.extend({
-  addAttributes() {
-    return {
-      ...this.parent?.(),
-      backgroundColor: {
-        default: null,
-        parseHTML: (element) => element.style.backgroundColor || null,
-        renderHTML: (attributes) => {
-          if (!attributes.backgroundColor) return {}
-          return { style: `background-color: ${attributes.backgroundColor}` }
-        },
-      },
-    }
-  },
-})
-
-// Swatches offered for table cell fill
+// Swatches offered for cell fill color
 const CELL_COLORS = [
   { label: 'None', value: null },
   { label: 'Gray', value: '#f3f4f6' },
@@ -98,269 +250,556 @@ const CELL_COLORS = [
   { label: 'Red', value: '#fee2e2' },
 ]
 
-// Swatches offered for the table's border/stroke color
+// Swatches offered for table border color — black is the default
 const BORDER_COLORS = [
+  { label: 'Black', value: '#000000' },
   { label: 'Gray', value: '#d1d5db' },
-  { label: 'Black', value: '#1f2937' },
   { label: 'Blue', value: '#3b82f6' },
   { label: 'Green', value: '#16a34a' },
   { label: 'Red', value: '#dc2626' },
 ]
 
-// Options offered for the table's border/stroke width
 const BORDER_WIDTHS = [
   { label: 'Thin', value: '1px' },
   { label: 'Medium', value: '2px' },
   { label: 'Thick', value: '3px' },
 ]
 
-// ── Shared table cleanup ──
-// Used both when pasting AND when loading already-saved content into the
-// editor. Word/WPS write inconsistent per-cell border styles that, being
-// inline, override our `.rte-table` grid CSS — producing tables with only a
-// stray border on one side. This walks any <table> in the given HTML,
-// captures a representative stroke color/width from whatever the source
-// used, keeps each cell's own background-color, and drops the rest of the
-// noise (fixed widths, padding, mso leftovers, inconsistent per-side borders).
-// Running this on LOAD too (not just paste) matters because content that was
-// already saved to the database before this cleanup existed would otherwise
-// stay broken forever — redeploying the editor code can't retroactively fix
-// HTML that's already stored server-side.
-function sanitizeTableHtml(html: string): string {
-  if (!html || !/<table/i.test(html)) return html
-
-  try {
-    const doc = new DOMParser().parseFromString(html, 'text/html')
-
-    const extractBorder = (styleText: string): { color?: string; width?: string } => {
-      if (!styleText || /:\s*none|:\s*hidden/i.test(styleText)) return {}
-      const colorMatch = styleText.match(/#[0-9a-fA-F]{3,8}|rgb\([^)]*\)|windowtext/i)
-      const widthMatch = styleText.match(/(\d+(?:\.\d+)?)(pt|px)/i)
-      return {
-        color: colorMatch
-          ? colorMatch[0].toLowerCase() === 'windowtext'
-            ? '#000000'
-            : colorMatch[0]
-          : undefined,
-        width: widthMatch ? `${widthMatch[1]}${widthMatch[2]}` : undefined,
-      }
-    }
-
-    doc.querySelectorAll('table').forEach((table) => {
-      // Already-clean tables (our own saved output, from a previous run of
-      // this same cleanup) carry the CSS vars directly — leave those alone
-      // rather than re-detecting from cells.
-      const tableEl = table as HTMLElement
-      const alreadyStyled =
-        tableEl.style.getPropertyValue('--table-border-color') ||
-        tableEl.style.getPropertyValue('--table-border-width')
-
-      let detectedColor: string | undefined
-      let detectedWidth: string | undefined
-      if (!alreadyStyled) {
-        table.querySelectorAll('td, th').forEach((cell) => {
-          if (detectedColor && detectedWidth) return
-          const styleAttr = (cell as HTMLElement).getAttribute('style') || ''
-          if (/border/i.test(styleAttr)) {
-            const { color, width } = extractBorder(styleAttr)
-            if (color && !detectedColor) detectedColor = color
-            if (width && !detectedWidth) detectedWidth = width
-          }
-        })
-      }
-
-      // Clean every cell: keep background-color only, drop the rest
-      // (borders, padding, mso leftovers, fixed widths, etc.)
-      table.querySelectorAll('tr, td, th').forEach((el) => {
-        const element = el as HTMLElement
-        const bg = element.style.backgroundColor
-        element.removeAttribute('style')
-        element.removeAttribute('border')
-        element.removeAttribute('cellpadding')
-        element.removeAttribute('cellspacing')
-        element.removeAttribute('width')
-        element.removeAttribute('valign')
-        if (bg) element.style.backgroundColor = bg
-      })
-
-      const preservedColor = alreadyStyled
-        ? tableEl.style.getPropertyValue('--table-border-color')
-        : detectedColor
-      const preservedWidth = alreadyStyled
-        ? tableEl.style.getPropertyValue('--table-border-width')
-        : detectedWidth
-
-      tableEl.removeAttribute('style')
-      tableEl.removeAttribute('border')
-      tableEl.removeAttribute('cellpadding')
-      tableEl.removeAttribute('cellspacing')
-      tableEl.removeAttribute('width')
-      tableEl.classList.add('rte-table')
-      if (preservedColor) tableEl.style.setProperty('--table-border-color', preservedColor)
-      if (preservedWidth) tableEl.style.setProperty('--table-border-width', preservedWidth)
-    })
-
-    return doc.body.innerHTML
-  } catch {
-    // If DOM parsing fails for any reason, return the input untouched
-    return html
-  }
+const theme = {
+  heading: { h2: 'rte-h2', h3: 'rte-h3' },
+  list: { ul: 'rte-ul', ol: 'rte-ol', listitem: 'rte-li' },
+  quote: 'rte-quote',
+  code: 'rte-code',
+  text: { bold: 'rte-bold', italic: 'rte-italic', strikethrough: 'rte-strike' },
+  table: 'rte-table',
+  tableCell: 'rte-table-cell',
+  tableCellHeader: 'rte-table-cell-header',
+  tableRow: 'rte-table-row',
 }
 
-export function RichTextEditor({ value, onChange, placeholder, className }: Props) {
-  const isInternalUpdate = useRef(false)
-  const [showCellColors, setShowCellColors] = useState(false)
-  const [showBorderPanel, setShowBorderPanel] = useState(false)
+function onError(error: Error) {
+  console.error(error)
+}
 
-  const editor = useEditor({
-    extensions: [
-      StarterKit,
-      Placeholder.configure({ placeholder }),
-      StyledTable.configure({
-        resizable: true,
-        HTMLAttributes: {
-          class: 'rte-table',
-        },
-      }),
-      TableRow,
-      StyledTableHeader,
-      StyledTableCell,
-    ],
-    // Run existing saved content through the same table cleanup used for
-    // paste, so units saved before this fix existed get repaired the moment
-    // they're opened (not just newly pasted tables).
-    content: sanitizeTableHtml(value),
-    editorProps: {
-      // Some sources — or some OS/browser clipboard combos — don't hand over
-      // real <table> HTML at all, just plain text with columns separated by
-      // tabs and rows separated by line breaks (this is how Excel, Google
-      // Sheets, and sometimes Word/WPS fall back when the HTML clipboard
-      // format isn't available). Detect that shape and build an actual table
-      // node from it, instead of letting it land as plain paragraphs with no
-      // structure left to style at all.
-      handlePaste(view, event) {
-        const html = event.clipboardData?.getData('text/html') || ''
-        if (/<table/i.test(html)) return false // real table HTML — let transformPastedHTML handle it
-
-        const text = event.clipboardData?.getData('text/plain') || ''
-        if (!text.includes('\t')) return false // no tab columns — not table-shaped
-
-        const rows = text
-          .replace(/\r\n/g, '\n')
-          .split('\n')
-          .filter((r) => r.trim().length > 0)
-          .map((r) => r.split('\t'))
-
-        // Require at least 2 rows, with at least one having 2+ columns —
-        // otherwise this is probably just a stray tab in normal text.
-        if (rows.length < 2 || !rows.some((r) => r.length > 1)) return false
-
-        const cols = Math.max(...rows.map((r) => r.length))
-        const tableHtml =
-          '<table><tbody>' +
-          rows
-            .map((r, i) => {
-              const tag = i === 0 ? 'th' : 'td'
-              const cells = Array.from(
-                { length: cols },
-                (_, c) => `<${tag}>${escapeHtml(r[c] ?? '')}</${tag}>`
-              ).join('')
-              return `<tr>${cells}</tr>`
-            })
-            .join('') +
-          '</tbody></table>'
-
-        try {
-          const dom = new window.DOMParser().parseFromString(tableHtml, 'text/html')
-          const parser = ProseMirrorDOMParser.fromSchema(view.state.schema)
-          const slice = parser.parseSlice(dom.body)
-          view.dispatch(view.state.tr.replaceSelection(slice))
-        } catch {
-          return false // anything goes wrong — fall back to default paste behavior
-        }
-
-        event.preventDefault()
-        return true
-      },
-      transformPastedHTML(html) {
-        // Strip Word/WPS junk but keep real formatting (bold, headings, lists, tables)
-        const cleaned = html
-          .replace(/<o:p>.*?<\/o:p>/gi, '')
-          .replace(/<w:[^>]+>.*?<\/w:[^>]+>/gi, '')
-          .replace(/<m:[^>]+>.*?<\/m:[^>]+>/gi, '')
-          .replace(/style="[^"]*mso[^"]*"/gi, '')
-          .replace(/<span[^>]*mso[^>]*>(.*?)<\/span>/gi, '$1')
-          .replace(/class="Mso[^"]*"/gi, '')
-
-        return sanitizeTableHtml(cleaned)
-      },
-    },
-    onUpdate({ editor }) {
-      isInternalUpdate.current = true
-      onChange(editor.getHTML())
-    },
-  })
+// ── Loads initial `value` HTML into the editor once, and re-syncs it
+//    whenever `value` changes from outside ──
+function InitialContentPlugin({
+  value,
+  isInternalUpdate,
+  lastHtml,
+}: {
+  value: string
+  isInternalUpdate: React.MutableRefObject<boolean>
+  lastHtml: React.MutableRefObject<string>
+}) {
+  const [editor] = useLexicalComposerContext()
 
   useEffect(() => {
-    if (!editor) return
+    editor.update(() => {
+      const dom = new DOMParser().parseFromString(ensureParagraphs(value || ''), 'text/html')
+      const nodes = $generateNodesFromDOM(editor, dom)
+      const root = $getRoot()
+      root.clear()
+      if (nodes.length === 0) {
+        root.append($createParagraphNode())
+      } else {
+        nodes.forEach((n) => root.append(n))
+      }
+    })
+    lastHtml.current = value
+    // run only once on mount for initial content
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
     if (isInternalUpdate.current) {
       isInternalUpdate.current = false
       return
     }
-    if (value !== editor.getHTML()) {
-      editor.commands.setContent(sanitizeTableHtml(value) || '')
+    if (value !== lastHtml.current) {
+      editor.update(() => {
+        const dom = new DOMParser().parseFromString(ensureParagraphs(value || ''), 'text/html')
+        const nodes = $generateNodesFromDOM(editor, dom)
+        const root = $getRoot()
+        root.clear()
+        if (nodes.length === 0) {
+          root.append($createParagraphNode())
+        } else {
+          nodes.forEach((n) => root.append(n))
+        }
+      })
+      lastHtml.current = value
     }
-  }, [value, editor])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value])
 
-  const isInTable = editor?.isActive('table') ?? false
+  return null
+}
 
-  // Convert the current selection (if any) into a table.
-  // If text is selected, that text becomes the content of the first cell.
-  // If nothing is selected, a blank table is inserted at the cursor.
-  const convertSelectionToTable = () => {
-    if (!editor) return
-    const { from, to, empty } = editor.state.selection
-    const selectedText = empty ? '' : editor.state.doc.textBetween(from, to, '\n')
+// ── Emits HTML on every change ──
+function OnChangeHtmlPlugin({
+  onChange,
+  isInternalUpdate,
+  lastHtml,
+}: {
+  onChange: (html: string) => void
+  isInternalUpdate: React.MutableRefObject<boolean>
+  lastHtml: React.MutableRefObject<string>
+}) {
+  const handleChange = useCallback(
+    (_editorState: EditorState, editor: LexicalEditor) => {
+      editor.getEditorState().read(() => {
+        const html = $generateHtmlFromNodes(editor, null)
+        isInternalUpdate.current = true
+        lastHtml.current = html
+        onChange(html)
+      })
+    },
+    [onChange, isInternalUpdate, lastHtml]
+  )
 
-    const chain = editor.chain().focus()
-    if (!empty) chain.deleteSelection()
-    chain.insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
+  return <OnChangePlugin onChange={handleChange} ignoreSelectionChange />
+}
 
-    // insertTable places the cursor inside the first cell automatically,
-    // so we can drop the captured text right back in.
-    if (selectedText) {
-      editor.chain().focus().insertContent(selectedText).run()
+// ── Paste handling: cleans Word/WPS junk, guarantees real paragraphs,
+//    and turns plain-text articles (no HTML on the clipboard at all) into
+//    one <p> per paragraph instead of a single blob. ──
+function PasteCleanupPlugin() {
+  const [editor] = useLexicalComposerContext()
+
+  useEffect(() => {
+    const rootElement = editor.getRootElement()
+    if (!rootElement) return
+
+    const handlePaste = (event: ClipboardEvent) => {
+      const html = event.clipboardData?.getData('text/html')
+
+      if (html) {
+        const prepared = ensureParagraphs(cleanPastedHtml(html))
+        event.preventDefault()
+        event.stopPropagation()
+        editor.update(() => {
+          const dom = new DOMParser().parseFromString(prepared, 'text/html')
+          const nodes = $generateNodesFromDOM(editor, dom)
+          const selection = $getSelection()
+          if ($isRangeSelection(selection)) {
+            selection.insertNodes(nodes)
+          } else {
+            const root = $getRoot()
+            nodes.forEach((n) => root.append(n))
+          }
+        })
+        return
+      }
+
+      // No HTML on the clipboard — plain text paste. Split on blank lines so
+      // each paragraph of the article becomes its own paragraph node.
+      const text = event.clipboardData?.getData('text/plain') || ''
+      if (!text.trim()) return
+
+      event.preventDefault()
+      event.stopPropagation()
+
+      editor.update(() => {
+        const selection = $getSelection()
+        const paragraphs = text
+          .replace(/\r\n/g, '\n')
+          .split(/\n{2,}/)
+          .map((p) => p.trim())
+          .filter(Boolean)
+
+        const paragraphNodes = (paragraphs.length > 0 ? paragraphs : [text]).map((para) => {
+          const p = $createParagraphNode()
+          para.split('\n').forEach((line, i) => {
+            if (i > 0) p.append($createLineBreakNode())
+            if (line) p.append($createTextNode(line))
+          })
+          return p
+        })
+
+        if ($isRangeSelection(selection)) {
+          selection.insertNodes(paragraphNodes)
+        } else {
+          const root = $getRoot()
+          paragraphNodes.forEach((p) => root.append(p))
+        }
+      })
     }
+
+    rootElement.addEventListener('paste', handlePaste, true)
+    return () => rootElement.removeEventListener('paste', handlePaste, true)
+  }, [editor])
+
+  return null
+}
+
+// ── Toolbar ──
+function Toolbar() {
+  const [editor] = useLexicalComposerContext()
+  const [isBold, setIsBold] = useState(false)
+  const [isItalic, setIsItalic] = useState(false)
+  const [isStrike, setIsStrike] = useState(false)
+  const [blockType, setBlockType] = useState('paragraph')
+  const [isInTable, setIsInTable] = useState(false)
+  const [currentBorderColor, setCurrentBorderColor] = useState('#000000')
+  const [currentBorderWidth, setCurrentBorderWidth] = useState('1px')
+  const [showCellColors, setShowCellColors] = useState(false)
+  const [showBorderPanel, setShowBorderPanel] = useState(false)
+
+  useEffect(() => {
+    return mergeRegister(
+      editor.registerUpdateListener(({ editorState }) => {
+        editorState.read(() => {
+          const selection = $getSelection()
+          if ($isRangeSelection(selection)) {
+            setIsBold(selection.hasFormat('bold'))
+            setIsItalic(selection.hasFormat('italic'))
+            setIsStrike(selection.hasFormat('strikethrough'))
+
+            const anchorNode = selection.anchor.getNode()
+            const element =
+              anchorNode.getKey() === 'root' ? anchorNode : anchorNode.getTopLevelElementOrThrow()
+            const type = element.getType()
+            if (type === 'heading') {
+              // @ts-expect-error - getTag exists on HeadingNode
+              setBlockType(`heading-${element.getTag?.()}`)
+            } else {
+              setBlockType(type)
+            }
+
+            const tableCell = $getNearestNodeOfType(anchorNode, TableCellNode)
+            const inTable = !!tableCell || $isTableSelection(selection)
+            setIsInTable(inTable)
+
+            if (inTable) {
+              const cellNode = tableCell ?? null
+              const tableNode = cellNode
+                ? $getNearestNodeOfType(cellNode, TableNode)
+                : null
+              if (tableNode && $isStyledTableNode(tableNode)) {
+                setCurrentBorderColor(tableNode.getBorderColor())
+                setCurrentBorderWidth(tableNode.getBorderWidth())
+              }
+            }
+          } else if ($isTableSelection(selection)) {
+            setIsInTable(true)
+          }
+        })
+      })
+    )
+  }, [editor])
+
+  const formatText = (format: 'bold' | 'italic' | 'strikethrough') => {
+    editor.dispatchCommand(FORMAT_TEXT_COMMAND, format)
   }
 
-  // Convert the current selection to a plain paragraph
-  // (clears headings, lists, blockquotes, code blocks, etc. on it).
-  const convertSelectionToParagraph = () => {
-    editor?.chain().focus().setParagraph().run()
+  const toggleHeading = (level: 'h2' | 'h3') => {
+    editor.update(() => {
+      const selection = $getSelection()
+      if ($isRangeSelection(selection)) {
+        if (blockType === `heading-${level}`) {
+          $setBlocksType(selection, () => $createParagraphNode())
+        } else {
+          $setBlocksType(selection, () => $createHeadingNode(level))
+        }
+      }
+    })
   }
 
+  const setParagraph = () => {
+    editor.update(() => {
+      const selection = $getSelection()
+      if ($isRangeSelection(selection)) {
+        $setBlocksType(selection, () => $createParagraphNode())
+      }
+    })
+  }
+
+  const toggleBulletList = () => editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined)
+  const toggleOrderedList = () => editor.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined)
+
+  const toggleBlockquote = () => {
+    editor.update(() => {
+      const selection = $getSelection()
+      if ($isRangeSelection(selection)) {
+        if (blockType === 'quote') {
+          $setBlocksType(selection, () => $createParagraphNode())
+        } else {
+          $setBlocksType(selection, () => $createQuoteNode())
+        }
+      }
+    })
+  }
+
+  const toggleCodeBlock = () => {
+    editor.update(() => {
+      const selection = $getSelection()
+      if ($isRangeSelection(selection)) {
+        if (blockType === 'code') {
+          $setBlocksType(selection, () => $createParagraphNode())
+        } else {
+          $setBlocksType(selection, () => $createCodeNode())
+        }
+      }
+    })
+  }
+
+  const insertTable = () => {
+    editor.dispatchCommand(INSERT_TABLE_COMMAND, { rows: '3', columns: '3', includeHeaders: true })
+  }
+
+  // Applies fill color to every selected cell (multi-cell drag) or the
+  // single cell the cursor is in.
   const applyCellColor = (color: string | null) => {
-    editor?.chain().focus().setCellAttribute('backgroundColor', color).run()
+    editor.update(() => {
+      const selection = $getSelection()
+      if ($isTableSelection(selection)) {
+        selection.getNodes().forEach((node) => {
+          if (node instanceof TableCellNode) node.setBackgroundColor(color)
+        })
+      } else if ($isRangeSelection(selection)) {
+        const anchorNode = selection.anchor.getNode()
+        const cell = $getNearestNodeOfType(anchorNode, TableCellNode)
+        cell?.setBackgroundColor(color)
+      }
+    })
     setShowCellColors(false)
   }
 
-  // Reads the current table's border attrs so the panel can show what's active
-  const currentBorderColor: string =
-    editor?.getAttributes('table')?.borderColor || '#d1d5db'
-  const currentBorderWidth: string =
-    editor?.getAttributes('table')?.borderWidth || '1px'
+  const withCurrentTable = (fn: (table: StyledTableNode) => void) => {
+    editor.update(() => {
+      const selection = $getSelection()
+      const anchorNode = $isRangeSelection(selection)
+        ? selection.anchor.getNode()
+        : $isTableSelection(selection)
+        ? selection.getNodes()[0]
+        : null
+      if (!anchorNode) return
+      const cell = $getNearestNodeOfType(anchorNode, TableCellNode)
+      if (!cell) return
+      const table = $getNearestNodeOfType(cell, TableNode)
+      if (table && $isStyledTableNode(table)) fn(table)
+    })
+  }
 
   const applyBorderColor = (color: string) => {
-    editor?.chain().focus().updateAttributes('table', { borderColor: color }).run()
+    withCurrentTable((table) => table.setBorderColor(color))
+    setCurrentBorderColor(color)
   }
 
   const applyBorderWidth = (width: string) => {
-    editor?.chain().focus().updateAttributes('table', { borderWidth: width }).run()
+    withCurrentTable((table) => table.setBorderWidth(width))
+    setCurrentBorderWidth(width)
+  }
+
+  const addColumn = (before: boolean) =>
+    import('@lexical/table').then(({ $insertTableColumn__EXPERIMENTAL }) =>
+      editor.update(() => $insertTableColumn__EXPERIMENTAL(before))
+    )
+  const addRow = (before: boolean) =>
+    import('@lexical/table').then(({ $insertTableRow__EXPERIMENTAL }) =>
+      editor.update(() => $insertTableRow__EXPERIMENTAL(before))
+    )
+  const deleteColumn = () =>
+    import('@lexical/table').then(({ $deleteTableColumn__EXPERIMENTAL }) =>
+      editor.update(() => $deleteTableColumn__EXPERIMENTAL())
+    )
+  const deleteRow = () =>
+    import('@lexical/table').then(({ $deleteTableRow__EXPERIMENTAL }) =>
+      editor.update(() => $deleteTableRow__EXPERIMENTAL())
+    )
+  const deleteTable = () => withCurrentTable((table) => table.remove())
+  const toggleHeaderRow = () => {
+    editor.update(() => {
+      const selection = $getSelection()
+      const anchorNode = $isRangeSelection(selection) ? selection.anchor.getNode() : null
+      if (!anchorNode) return
+      const cell = $getNearestNodeOfType(anchorNode, TableCellNode)
+      if (!cell) return
+      cell.setHeaderStyles(cell.getHeaderStyles() === 0 ? 1 : 0)
+    })
+  }
+
+  return (
+    <div className="flex flex-wrap gap-1 p-2 border-b bg-background">
+      <ToolbarButton onClick={() => formatText('bold')} active={isBold} title="Bold">
+        <b>B</b>
+      </ToolbarButton>
+      <ToolbarButton onClick={() => formatText('italic')} active={isItalic} title="Italic">
+        <i>I</i>
+      </ToolbarButton>
+      <ToolbarButton onClick={() => formatText('strikethrough')} active={isStrike} title="Strikethrough">
+        <s>S</s>
+      </ToolbarButton>
+
+      <Divider />
+
+      <ToolbarButton onClick={() => toggleHeading('h2')} active={blockType === 'heading-h2'} title="Heading">
+        H2
+      </ToolbarButton>
+      <ToolbarButton onClick={() => toggleHeading('h3')} active={blockType === 'heading-h3'} title="Subheading">
+        H3
+      </ToolbarButton>
+      <ToolbarButton onClick={setParagraph} active={blockType === 'paragraph'} title="Convert to paragraph">
+        ¶ Paragraph
+      </ToolbarButton>
+
+      <Divider />
+
+      <ToolbarButton onClick={toggleBulletList} active={blockType === 'ul'} title="Bullet list">
+        • List
+      </ToolbarButton>
+      <ToolbarButton onClick={toggleOrderedList} active={blockType === 'ol'} title="Numbered list">
+        1. List
+      </ToolbarButton>
+      <ToolbarButton onClick={toggleBlockquote} active={blockType === 'quote'} title="Blockquote">
+        ❝
+      </ToolbarButton>
+      <ToolbarButton onClick={toggleCodeBlock} active={blockType === 'code'} title="Code block">
+        {'</>'}
+      </ToolbarButton>
+
+      <Divider />
+
+      {!isInTable && (
+        <ToolbarButton onClick={insertTable} active={false} title="Insert table">
+          ⊞ Table
+        </ToolbarButton>
+      )}
+
+      {isInTable && (
+        <>
+          <ToolbarButton onClick={() => addColumn(true)} active={false} title="Add column before">←Col</ToolbarButton>
+          <ToolbarButton onClick={() => addColumn(false)} active={false} title="Add column after">Col→</ToolbarButton>
+          <ToolbarButton onClick={deleteColumn} active={false} title="Delete column">✕Col</ToolbarButton>
+          <ToolbarButton onClick={() => addRow(true)} active={false} title="Add row before">↑Row</ToolbarButton>
+          <ToolbarButton onClick={() => addRow(false)} active={false} title="Add row after">Row↓</ToolbarButton>
+          <ToolbarButton onClick={deleteRow} active={false} title="Delete row">✕Row</ToolbarButton>
+          <ToolbarButton onClick={toggleHeaderRow} active={false} title="Toggle header row">Header</ToolbarButton>
+
+          {/* Cell fill color */}
+          <div className="relative">
+            <ToolbarButton
+              onClick={() => {
+                setShowCellColors((s) => !s)
+                setShowBorderPanel(false)
+              }}
+              active={showCellColors}
+              title="Cell fill color"
+            >
+              🎨 Fill
+            </ToolbarButton>
+            {showCellColors && (
+              <div className="absolute z-10 top-full mt-1 left-0 flex gap-1 p-2 bg-white border rounded-md shadow-md">
+                {CELL_COLORS.map((c) => (
+                  <button
+                    key={c.label}
+                    type="button"
+                    title={c.label}
+                    onClick={() => applyCellColor(c.value)}
+                    className="w-6 h-6 rounded border border-gray-300"
+                    style={{ backgroundColor: c.value ?? '#ffffff' }}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Border color + width — applies to the whole table */}
+          <div className="relative">
+            <ToolbarButton
+              onClick={() => {
+                setShowBorderPanel((s) => !s)
+                setShowCellColors(false)
+              }}
+              active={showBorderPanel}
+              title="Table borders"
+            >
+              ▦ Borders
+            </ToolbarButton>
+            {showBorderPanel && (
+              <div className="absolute z-10 top-full mt-1 left-0 w-56 p-3 bg-white border rounded-md shadow-md space-y-3">
+                <div>
+                  <p className="text-xs font-medium text-gray-500 mb-1.5">Stroke color</p>
+                  <div className="flex gap-1.5">
+                    {BORDER_COLORS.map((c) => (
+                      <button
+                        key={c.label}
+                        type="button"
+                        title={c.label}
+                        onClick={() => applyBorderColor(c.value)}
+                        className={`w-6 h-6 rounded-full border-2 ${
+                          currentBorderColor === c.value ? 'border-gray-900' : 'border-gray-200'
+                        }`}
+                        style={{ backgroundColor: c.value }}
+                      />
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-gray-500 mb-1.5">Stroke width</p>
+                  <div className="flex gap-1.5">
+                    {BORDER_WIDTHS.map((w) => (
+                      <button
+                        key={w.label}
+                        type="button"
+                        onClick={() => applyBorderWidth(w.value)}
+                        className={`px-2 py-1 rounded text-xs border ${
+                          currentBorderWidth === w.value
+                            ? 'border-gray-900 bg-gray-100 text-gray-900'
+                            : 'border-gray-200 text-gray-500 hover:bg-gray-50'
+                        }`}
+                      >
+                        {w.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <ToolbarButton onClick={deleteTable} active={false} title="Delete table" danger>
+            🗑 Table
+          </ToolbarButton>
+        </>
+      )}
+
+      <Divider />
+
+      <ToolbarButton onClick={() => editor.dispatchCommand(UNDO_COMMAND, undefined)} active={false} title="Undo">
+        ↩
+      </ToolbarButton>
+      <ToolbarButton onClick={() => editor.dispatchCommand(REDO_COMMAND, undefined)} active={false} title="Redo">
+        ↪
+      </ToolbarButton>
+    </div>
+  )
+}
+
+export function RichTextEditor({ value, onChange, placeholder, className }: Props) {
+  const isInternalUpdate = useRef(false)
+  const lastHtml = useRef('')
+
+  const initialConfig = {
+    namespace: 'RichTextEditor',
+    theme,
+    onError,
+    nodes: [
+      HeadingNode,
+      QuoteNode,
+      ListNode,
+      ListItemNode,
+      CodeNode,
+      { replace: TableNode, with: (node: TableNode) => new StyledTableNode('#000000', '1px', node.__key) },
+      TableCellNode,
+      TableRowNode,
+    ],
   }
 
   return (
     <>
-      {/* Table styles injected once */}
+      {/* Table + block styles injected once */}
       <style>{`
         .rte-table {
           border-collapse: collapse;
@@ -368,324 +807,63 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Prop
           margin: 0.75rem 0;
           font-size: 0.875rem;
         }
-        .rte-table th,
-        .rte-table td {
-          border: var(--table-border-width, 1px) solid var(--table-border-color, #d1d5db) !important;
-          padding: 6px 10px !important;
+        .rte-table-cell,
+        .rte-table-cell-header {
+          border: var(--table-border-width, 1px) solid var(--table-border-color, #000000) !important;
+          padding: 6px 10px;
           text-align: left;
           vertical-align: top;
           min-width: 60px;
         }
-        .rte-table th {
+        .rte-table-cell-header {
           background-color: #f3f4f6;
           font-weight: 600;
         }
-        .rte-table .selectedCell {
-          background-color: #dbeafe;
+        .rte-h2 { font-size: 1.25rem; font-weight: 700; margin: 1rem 0 0.5rem; }
+        .rte-h3 { font-size: 1.05rem; font-weight: 600; margin: 0.75rem 0 0.4rem; }
+        .rte-ul, .rte-ol { margin: 0.5rem 0; padding-left: 1.5rem; }
+        .rte-quote {
+          border-left: 3px solid #9ca3af;
+          padding-left: 1rem;
+          margin: 0.75rem 0;
+          color: #4b5563;
+          font-style: italic;
         }
-        /* Column resize handle */
-        .rte-table .column-resize-handle {
-          position: absolute;
-          right: -2px;
-          top: 0;
-          bottom: 0;
-          width: 4px;
-          background-color: #3b82f6;
-          pointer-events: none;
-        }
-        .tableWrapper {
+        .rte-code {
+          background: #f3f4f6;
+          padding: 0.75rem 1rem;
+          border-radius: 8px;
+          display: block;
           overflow-x: auto;
+          font-size: 0.85rem;
+          font-family: monospace;
         }
-        .resize-cursor {
-          cursor: col-resize;
-        }
+        .rte-bold { font-weight: 700; }
+        .rte-italic { font-style: italic; }
+        .rte-strike { text-decoration: line-through; }
       `}</style>
 
       <div className={`border rounded-md overflow-hidden ${className}`}>
-        {/* ── Toolbar ── */}
-        <div className="flex flex-wrap gap-1 p-2 border-b bg-background">
-          {/* Text formatting */}
-          <ToolbarButton
-            onClick={() => editor?.chain().focus().toggleBold().run()}
-            active={editor?.isActive('bold')}
-            title="Bold"
-          >
-            <b>B</b>
-          </ToolbarButton>
-          <ToolbarButton
-            onClick={() => editor?.chain().focus().toggleItalic().run()}
-            active={editor?.isActive('italic')}
-            title="Italic"
-          >
-            <i>I</i>
-          </ToolbarButton>
-          <ToolbarButton
-            onClick={() => editor?.chain().focus().toggleStrike().run()}
-            active={editor?.isActive('strike')}
-            title="Strikethrough"
-          >
-            <s>S</s>
-          </ToolbarButton>
-
-          <Divider />
-
-          {/* Headings */}
-          <ToolbarButton
-            onClick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()}
-            active={editor?.isActive('heading', { level: 2 })}
-            title="Heading"
-          >
-            H2
-          </ToolbarButton>
-          <ToolbarButton
-            onClick={() => editor?.chain().focus().toggleHeading({ level: 3 }).run()}
-            active={editor?.isActive('heading', { level: 3 })}
-            title="Subheading"
-          >
-            H3
-          </ToolbarButton>
-
-          {/* Paragraph — select any block (heading, list item, quote, etc.)
-              and click this to convert it back to a plain paragraph */}
-          <ToolbarButton
-            onClick={convertSelectionToParagraph}
-            active={editor?.isActive('paragraph')}
-            title="Convert to paragraph"
-          >
-            ¶ Paragraph
-          </ToolbarButton>
-
-          <Divider />
-
-          {/* Lists & blocks */}
-          <ToolbarButton
-            onClick={() => editor?.chain().focus().toggleBulletList().run()}
-            active={editor?.isActive('bulletList')}
-            title="Bullet list"
-          >
-            • List
-          </ToolbarButton>
-          <ToolbarButton
-            onClick={() => editor?.chain().focus().toggleOrderedList().run()}
-            active={editor?.isActive('orderedList')}
-            title="Numbered list"
-          >
-            1. List
-          </ToolbarButton>
-          <ToolbarButton
-            onClick={() => editor?.chain().focus().toggleBlockquote().run()}
-            active={editor?.isActive('blockquote')}
-            title="Blockquote"
-          >
-            ❝
-          </ToolbarButton>
-          <ToolbarButton
-            onClick={() => editor?.chain().focus().toggleCodeBlock().run()}
-            active={editor?.isActive('codeBlock')}
-            title="Code block"
-          >
-            {'</>'}
-          </ToolbarButton>
-
-          <Divider />
-
-          {/* ── Table controls ── */}
-          {/* Insert/convert to table — works whether or not text is selected.
-              Select a paragraph of text and click this to turn it into a table,
-              with the selected text dropped into the first cell. */}
-          {!isInTable && (
-            <ToolbarButton
-              onClick={convertSelectionToTable}
-              active={false}
-              title="Convert selection to table"
-            >
-              ⊞ Table
-            </ToolbarButton>
-          )}
-
-          {/* Table editing controls — only shown when cursor is inside a table */}
-          {isInTable && (
-            <>
-              <ToolbarButton
-                onClick={() => editor?.chain().focus().addColumnBefore().run()}
-                active={false}
-                title="Add column before"
-              >
-                ←Col
-              </ToolbarButton>
-              <ToolbarButton
-                onClick={() => editor?.chain().focus().addColumnAfter().run()}
-                active={false}
-                title="Add column after"
-              >
-                Col→
-              </ToolbarButton>
-              <ToolbarButton
-                onClick={() => editor?.chain().focus().deleteColumn().run()}
-                active={false}
-                title="Delete column"
-              >
-                ✕Col
-              </ToolbarButton>
-              <ToolbarButton
-                onClick={() => editor?.chain().focus().addRowBefore().run()}
-                active={false}
-                title="Add row before"
-              >
-                ↑Row
-              </ToolbarButton>
-              <ToolbarButton
-                onClick={() => editor?.chain().focus().addRowAfter().run()}
-                active={false}
-                title="Add row after"
-              >
-                Row↓
-              </ToolbarButton>
-              <ToolbarButton
-                onClick={() => editor?.chain().focus().deleteRow().run()}
-                active={false}
-                title="Delete row"
-              >
-                ✕Row
-              </ToolbarButton>
-              <ToolbarButton
-                onClick={() => editor?.chain().focus().toggleHeaderRow().run()}
-                active={false}
-                title="Toggle header row"
-              >
-                Header
-              </ToolbarButton>
-              <ToolbarButton
-                onClick={() => editor?.chain().focus().mergeCells().run()}
-                active={false}
-                title="Merge cells"
-              >
-                Merge
-              </ToolbarButton>
-              <ToolbarButton
-                onClick={() => editor?.chain().focus().splitCell().run()}
-                active={false}
-                title="Split cell"
-              >
-                Split
-              </ToolbarButton>
-
-              {/* Cell fill color */}
-              <div className="relative">
-                <ToolbarButton
-                  onClick={() => {
-                    setShowCellColors((s) => !s)
-                    setShowBorderPanel(false)
-                  }}
-                  active={showCellColors}
-                  title="Cell fill color"
-                >
-                  🎨 Fill
-                </ToolbarButton>
-                {showCellColors && (
-                  <div className="absolute z-10 top-full mt-1 left-0 flex gap-1 p-2 bg-white border rounded-md shadow-md">
-                    {CELL_COLORS.map((c) => (
-                      <button
-                        key={c.label}
-                        type="button"
-                        title={c.label}
-                        onClick={() => applyCellColor(c.value)}
-                        className="w-6 h-6 rounded border border-gray-300"
-                        style={{ backgroundColor: c.value ?? '#ffffff' }}
-                      />
-                    ))}
-                  </div>
-                )}
+        <LexicalComposer initialConfig={initialConfig}>
+          <Toolbar />
+          <RichTextPlugin
+            contentEditable={
+              <ContentEditable className="prose max-w-none p-3 min-h-37.5 focus:outline-none" />
+            }
+            placeholder={
+              <div className="p-3 text-gray-400 text-sm pointer-events-none absolute top-10">
+                {placeholder}
               </div>
-
-              {/* Border / stroke color + width — applies to the whole table */}
-              <div className="relative">
-                <ToolbarButton
-                  onClick={() => {
-                    setShowBorderPanel((s) => !s)
-                    setShowCellColors(false)
-                  }}
-                  active={showBorderPanel}
-                  title="Table borders"
-                >
-                  ▦ Borders
-                </ToolbarButton>
-                {showBorderPanel && (
-                  <div className="absolute z-10 top-full mt-1 left-0 w-56 p-3 bg-white border rounded-md shadow-md space-y-3">
-                    <div>
-                      <p className="text-xs font-medium text-gray-500 mb-1.5">Stroke color</p>
-                      <div className="flex gap-1.5">
-                        {BORDER_COLORS.map((c) => (
-                          <button
-                            key={c.label}
-                            type="button"
-                            title={c.label}
-                            onClick={() => applyBorderColor(c.value)}
-                            className={`w-6 h-6 rounded-full border-2 ${
-                              currentBorderColor === c.value ? 'border-gray-900' : 'border-gray-200'
-                            }`}
-                            style={{ backgroundColor: c.value }}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium text-gray-500 mb-1.5">Stroke width</p>
-                      <div className="flex gap-1.5">
-                        {BORDER_WIDTHS.map((w) => (
-                          <button
-                            key={w.label}
-                            type="button"
-                            onClick={() => applyBorderWidth(w.value)}
-                            className={`px-2 py-1 rounded text-xs border ${
-                              currentBorderWidth === w.value
-                                ? 'border-gray-900 bg-gray-100 text-gray-900'
-                                : 'border-gray-200 text-gray-500 hover:bg-gray-50'
-                            }`}
-                          >
-                            {w.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <ToolbarButton
-                onClick={() => editor?.chain().focus().deleteTable().run()}
-                active={false}
-                title="Delete table"
-                danger
-              >
-                🗑 Table
-              </ToolbarButton>
-            </>
-          )}
-
-          <Divider />
-
-          {/* Undo / Redo */}
-          <ToolbarButton
-            onClick={() => editor?.chain().focus().undo().run()}
-            active={false}
-            title="Undo"
-          >
-            ↩
-          </ToolbarButton>
-          <ToolbarButton
-            onClick={() => editor?.chain().focus().redo().run()}
-            active={false}
-            title="Redo"
-          >
-            ↪
-          </ToolbarButton>
-        </div>
-
-        <EditorContent
-          editor={editor}
-          className="prose max-w-none p-3 min-h-37.5 focus-within:outline-none"
-        />
+            }
+            ErrorBoundary={LexicalErrorBoundary}
+          />
+          <HistoryPlugin />
+          <ListPlugin />
+          <TablePlugin />
+          <PasteCleanupPlugin />
+          <InitialContentPlugin value={value} isInternalUpdate={isInternalUpdate} lastHtml={lastHtml} />
+          <OnChangeHtmlPlugin onChange={onChange} isInternalUpdate={isInternalUpdate} lastHtml={lastHtml} />
+        </LexicalComposer>
       </div>
     </>
   )
