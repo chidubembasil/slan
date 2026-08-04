@@ -62,6 +62,13 @@ interface Props {
   onChange: (html: string) => void
   placeholder?: string
   className?: string
+  // Optional: upload the file to your own storage/CDN and resolve with the
+  // hosted URL. If omitted, images fall back to base64 data URLs embedded
+  // directly in the document HTML — fine for small icons, but large images
+  // (or several of them) will bloat the stored HTML and can make loading
+  // the doc for editing freeze the tab, since that HTML has to be parsed
+  // on the main thread. Strongly recommended for any real deployment.
+  onUploadImage?: (file: File) => Promise<string>
 }
 
 // Max size accepted for image uploads/pastes, in bytes. Images are embedded
@@ -623,18 +630,38 @@ function ImagesPlugin() {
   return null
 }
 
-// Reads a File into a base64 data URL, rejecting non-images and oversized
-// files. Shared by the toolbar upload button and the clipboard paste path.
-function readImageFile(file: File): Promise<string> {
+// Resolves a File to a usable <img src>. If an onUploadImage function is
+// provided, the file is uploaded and the returned hosted URL is used —
+// keeping the document HTML small regardless of image size. Without one,
+// falls back to a base64 data URL embedded directly in the HTML (fine for
+// small images, but see the warning below for why that doesn't scale).
+let warnedAboutBase64Fallback = false
+
+async function resolveImageSrc(
+  file: File,
+  onUploadImage?: (file: File) => Promise<string>
+): Promise<string> {
+  if (!file.type.startsWith('image/')) {
+    throw new Error('Please choose an image file.')
+  }
+  if (file.size > MAX_IMAGE_BYTES) {
+    throw new Error(`Image is too large (max ${Math.round(MAX_IMAGE_BYTES / (1024 * 1024))}MB).`)
+  }
+
+  if (onUploadImage) {
+    return onUploadImage(file)
+  }
+
+  if (!warnedAboutBase64Fallback) {
+    warnedAboutBase64Fallback = true
+    console.warn(
+      '[RichTextEditor] No onUploadImage prop provided — embedding image as base64 in the document HTML. ' +
+        'This can make documents with images slow or freeze the tab when loaded for editing. ' +
+        'Pass an onUploadImage={(file) => Promise<string>} prop that uploads to your storage/CDN and resolves the hosted URL.'
+    )
+  }
+
   return new Promise((resolve, reject) => {
-    if (!file.type.startsWith('image/')) {
-      reject(new Error('Please choose an image file.'))
-      return
-    }
-    if (file.size > MAX_IMAGE_BYTES) {
-      reject(new Error(`Image is too large (max ${Math.round(MAX_IMAGE_BYTES / (1024 * 1024))}MB).`))
-      return
-    }
     const reader = new FileReader()
     reader.onload = () => resolve(reader.result as string)
     reader.onerror = () => reject(new Error('Could not read the image file.'))
@@ -741,7 +768,7 @@ function OnChangeHtmlPlugin({
 // ── Paste handling: cleans Word/WPS junk, guarantees real paragraphs,
 //    inserts pasted images, and turns plain-text articles (no HTML on the
 //    clipboard at all) into one <p> per paragraph instead of a single blob. ──
-function PasteCleanupPlugin() {
+function PasteCleanupPlugin({ onUploadImage }: { onUploadImage?: (file: File) => Promise<string> }) {
   const [editor] = useLexicalComposerContext()
 
   useEffect(() => {
@@ -756,7 +783,7 @@ function PasteCleanupPlugin() {
       if (imageFile) {
         event.preventDefault()
         event.stopPropagation()
-        readImageFile(imageFile)
+        resolveImageSrc(imageFile, onUploadImage)
           .then((src) => {
             editor.dispatchCommand(INSERT_IMAGE_COMMAND, { src, altText: imageFile.name })
           })
@@ -820,13 +847,13 @@ function PasteCleanupPlugin() {
 
     rootElement.addEventListener('paste', handlePaste, true)
     return () => rootElement.removeEventListener('paste', handlePaste, true)
-  }, [editor])
+  }, [editor, onUploadImage])
 
   return null
 }
 
 // ── Toolbar ──
-function Toolbar() {
+function Toolbar({ onUploadImage }: { onUploadImage?: (file: File) => Promise<string> }) {
   const [editor] = useLexicalComposerContext()
   const [isBold, setIsBold] = useState(false)
   const [isItalic, setIsItalic] = useState(false)
@@ -1061,7 +1088,7 @@ function Toolbar() {
     e.target.value = ''
     if (!file) return
     try {
-      const src = await readImageFile(file)
+      const src = await resolveImageSrc(file, onUploadImage)
       editor.dispatchCommand(INSERT_IMAGE_COMMAND, { src, altText: file.name })
       setImageError(null)
     } catch (err) {
@@ -1278,7 +1305,7 @@ const BORDER_WIDTHS = [
   { label: 'Thick', value: '3px' },
 ]
 
-export function RichTextEditor({ value, onChange, placeholder, className }: Props) {
+export function RichTextEditor({ value, onChange, placeholder, className, onUploadImage }: Props) {
   const isInternalUpdate = useRef(false)
   const lastHtml = useRef('')
 
@@ -1360,7 +1387,7 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Prop
 
       <div className={`border rounded-md overflow-hidden ${className}`}>
         <LexicalComposer initialConfig={initialConfig}>
-          <Toolbar />
+          <Toolbar onUploadImage={onUploadImage} />
           <RichTextPlugin
             contentEditable={
               <ContentEditable className="prose max-w-none p-3 min-h-37.5 focus:outline-none" />
@@ -1376,7 +1403,7 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Prop
           <ListPlugin />
           <TablePlugin />
           <ImagesPlugin />
-          <PasteCleanupPlugin />
+          <PasteCleanupPlugin onUploadImage={onUploadImage} />
           <InitialContentPlugin value={value} isInternalUpdate={isInternalUpdate} lastHtml={lastHtml} />
           <OnChangeHtmlPlugin onChange={onChange} isInternalUpdate={isInternalUpdate} lastHtml={lastHtml} />
         </LexicalComposer>
