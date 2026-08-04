@@ -5,16 +5,23 @@ import {
   $createParagraphNode,
   $createTextNode,
   $createLineBreakNode,
+  $insertNodes,
+  $isRootOrShadowRoot,
   FORMAT_TEXT_COMMAND,
   UNDO_COMMAND,
   REDO_COMMAND,
+  createCommand,
+  COMMAND_PRIORITY_EDITOR,
+  DecoratorNode,
   type EditorState,
   type EditorConfig,
   type LexicalEditor,
   type LexicalNode,
+  type LexicalCommand,
   type NodeKey,
   type DOMConversionMap,
   type DOMExportOutput,
+  type SerializedLexicalNode,
   type Spread,
 } from 'lexical'
 import { $generateHtmlFromNodes, $generateNodesFromDOM } from '@lexical/html'
@@ -44,7 +51,7 @@ import {
   type SerializedTableNode,
 } from '@lexical/table'
 import { $setBlocksType } from '@lexical/selection'
-import { $getNearestNodeOfType, mergeRegister } from '@lexical/utils'
+import { $getNearestNodeOfType, $wrapNodeInElement, mergeRegister } from '@lexical/utils'
 import { useEffect, useRef, useState, useCallback } from 'react'
 
 interface Props {
@@ -53,6 +60,12 @@ interface Props {
   placeholder?: string
   className?: string
 }
+
+// Max size accepted for image uploads/pastes, in bytes. Images are embedded
+// as base64 data URLs directly in the HTML, so keep this conservative —
+// swap in a real upload endpoint (returning a hosted URL instead of a data
+// URL) if you need to support larger files.
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024 // 5MB
 
 // ── Strip Word/WPS junk before it hits the DOM parser ──
 function cleanPastedHtml(html: string): string {
@@ -254,30 +267,213 @@ export function $isStyledTableNode(node: LexicalNode | null | undefined): node i
   return node instanceof StyledTableNode
 }
 
-// Swatches offered for cell fill color
-const CELL_COLORS = [
-  { label: 'None', value: null },
-  { label: 'Gray', value: '#f3f4f6' },
-  { label: 'Blue', value: '#dbeafe' },
-  { label: 'Green', value: '#dcfce7' },
-  { label: 'Yellow', value: '#fef9c3' },
-  { label: 'Red', value: '#fee2e2' },
-]
+// ── Custom ImageNode ──
+// Renders as a plain <img> both in the editor and in exported HTML, so
+// images round-trip cleanly through $generateHtmlFromNodes /
+// $generateNodesFromDOM without needing any special server-side handling.
+export interface ImagePayload {
+  src: string
+  altText: string
+  width?: number
+  height?: number
+  key?: NodeKey
+}
 
-// Swatches offered for table border color — black is the default
-const BORDER_COLORS = [
-  { label: 'Black', value: '#000000' },
-  { label: 'Gray', value: '#d1d5db' },
-  { label: 'Blue', value: '#3b82f6' },
-  { label: 'Green', value: '#16a34a' },
-  { label: 'Red', value: '#dc2626' },
-]
+export type SerializedImageNode = Spread<
+  {
+    src: string
+    altText: string
+    width?: number
+    height?: number
+  },
+  SerializedLexicalNode
+>
 
-const BORDER_WIDTHS = [
-  { label: 'Thin', value: '1px' },
-  { label: 'Medium', value: '2px' },
-  { label: 'Thick', value: '3px' },
-]
+function ImageComponent({
+  src,
+  altText,
+  width,
+  height,
+}: {
+  src: string
+  altText: string
+  width?: number
+  height?: number
+}) {
+  return (
+    <img
+      src={src}
+      alt={altText}
+      draggable={false}
+      style={{
+        maxWidth: '100%',
+        height: height ? `${height}px` : 'auto',
+        width: width ? `${width}px` : 'auto',
+        borderRadius: 6,
+        display: 'block',
+      }}
+    />
+  )
+}
+
+export class ImageNode extends DecoratorNode<React.ReactElement> {
+  __src: string
+  __altText: string
+  __width?: number
+  __height?: number
+
+  static getType(): string {
+    return 'image'
+  }
+
+  static clone(node: ImageNode): ImageNode {
+    return new ImageNode(node.__src, node.__altText, node.__width, node.__height, node.__key)
+  }
+
+  constructor(src: string, altText: string, width?: number, height?: number, key?: NodeKey) {
+    super(key)
+    this.__src = src
+    this.__altText = altText
+    this.__width = width
+    this.__height = height
+  }
+
+  static importJSON(serializedNode: SerializedImageNode): ImageNode {
+    return $createImageNode({
+      src: serializedNode.src,
+      altText: serializedNode.altText,
+      width: serializedNode.width,
+      height: serializedNode.height,
+    })
+  }
+
+  exportJSON(): SerializedImageNode {
+    return {
+      ...super.exportJSON(),
+      type: 'image',
+      version: 1,
+      src: this.__src,
+      altText: this.__altText,
+      width: this.__width,
+      height: this.__height,
+    }
+  }
+
+  createDOM(): HTMLElement {
+    const span = document.createElement('span')
+    span.className = 'rte-image-wrapper'
+    return span
+  }
+
+  updateDOM(): false {
+    return false
+  }
+
+  static importDOM(): DOMConversionMap | null {
+    return {
+      img: () => ({
+        conversion: (element: HTMLElement) => {
+          if (!(element instanceof HTMLImageElement)) return null
+          const { src, alt } = element
+          const width = element.getAttribute('width')
+          const height = element.getAttribute('height')
+          const node = $createImageNode({
+            src,
+            altText: alt || '',
+            width: width ? Number(width) : undefined,
+            height: height ? Number(height) : undefined,
+          })
+          return { node }
+        },
+        priority: 0,
+      }),
+    }
+  }
+
+  exportDOM(): DOMExportOutput {
+    const element = document.createElement('img')
+    element.setAttribute('src', this.__src)
+    element.setAttribute('alt', this.__altText)
+    if (this.__width) element.setAttribute('width', String(this.__width))
+    if (this.__height) element.setAttribute('height', String(this.__height))
+    return { element }
+  }
+
+  getSrc(): string {
+    return this.__src
+  }
+
+  getAltText(): string {
+    return this.__altText
+  }
+
+  decorate(): React.ReactElement {
+    return (
+      <ImageComponent
+        src={this.__src}
+        altText={this.__altText}
+        width={this.__width}
+        height={this.__height}
+      />
+    )
+  }
+}
+
+export function $createImageNode({ src, altText, width, height, key }: ImagePayload): ImageNode {
+  return new ImageNode(src, altText, width, height, key)
+}
+
+export function $isImageNode(node: LexicalNode | null | undefined): node is ImageNode {
+  return node instanceof ImageNode
+}
+
+export const INSERT_IMAGE_COMMAND: LexicalCommand<ImagePayload> = createCommand('INSERT_IMAGE_COMMAND')
+
+// ── Registers the insert-image command ──
+// Any code (toolbar button, paste handler, drag-and-drop, etc.) can insert
+// an image by dispatching INSERT_IMAGE_COMMAND with { src, altText }.
+function ImagesPlugin() {
+  const [editor] = useLexicalComposerContext()
+
+  useEffect(() => {
+    if (!editor.hasNodes([ImageNode])) {
+      throw new Error('ImagesPlugin: ImageNode not registered on editor')
+    }
+    return editor.registerCommand<ImagePayload>(
+      INSERT_IMAGE_COMMAND,
+      (payload) => {
+        const imageNode = $createImageNode(payload)
+        $insertNodes([imageNode])
+        if ($isRootOrShadowRoot(imageNode.getParentOrThrow())) {
+          $wrapNodeInElement(imageNode, $createParagraphNode).selectEnd()
+        }
+        return true
+      },
+      COMMAND_PRIORITY_EDITOR
+    )
+  }, [editor])
+
+  return null
+}
+
+// Reads a File into a base64 data URL, rejecting non-images and oversized
+// files. Shared by the toolbar upload button and the clipboard paste path.
+function readImageFile(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    if (!file.type.startsWith('image/')) {
+      reject(new Error('Please choose an image file.'))
+      return
+    }
+    if (file.size > MAX_IMAGE_BYTES) {
+      reject(new Error(`Image is too large (max ${Math.round(MAX_IMAGE_BYTES / (1024 * 1024))}MB).`))
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = () => reject(new Error('Could not read the image file.'))
+    reader.readAsDataURL(file)
+  })
+}
 
 const theme = {
   heading: { h2: 'rte-h2', h3: 'rte-h3' },
@@ -376,8 +572,8 @@ function OnChangeHtmlPlugin({
 }
 
 // ── Paste handling: cleans Word/WPS junk, guarantees real paragraphs,
-//    and turns plain-text articles (no HTML on the clipboard at all) into
-//    one <p> per paragraph instead of a single blob. ──
+//    inserts pasted images, and turns plain-text articles (no HTML on the
+//    clipboard at all) into one <p> per paragraph instead of a single blob. ──
 function PasteCleanupPlugin() {
   const [editor] = useLexicalComposerContext()
 
@@ -386,6 +582,21 @@ function PasteCleanupPlugin() {
     if (!rootElement) return
 
     const handlePaste = (event: ClipboardEvent) => {
+      // Image pasted directly from the clipboard (e.g. screenshot, copied
+      // image) — clipboardData.files is where browsers put these.
+      const files = event.clipboardData?.files
+      const imageFile = files ? Array.from(files).find((f) => f.type.startsWith('image/')) : undefined
+      if (imageFile) {
+        event.preventDefault()
+        event.stopPropagation()
+        readImageFile(imageFile)
+          .then((src) => {
+            editor.dispatchCommand(INSERT_IMAGE_COMMAND, { src, altText: imageFile.name })
+          })
+          .catch((err) => console.error(err))
+        return
+      }
+
       const html = event.clipboardData?.getData('text/html')
 
       if (html) {
@@ -459,6 +670,8 @@ function Toolbar() {
   const [currentBorderWidth, setCurrentBorderWidth] = useState('1px')
   const [showCellColors, setShowCellColors] = useState(false)
   const [showBorderPanel, setShowBorderPanel] = useState(false)
+  const [imageError, setImageError] = useState<string | null>(null)
+  const imageInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     return mergeRegister(
@@ -635,8 +848,27 @@ function Toolbar() {
     })
   }
 
+  const handleImageButtonClick = () => {
+    setImageError(null)
+    imageInputRef.current?.click()
+  }
+
+  const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    // reset so picking the same file again still fires onChange
+    e.target.value = ''
+    if (!file) return
+    try {
+      const src = await readImageFile(file)
+      editor.dispatchCommand(INSERT_IMAGE_COMMAND, { src, altText: file.name })
+      setImageError(null)
+    } catch (err) {
+      setImageError(err instanceof Error ? err.message : 'Could not insert image.')
+    }
+  }
+
   return (
-    <div className="flex flex-wrap gap-1 p-2 border-b bg-background">
+    <div className="flex flex-wrap items-center gap-1 p-2 border-b bg-background">
       <ToolbarButton onClick={() => formatText('bold')} active={isBold} title="Bold">
         <b>B</b>
       </ToolbarButton>
@@ -673,6 +905,20 @@ function Toolbar() {
       <ToolbarButton onClick={toggleCodeBlock} active={blockType === 'code'} title="Code block">
         {'</>'}
       </ToolbarButton>
+
+      <Divider />
+
+      <ToolbarButton onClick={handleImageButtonClick} active={false} title="Insert image">
+        🖼 Image
+      </ToolbarButton>
+      <input
+        ref={imageInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleImageFileChange}
+        className="hidden"
+      />
+      {imageError && <span className="text-xs text-red-500 ml-1">{imageError}</span>}
 
       <Divider />
 
@@ -792,6 +1038,31 @@ function Toolbar() {
   )
 }
 
+// Swatches offered for cell fill color
+const CELL_COLORS = [
+  { label: 'None', value: null },
+  { label: 'Gray', value: '#f3f4f6' },
+  { label: 'Blue', value: '#dbeafe' },
+  { label: 'Green', value: '#dcfce7' },
+  { label: 'Yellow', value: '#fef9c3' },
+  { label: 'Red', value: '#fee2e2' },
+]
+
+// Swatches offered for table border color — black is the default
+const BORDER_COLORS = [
+  { label: 'Black', value: '#000000' },
+  { label: 'Gray', value: '#d1d5db' },
+  { label: 'Blue', value: '#3b82f6' },
+  { label: 'Green', value: '#16a34a' },
+  { label: 'Red', value: '#dc2626' },
+]
+
+const BORDER_WIDTHS = [
+  { label: 'Thin', value: '1px' },
+  { label: 'Medium', value: '2px' },
+  { label: 'Thick', value: '3px' },
+]
+
 export function RichTextEditor({ value, onChange, placeholder, className }: Props) {
   const isInternalUpdate = useRef(false)
   const lastHtml = useRef('')
@@ -809,6 +1080,7 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Prop
       { replace: TableNode, with: (node: TableNode) => new StyledTableNode('#000000', '1px', node.__key) },
       TableCellNode,
       TableRowNode,
+      ImageNode,
     ],
   }
 
@@ -856,6 +1128,10 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Prop
         .rte-bold { font-weight: 700; }
         .rte-italic { font-style: italic; }
         .rte-strike { text-decoration: line-through; }
+        .rte-image-wrapper {
+          display: block;
+          margin: 0.75rem 0;
+        }
       `}</style>
 
       <div className={`border rounded-md overflow-hidden ${className}`}>
@@ -875,6 +1151,7 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Prop
           <HistoryPlugin />
           <ListPlugin />
           <TablePlugin />
+          <ImagesPlugin />
           <PasteCleanupPlugin />
           <InitialContentPlugin value={value} isInternalUpdate={isInternalUpdate} lastHtml={lastHtml} />
           <OnChangeHtmlPlugin onChange={onChange} isInternalUpdate={isInternalUpdate} lastHtml={lastHtml} />
