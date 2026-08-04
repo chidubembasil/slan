@@ -71,6 +71,87 @@ interface Props {
   onUploadImage?: (file: File) => Promise<string>
 }
 
+const CLOUDINARY_CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME
+const CLOUDINARY_API_KEY = import.meta.env.VITE_API_KEY
+const CLOUDINARY_API_SECRET = import.meta.env.VITE_API_SECRET_KEY
+
+async function sha1Hex(input: string): Promise<string> {
+  const encoder = new TextEncoder()
+  const hashBuffer = await crypto.subtle.digest('SHA-1', encoder.encode(input))
+  return Array.from(new Uint8Array(hashBuffer))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
+}
+
+async function uploadImageToCloudinary(file: File): Promise<string> {
+  const timestamp = Math.round(Date.now() / 1000)
+  const paramsToSign = `folder=articles&timestamp=${timestamp}${CLOUDINARY_API_SECRET}`
+  const signature = await sha1Hex(paramsToSign)
+
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('api_key', CLOUDINARY_API_KEY)
+  formData.append('timestamp', String(timestamp))
+  formData.append('signature', signature)
+  formData.append('folder', 'articles')
+
+  const res = await fetch(
+    `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`,
+    { method: 'POST', body: formData }
+  )
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err?.error?.message || 'Cloudinary upload failed')
+  }
+
+  const data = await res.json()
+  return data.secure_url as string
+}
+
+// ── Extracts the Cloudinary public_id from a secure_url ──
+// Cloudinary URLs look like:
+// https://res.cloudinary.com/<cloud>/image/upload/v169.../articles/abc123.png
+// The public_id (needed to delete the asset) is everything between the
+// version segment (vNNNN/) and the file extension, including any folder.
+function extractPublicIdFromCloudinaryUrl(url: string): string | null {
+  try {
+    const match = url.match(/\/upload\/(?:v\d+\/)?(.+)\.[a-zA-Z0-9]+$/)
+    return match ? match[1] : null
+  } catch {
+    return null
+  }
+}
+
+// ── Deletes an asset from Cloudinary by public_id ──
+// Cloudinary's destroy endpoint requires a signature just like upload does,
+// so this needs the same secret. In a real deployment this call (and the
+// secret it depends on) should move to your backend — see the note in the
+// upload function above.
+async function deleteImageFromCloudinary(src: string): Promise<void> {
+  const publicId = extractPublicIdFromCloudinaryUrl(src)
+  if (!publicId) return // not a Cloudinary-hosted image (e.g. base64 fallback) — nothing to delete
+
+  const timestamp = Math.round(Date.now() / 1000)
+  const paramsToSign = `public_id=${publicId}&timestamp=${timestamp}${CLOUDINARY_API_SECRET}`
+  const signature = await sha1Hex(paramsToSign)
+
+  const formData = new FormData()
+  formData.append('public_id', publicId)
+  formData.append('api_key', CLOUDINARY_API_KEY)
+  formData.append('timestamp', String(timestamp))
+  formData.append('signature', signature)
+
+  const res = await fetch(
+    `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/destroy`,
+    { method: 'POST', body: formData }
+  )
+
+  if (!res.ok) {
+    console.error('Failed to delete image from Cloudinary:', await res.text().catch(() => ''))
+  }
+}
+
 // Max size accepted for image uploads/pastes, in bytes. Images are embedded
 // as base64 data URLs directly in the HTML, so keep this conservative —
 // swap in a real upload endpoint (returning a hosted URL instead of a data
@@ -427,25 +508,33 @@ function ImageComponent({
   nodeKey: NodeKey
 }) {
   const [editor] = useLexicalComposerContext()
-  const [hovered, setHovered] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
-  const handleRemove = (e: React.MouseEvent) => {
+  const handleRemove = async (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    editor.update(() => {
-      const node = $getNodeByKey(nodeKey)
-      if ($isImageNode(node)) {
-        node.remove()
-      }
-    })
+    if (deleting) return
+    setDeleting(true)
+    try {
+      // Best-effort: also remove the file from Cloudinary storage so
+      // removed images don't sit around as orphaned assets. If this fails
+      // (network issue, non-Cloudinary src, etc.) we still remove the node
+      // from the document so the user isn't blocked.
+      await deleteImageFromCloudinary(src)
+    } catch (err) {
+      console.error('Could not delete image from Cloudinary:', err)
+    } finally {
+      editor.update(() => {
+        const node = $getNodeByKey(nodeKey)
+        if ($isImageNode(node)) {
+          node.remove()
+        }
+      })
+    }
   }
 
   return (
-    <span
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{ position: 'relative', display: 'inline-block', maxWidth: '100%' }}
-    >
+    <span style={{ position: 'relative', display: 'inline-block', maxWidth: '100%' }}>
       <img
         src={src}
         alt={altText}
@@ -456,35 +545,35 @@ function ImageComponent({
           width: width ? `${width}px` : 'auto',
           borderRadius: 6,
           display: 'block',
+          opacity: deleting ? 0.5 : 1,
         }}
       />
-      {hovered && (
-        <button
-          type="button"
-          title="Remove image"
-          aria-label="Remove image"
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={handleRemove}
-          style={{
-            position: 'absolute',
-            top: 6,
-            right: 6,
-            width: 22,
-            height: 22,
-            padding: 0,
-            border: 'none',
-            borderRadius: '9999px',
-            background: 'rgba(0,0,0,0.65)',
-            color: '#fff',
-            fontSize: 14,
-            lineHeight: '22px',
-            textAlign: 'center',
-            cursor: 'pointer',
-          }}
-        >
-          ×
-        </button>
-      )}
+      <button
+        type="button"
+        title="Delete image"
+        aria-label="Delete image"
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={handleRemove}
+        disabled={deleting}
+        style={{
+          position: 'absolute',
+          top: 6,
+          right: 6,
+          width: 24,
+          height: 24,
+          padding: 0,
+          border: 'none',
+          borderRadius: '9999px',
+          background: 'rgba(0,0,0,0.65)',
+          color: '#fff',
+          fontSize: 14,
+          lineHeight: '24px',
+          textAlign: 'center',
+          cursor: deleting ? 'default' : 'pointer',
+        }}
+      >
+        {deleting ? '…' : '×'}
+      </button>
     </span>
   )
 }
@@ -1305,7 +1394,7 @@ const BORDER_WIDTHS = [
   { label: 'Thick', value: '3px' },
 ]
 
-export function RichTextEditor({ value, onChange, placeholder, className, onUploadImage }: Props) {
+export function RichTextEditor({ value, onChange, placeholder, className, onUploadImage = uploadImageToCloudinary }: Props)  {
   const isInternalUpdate = useRef(false)
   const lastHtml = useRef('')
 
