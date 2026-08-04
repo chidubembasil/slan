@@ -13,6 +13,8 @@ import {
   createCommand,
   COMMAND_PRIORITY_EDITOR,
   DecoratorNode,
+  ParagraphNode,
+  $getNodeByKey,
   type EditorState,
   type EditorConfig,
   type LexicalEditor,
@@ -22,6 +24,7 @@ import {
   type DOMConversionMap,
   type DOMExportOutput,
   type SerializedLexicalNode,
+  type SerializedParagraphNode,
   type Spread,
 } from 'lexical'
 import { $generateHtmlFromNodes, $generateNodesFromDOM } from '@lexical/html'
@@ -267,6 +270,120 @@ export function $isStyledTableNode(node: LexicalNode | null | undefined): node i
   return node instanceof StyledTableNode
 }
 
+// Options offered in the line-spacing dropdown
+export const LINE_HEIGHT_OPTIONS = [
+  { label: 'Single', value: '1' },
+  { label: '1.15', value: '1.15' },
+  { label: '1.5', value: '1.5' },
+  { label: 'Double', value: '2' },
+]
+
+export const DEFAULT_LINE_HEIGHT = '1.5'
+
+// ── Custom ParagraphNode: carries a per-paragraph line-height ──
+// Stored as an inline style on the <p> element so it round-trips through
+// $generateHtmlFromNodes / $generateNodesFromDOM. New paragraphs default to
+// 1.5 line spacing; the toolbar lets the user change it per paragraph.
+export type SerializedStyledParagraphNode = Spread<{ lineHeight: string }, SerializedParagraphNode>
+
+export class StyledParagraphNode extends ParagraphNode {
+  __lineHeight: string
+
+  constructor(lineHeight: string = DEFAULT_LINE_HEIGHT, key?: NodeKey) {
+    super(key)
+    this.__lineHeight = lineHeight
+  }
+
+  static getType(): string {
+    return 'paragraph'
+  }
+
+  static clone(node: StyledParagraphNode): StyledParagraphNode {
+    return new StyledParagraphNode(node.__lineHeight, node.__key)
+  }
+
+  static importJSON(serializedNode: SerializedStyledParagraphNode): StyledParagraphNode {
+    const node = new StyledParagraphNode(serializedNode.lineHeight || DEFAULT_LINE_HEIGHT)
+    node.setFormat(serializedNode.format)
+    node.setIndent(serializedNode.indent)
+    node.setDirection(serializedNode.direction)
+    return node
+  }
+
+  exportJSON(): SerializedStyledParagraphNode {
+    return {
+      ...super.exportJSON(),
+      lineHeight: this.__lineHeight,
+    }
+  }
+
+  getLineHeight(): string {
+    return this.getLatest().__lineHeight
+  }
+
+  setLineHeight(lineHeight: string): void {
+    this.getWritable().__lineHeight = lineHeight
+  }
+
+  createDOM(config: EditorConfig): HTMLElement {
+    const dom = super.createDOM(config)
+    dom.style.lineHeight = this.__lineHeight
+    return dom
+  }
+
+  updateDOM(prevNode: this, dom: HTMLElement, config: EditorConfig): boolean {
+    const updated = super.updateDOM(prevNode, dom, config)
+    if (prevNode.__lineHeight !== this.__lineHeight) {
+      dom.style.lineHeight = this.__lineHeight
+    }
+    return updated
+  }
+
+  exportDOM(editor: LexicalEditor): DOMExportOutput {
+    const output = super.exportDOM(editor)
+    const element = output.element
+    if (element instanceof HTMLElement) {
+      element.style.lineHeight = this.__lineHeight
+    }
+    return output
+  }
+
+  static importDOM(): DOMConversionMap | null {
+    const parentImport = ParagraphNode.importDOM?.()
+    const pImport = parentImport?.p
+    return {
+      ...parentImport,
+      p: (node: HTMLElement) => {
+        const parentConversion = pImport ? pImport(node) : null
+        return {
+          priority: 1,
+          ...(parentConversion || {}),
+          conversion: (element: HTMLElement) => {
+            const output = parentConversion
+              ? parentConversion.conversion(element)
+              : { node: $createStyledParagraphNode() }
+            if (!output || !output.node) return output
+            const lineHeight = element.style.lineHeight || DEFAULT_LINE_HEIGHT
+            const pNode = output.node as StyledParagraphNode
+            if (typeof pNode.setLineHeight === 'function') {
+              pNode.setLineHeight(lineHeight)
+            }
+            return output
+          },
+        }
+      },
+    }
+  }
+}
+
+export function $createStyledParagraphNode(lineHeight: string = DEFAULT_LINE_HEIGHT): StyledParagraphNode {
+  return new StyledParagraphNode(lineHeight)
+}
+
+export function $isStyledParagraphNode(node: LexicalNode | null | undefined): node is StyledParagraphNode {
+  return node instanceof StyledParagraphNode
+}
+
 // ── Custom ImageNode ──
 // Renders as a plain <img> both in the editor and in exported HTML, so
 // images round-trip cleanly through $generateHtmlFromNodes /
@@ -294,25 +411,74 @@ function ImageComponent({
   altText,
   width,
   height,
+  nodeKey,
 }: {
   src: string
   altText: string
   width?: number
   height?: number
+  nodeKey: NodeKey
 }) {
+  const [editor] = useLexicalComposerContext()
+  const [hovered, setHovered] = useState(false)
+
+  const handleRemove = (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    editor.update(() => {
+      const node = $getNodeByKey(nodeKey)
+      if ($isImageNode(node)) {
+        node.remove()
+      }
+    })
+  }
+
   return (
-    <img
-      src={src}
-      alt={altText}
-      draggable={false}
-      style={{
-        maxWidth: '100%',
-        height: height ? `${height}px` : 'auto',
-        width: width ? `${width}px` : 'auto',
-        borderRadius: 6,
-        display: 'block',
-      }}
-    />
+    <span
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{ position: 'relative', display: 'inline-block', maxWidth: '100%' }}
+    >
+      <img
+        src={src}
+        alt={altText}
+        draggable={false}
+        style={{
+          maxWidth: '100%',
+          height: height ? `${height}px` : 'auto',
+          width: width ? `${width}px` : 'auto',
+          borderRadius: 6,
+          display: 'block',
+        }}
+      />
+      {hovered && (
+        <button
+          type="button"
+          title="Remove image"
+          aria-label="Remove image"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={handleRemove}
+          style={{
+            position: 'absolute',
+            top: 6,
+            right: 6,
+            width: 22,
+            height: 22,
+            padding: 0,
+            border: 'none',
+            borderRadius: '9999px',
+            background: 'rgba(0,0,0,0.65)',
+            color: '#fff',
+            fontSize: 14,
+            lineHeight: '22px',
+            textAlign: 'center',
+            cursor: 'pointer',
+          }}
+        >
+          ×
+        </button>
+      )}
+    </span>
   )
 }
 
@@ -414,6 +580,7 @@ export class ImageNode extends DecoratorNode<React.ReactElement> {
         altText={this.__altText}
         width={this.__width}
         height={this.__height}
+        nodeKey={this.getKey()}
       />
     )
   }
@@ -672,6 +839,7 @@ function Toolbar() {
   const [showBorderPanel, setShowBorderPanel] = useState(false)
   const [imageError, setImageError] = useState<string | null>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
+  const [currentLineHeight, setCurrentLineHeight] = useState(DEFAULT_LINE_HEIGHT)
 
   useEffect(() => {
     return mergeRegister(
@@ -692,6 +860,10 @@ function Toolbar() {
               setBlockType(`heading-${element.getTag?.()}`)
             } else {
               setBlockType(type)
+            }
+
+            if ($isStyledParagraphNode(element)) {
+              setCurrentLineHeight(element.getLineHeight())
             }
 
             const tableCell = $getNearestNodeOfType(anchorNode, TableCellNode)
@@ -742,6 +914,23 @@ function Toolbar() {
     })
   }
 
+  const applyLineHeight = (value: string) => {
+    editor.update(() => {
+      const selection = $getSelection()
+      if (!$isRangeSelection(selection) && !$isTableSelection(selection)) return
+      const seen = new Set<string>()
+      selection.getNodes().forEach((node) => {
+        const topNode = node.getKey() === 'root' ? node : node.getTopLevelElementOrThrow()
+        if (seen.has(topNode.getKey())) return
+        seen.add(topNode.getKey())
+        if ($isStyledParagraphNode(topNode)) {
+          topNode.setLineHeight(value)
+        }
+      })
+    })
+    setCurrentLineHeight(value)
+  }
+
   const toggleBulletList = () => editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined)
   const toggleOrderedList = () => editor.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined)
 
@@ -772,8 +961,21 @@ function Toolbar() {
   }
 
  const insertTable = () => {
-  editor.focus() // ensure the editor has focus/selection before dispatching
-  editor.dispatchCommand(INSERT_TABLE_COMMAND, { rows: '3', columns: '3', includeHeaders: true })
+  // editor.focus() restores selection asynchronously — dispatching the
+  // command immediately after calling it (without waiting) means Lexical
+  // often finds no active selection and silently drops the insert. The
+  // callback runs only once focus + selection restoration has completed.
+  editor.focus(() => {
+    editor.update(() => {
+      const selection = $getSelection()
+      if (!$isRangeSelection(selection) && !$isTableSelection(selection)) {
+        // Still no selection (e.g. an empty editor) — put the cursor at
+        // the end of the document so there's somewhere to insert into.
+        $getRoot().selectEnd()
+      }
+    })
+    editor.dispatchCommand(INSERT_TABLE_COMMAND, { rows: '3', columns: '3', includeHeaders: true })
+  })
 }
 
   // Applies fill color to every selected cell (multi-cell drag) or the
@@ -890,6 +1092,19 @@ function Toolbar() {
       <ToolbarButton onClick={setParagraph} active={blockType === 'paragraph'} title="Convert to paragraph">
         ¶ Paragraph
       </ToolbarButton>
+
+      <select
+        value={currentLineHeight}
+        onChange={(e) => applyLineHeight(e.target.value)}
+        title="Line spacing"
+        className="px-2 py-1 rounded text-sm font-medium text-gray-600 border border-transparent hover:bg-gray-100 focus:outline-none"
+      >
+        {LINE_HEIGHT_OPTIONS.map((opt) => (
+          <option key={opt.value} value={opt.value}>
+            Spacing: {opt.label}
+          </option>
+        ))}
+      </select>
 
       <Divider />
 
@@ -1077,7 +1292,16 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Prop
       ListNode,
       ListItemNode,
       CodeNode,
-      { replace: TableNode, with: (node: TableNode) => new StyledTableNode('#000000', '1px', node.__key) },
+      {
+        replace: ParagraphNode,
+        with: (node: ParagraphNode) => new StyledParagraphNode(DEFAULT_LINE_HEIGHT, node.__key),
+        withKlass: StyledParagraphNode,
+      },
+      {
+        replace: TableNode,
+        with: (node: TableNode) => new StyledTableNode('#000000', '1px', node.__key),
+        withKlass: StyledTableNode,
+      },
       TableCellNode,
       TableRowNode,
       ImageNode,
