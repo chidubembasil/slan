@@ -62,6 +62,94 @@ interface Props {
   onChange: (html: string) => void
   placeholder?: string
   className?: string
+  // Optional: upload the file to your own storage/CDN and resolve with the
+  // hosted URL. If omitted, images fall back to base64 data URLs embedded
+  // directly in the document HTML — fine for small icons, but large images
+  // (or several of them) will bloat the stored HTML and can make loading
+  // the doc for editing freeze the tab, since that HTML has to be parsed
+  // on the main thread. Strongly recommended for any real deployment.
+  onUploadImage?: (file: File) => Promise<string>
+}
+
+const CLOUDINARY_CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME
+const CLOUDINARY_API_KEY = import.meta.env.VITE_API_KEY
+const CLOUDINARY_API_SECRET = import.meta.env.VITE_API_SECRET_KEY
+
+async function sha1Hex(input: string): Promise<string> {
+  const encoder = new TextEncoder()
+  const hashBuffer = await crypto.subtle.digest('SHA-1', encoder.encode(input))
+  return Array.from(new Uint8Array(hashBuffer))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
+}
+
+async function uploadImageToCloudinary(file: File): Promise<string> {
+  const timestamp = Math.round(Date.now() / 1000)
+  const paramsToSign = `folder=articles&timestamp=${timestamp}${CLOUDINARY_API_SECRET}`
+  const signature = await sha1Hex(paramsToSign)
+
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('api_key', CLOUDINARY_API_KEY)
+  formData.append('timestamp', String(timestamp))
+  formData.append('signature', signature)
+  formData.append('folder', 'articles')
+
+  const res = await fetch(
+    `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`,
+    { method: 'POST', body: formData }
+  )
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err?.error?.message || 'Cloudinary upload failed')
+  }
+
+  const data = await res.json()
+  return data.secure_url as string
+}
+
+// ── Extracts the Cloudinary public_id from a secure_url ──
+// Cloudinary URLs look like:
+// https://res.cloudinary.com/<cloud>/image/upload/v169.../articles/abc123.png
+// The public_id (needed to delete the asset) is everything between the
+// version segment (vNNNN/) and the file extension, including any folder.
+function extractPublicIdFromCloudinaryUrl(url: string): string | null {
+  try {
+    const match = url.match(/\/upload\/(?:v\d+\/)?(.+)\.[a-zA-Z0-9]+$/)
+    return match ? match[1] : null
+  } catch {
+    return null
+  }
+}
+
+// ── Deletes an asset from Cloudinary by public_id ──
+// Cloudinary's destroy endpoint requires a signature just like upload does,
+// so this needs the same secret. In a real deployment this call (and the
+// secret it depends on) should move to your backend — see the note in the
+// upload function above.
+async function deleteImageFromCloudinary(src: string): Promise<void> {
+  const publicId = extractPublicIdFromCloudinaryUrl(src)
+  if (!publicId) return // not a Cloudinary-hosted image (e.g. base64 fallback) — nothing to delete
+
+  const timestamp = Math.round(Date.now() / 1000)
+  const paramsToSign = `public_id=${publicId}&timestamp=${timestamp}${CLOUDINARY_API_SECRET}`
+  const signature = await sha1Hex(paramsToSign)
+
+  const formData = new FormData()
+  formData.append('public_id', publicId)
+  formData.append('api_key', CLOUDINARY_API_KEY)
+  formData.append('timestamp', String(timestamp))
+  formData.append('signature', signature)
+
+  const res = await fetch(
+    `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/destroy`,
+    { method: 'POST', body: formData }
+  )
+
+  if (!res.ok) {
+    console.error('Failed to delete image from Cloudinary:', await res.text().catch(() => ''))
+  }
 }
 
 // Max size accepted for image uploads/pastes, in bytes. Images are embedded
@@ -420,25 +508,33 @@ function ImageComponent({
   nodeKey: NodeKey
 }) {
   const [editor] = useLexicalComposerContext()
-  const [hovered, setHovered] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
-  const handleRemove = (e: React.MouseEvent) => {
+  const handleRemove = async (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    editor.update(() => {
-      const node = $getNodeByKey(nodeKey)
-      if ($isImageNode(node)) {
-        node.remove()
-      }
-    })
+    if (deleting) return
+    setDeleting(true)
+    try {
+      // Best-effort: also remove the file from Cloudinary storage so
+      // removed images don't sit around as orphaned assets. If this fails
+      // (network issue, non-Cloudinary src, etc.) we still remove the node
+      // from the document so the user isn't blocked.
+      await deleteImageFromCloudinary(src)
+    } catch (err) {
+      console.error('Could not delete image from Cloudinary:', err)
+    } finally {
+      editor.update(() => {
+        const node = $getNodeByKey(nodeKey)
+        if ($isImageNode(node)) {
+          node.remove()
+        }
+      })
+    }
   }
 
   return (
-    <span
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{ position: 'relative', display: 'inline-block', maxWidth: '100%' }}
-    >
+    <span style={{ position: 'relative', display: 'inline-block', maxWidth: '100%' }}>
       <img
         src={src}
         alt={altText}
@@ -449,35 +545,35 @@ function ImageComponent({
           width: width ? `${width}px` : 'auto',
           borderRadius: 6,
           display: 'block',
+          opacity: deleting ? 0.5 : 1,
         }}
       />
-      {hovered && (
-        <button
-          type="button"
-          title="Remove image"
-          aria-label="Remove image"
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={handleRemove}
-          style={{
-            position: 'absolute',
-            top: 6,
-            right: 6,
-            width: 22,
-            height: 22,
-            padding: 0,
-            border: 'none',
-            borderRadius: '9999px',
-            background: 'rgba(0,0,0,0.65)',
-            color: '#fff',
-            fontSize: 14,
-            lineHeight: '22px',
-            textAlign: 'center',
-            cursor: 'pointer',
-          }}
-        >
-          ×
-        </button>
-      )}
+      <button
+        type="button"
+        title="Delete image"
+        aria-label="Delete image"
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={handleRemove}
+        disabled={deleting}
+        style={{
+          position: 'absolute',
+          top: 6,
+          right: 6,
+          width: 24,
+          height: 24,
+          padding: 0,
+          border: 'none',
+          borderRadius: '9999px',
+          background: 'rgba(0,0,0,0.65)',
+          color: '#fff',
+          fontSize: 14,
+          lineHeight: '24px',
+          textAlign: 'center',
+          cursor: deleting ? 'default' : 'pointer',
+        }}
+      >
+        {deleting ? '…' : '×'}
+      </button>
     </span>
   )
 }
@@ -623,18 +719,38 @@ function ImagesPlugin() {
   return null
 }
 
-// Reads a File into a base64 data URL, rejecting non-images and oversized
-// files. Shared by the toolbar upload button and the clipboard paste path.
-function readImageFile(file: File): Promise<string> {
+// Resolves a File to a usable <img src>. If an onUploadImage function is
+// provided, the file is uploaded and the returned hosted URL is used —
+// keeping the document HTML small regardless of image size. Without one,
+// falls back to a base64 data URL embedded directly in the HTML (fine for
+// small images, but see the warning below for why that doesn't scale).
+let warnedAboutBase64Fallback = false
+
+async function resolveImageSrc(
+  file: File,
+  onUploadImage?: (file: File) => Promise<string>
+): Promise<string> {
+  if (!file.type.startsWith('image/')) {
+    throw new Error('Please choose an image file.')
+  }
+  if (file.size > MAX_IMAGE_BYTES) {
+    throw new Error(`Image is too large (max ${Math.round(MAX_IMAGE_BYTES / (1024 * 1024))}MB).`)
+  }
+
+  if (onUploadImage) {
+    return onUploadImage(file)
+  }
+
+  if (!warnedAboutBase64Fallback) {
+    warnedAboutBase64Fallback = true
+    console.warn(
+      '[RichTextEditor] No onUploadImage prop provided — embedding image as base64 in the document HTML. ' +
+        'This can make documents with images slow or freeze the tab when loaded for editing. ' +
+        'Pass an onUploadImage={(file) => Promise<string>} prop that uploads to your storage/CDN and resolves the hosted URL.'
+    )
+  }
+
   return new Promise((resolve, reject) => {
-    if (!file.type.startsWith('image/')) {
-      reject(new Error('Please choose an image file.'))
-      return
-    }
-    if (file.size > MAX_IMAGE_BYTES) {
-      reject(new Error(`Image is too large (max ${Math.round(MAX_IMAGE_BYTES / (1024 * 1024))}MB).`))
-      return
-    }
     const reader = new FileReader()
     reader.onload = () => resolve(reader.result as string)
     reader.onerror = () => reject(new Error('Could not read the image file.'))
@@ -741,7 +857,7 @@ function OnChangeHtmlPlugin({
 // ── Paste handling: cleans Word/WPS junk, guarantees real paragraphs,
 //    inserts pasted images, and turns plain-text articles (no HTML on the
 //    clipboard at all) into one <p> per paragraph instead of a single blob. ──
-function PasteCleanupPlugin() {
+function PasteCleanupPlugin({ onUploadImage }: { onUploadImage?: (file: File) => Promise<string> }) {
   const [editor] = useLexicalComposerContext()
 
   useEffect(() => {
@@ -756,7 +872,7 @@ function PasteCleanupPlugin() {
       if (imageFile) {
         event.preventDefault()
         event.stopPropagation()
-        readImageFile(imageFile)
+        resolveImageSrc(imageFile, onUploadImage)
           .then((src) => {
             editor.dispatchCommand(INSERT_IMAGE_COMMAND, { src, altText: imageFile.name })
           })
@@ -820,13 +936,13 @@ function PasteCleanupPlugin() {
 
     rootElement.addEventListener('paste', handlePaste, true)
     return () => rootElement.removeEventListener('paste', handlePaste, true)
-  }, [editor])
+  }, [editor, onUploadImage])
 
   return null
 }
 
 // ── Toolbar ──
-function Toolbar() {
+function Toolbar({ onUploadImage }: { onUploadImage?: (file: File) => Promise<string> }) {
   const [editor] = useLexicalComposerContext()
   const [isBold, setIsBold] = useState(false)
   const [isItalic, setIsItalic] = useState(false)
@@ -1061,7 +1177,7 @@ function Toolbar() {
     e.target.value = ''
     if (!file) return
     try {
-      const src = await readImageFile(file)
+      const src = await resolveImageSrc(file, onUploadImage)
       editor.dispatchCommand(INSERT_IMAGE_COMMAND, { src, altText: file.name })
       setImageError(null)
     } catch (err) {
@@ -1278,7 +1394,7 @@ const BORDER_WIDTHS = [
   { label: 'Thick', value: '3px' },
 ]
 
-export function RichTextEditor({ value, onChange, placeholder, className }: Props) {
+export function RichTextEditor({ value, onChange, placeholder, className, onUploadImage = uploadImageToCloudinary }: Props)  {
   const isInternalUpdate = useRef(false)
   const lastHtml = useRef('')
 
@@ -1360,7 +1476,7 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Prop
 
       <div className={`border rounded-md overflow-hidden ${className}`}>
         <LexicalComposer initialConfig={initialConfig}>
-          <Toolbar />
+          <Toolbar onUploadImage={onUploadImage} />
           <RichTextPlugin
             contentEditable={
               <ContentEditable className="prose max-w-none p-3 min-h-37.5 focus:outline-none" />
@@ -1376,7 +1492,7 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Prop
           <ListPlugin />
           <TablePlugin />
           <ImagesPlugin />
-          <PasteCleanupPlugin />
+          <PasteCleanupPlugin onUploadImage={onUploadImage} />
           <InitialContentPlugin value={value} isInternalUpdate={isInternalUpdate} lastHtml={lastHtml} />
           <OnChangeHtmlPlugin onChange={onChange} isInternalUpdate={isInternalUpdate} lastHtml={lastHtml} />
         </LexicalComposer>
