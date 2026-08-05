@@ -8,7 +8,6 @@ import {
   FORMAT_TEXT_COMMAND,
   UNDO_COMMAND,
   REDO_COMMAND,
-  ParagraphNode,
   type EditorState,
   type EditorConfig,
   type LexicalEditor,
@@ -16,7 +15,6 @@ import {
   type NodeKey,
   type DOMConversionMap,
   type DOMExportOutput,
-  type SerializedParagraphNode,
   type Spread,
 } from 'lexical'
 import { $generateHtmlFromNodes, $generateNodesFromDOM } from '@lexical/html'
@@ -31,7 +29,7 @@ import {LexicalErrorBoundary} from '@lexical/react/LexicalErrorBoundary'
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
 import { HeadingNode, QuoteNode, $createHeadingNode, $createQuoteNode } from '@lexical/rich-text'
 import {
-  // ListNode,
+  ListNode,
   ListItemNode,
   INSERT_UNORDERED_LIST_COMMAND,
   INSERT_ORDERED_LIST_COMMAND,
@@ -59,12 +57,12 @@ interface Props {
 // ── Strip Word/WPS junk before it hits the DOM parser ──
 function cleanPastedHtml(html: string): string {
   return html
-   .replace(/<o:p>.*?<\/o:p>/gi, '')
-   .replace(/<w:[^>]+>.*?<\/w:[^>]+>/gi, '')
-   .replace(/<m:[^>]+>.*?<\/m:[^>]+>/gi, '')
-   .replace(/style="[^"]*mso[^"]*"/gi, '')
-   .replace(/<span[^>]*mso[^>]*>(.*?)<\/span>/gi, '$1')
-   .replace(/class="Mso[^"]*"/gi, '')
+    .replace(/<o:p>.*?<\/o:p>/gi, '')
+    .replace(/<w:[^>]+>.*?<\/w:[^>]+>/gi, '')
+    .replace(/<m:[^>]+>.*?<\/m:[^>]+>/gi, '')
+    .replace(/style="[^"]*mso[^"]*"/gi, '')
+    .replace(/<span[^>]*mso[^>]*>(.*?)<\/span>/gi, '$1')
+    .replace(/class="Mso[^"]*"/gi, '')
 }
 
 // ── Guarantees pasted content lands as real paragraphs ──
@@ -87,7 +85,7 @@ function ensureParagraphs(html: string): string {
     Array.from(body.children).forEach((el) => {
       if (
         el.tagName === 'DIV' &&
-       !el.querySelector('table, ul, ol, blockquote, div, h1, h2, h3, h4, h5, h6')
+        !el.querySelector('table, ul, ol, blockquote, div, h1, h2, h3, h4, h5, h6')
       ) {
         const p = doc.createElement('p')
         p.innerHTML = el.innerHTML
@@ -104,10 +102,10 @@ function ensureParagraphs(html: string): string {
       const wrapper = doc.createElement('div')
       buffer.forEach((n) => wrapper.appendChild(n))
       wrapper.innerHTML
-       .split(/(?:<br\s*\/?>\s*){2,}/i)
-       .map((c) => c.trim())
-       .filter(Boolean)
-       .forEach((chunk) => {
+        .split(/(?:<br\s*\/?>\s*){2,}/i)
+        .map((c) => c.trim())
+        .filter(Boolean)
+        .forEach((chunk) => {
           const p = doc.createElement('p')
           p.innerHTML = chunk
           fragment.appendChild(p)
@@ -117,8 +115,8 @@ function ensureParagraphs(html: string): string {
 
     children.forEach((node) => {
       const isBlock = node.nodeType === Node.ELEMENT_NODE && blockTags.has((node as Element).tagName)
-      const isText = node.nodeType === Node.TEXT_NODE &&!!node.textContent?.trim()
-      const isInlineEl = node.nodeType === Node.ELEMENT_NODE &&!isBlock
+      const isText = node.nodeType === Node.TEXT_NODE && !!node.textContent?.trim()
+      const isInlineEl = node.nodeType === Node.ELEMENT_NODE && !isBlock
       if (isBlock) {
         flushBuffer()
         fragment.appendChild(node)
@@ -139,7 +137,7 @@ function ensureParagraphs(html: string): string {
 // ── Custom TableNode: adds a per-table border color + width ──
 // Packed as CSS custom properties on the table element (--table-border-color,
 // --table-border-width) so a single style attribute drives every cell's
-// border via the.rte-table CSS below — same approach as the Tiptap version.
+// border via the .rte-table CSS below — same approach as the Tiptap version.
 export type SerializedStyledTableNode = Spread<
   { borderColor: string; borderWidth: string },
   SerializedTableNode
@@ -169,7 +167,7 @@ export class StyledTableNode extends TableNode {
 
   exportJSON(): SerializedStyledTableNode {
     return {
-     ...super.exportJSON(),
+      ...super.exportJSON(),
       borderColor: this.__borderColor,
       borderWidth: this.__borderWidth,
     }
@@ -199,11 +197,12 @@ export class StyledTableNode extends TableNode {
     return dom
   }
 
+
 updateDOM(prevNode: this, dom: HTMLElement, config: EditorConfig): boolean {
   const updated = super.updateDOM(prevNode, dom, config)
   if (
-    prevNode.__borderColor!== this.__borderColor ||
-    prevNode.__borderWidth!== this.__borderWidth
+    prevNode.__borderColor !== this.__borderColor ||
+    prevNode.__borderWidth !== this.__borderWidth
   ) {
     dom.style.setProperty('--table-border-color', this.__borderColor)
     dom.style.setProperty('--table-border-width', this.__borderWidth)
@@ -225,17 +224,17 @@ updateDOM(prevNode: this, dom: HTMLElement, config: EditorConfig): boolean {
   static importDOM(): DOMConversionMap | null {
     const parentImport = TableNode.importDOM?.()
     const tableImport = parentImport?.table
-    if (!tableImport) return parentImport?? null
+    if (!tableImport) return parentImport ?? null
     return {
-     ...parentImport,
+      ...parentImport,
       table: (node: HTMLElement) => {
         const parentConversion = tableImport(node)
         if (!parentConversion) return null
         return {
-         ...parentConversion,
+          ...parentConversion,
           conversion: (element: HTMLElement) => {
             const output = parentConversion.conversion(element)
-            if (!output ||!output.node) return output
+            if (!output || !output.node) return output
             const borderColor = element.style.getPropertyValue('--table-border-color').trim() || '#000000'
             const borderWidth = element.style.getPropertyValue('--table-border-width').trim() || '1px'
             const tableNode = output.node as StyledTableNode
@@ -255,119 +254,30 @@ export function $isStyledTableNode(node: LexicalNode | null | undefined): node i
   return node instanceof StyledTableNode
 }
 
-// Options offered in the line-spacing dropdown
-export const LINE_HEIGHT_OPTIONS = [
-  { label: 'Single', value: '1' },
-  { label: '1.15', value: '1.15' },
-  { label: '1.5', value: '1.5' },
-  { label: 'Double', value: '2' },
+// Swatches offered for cell fill color
+const CELL_COLORS = [
+  { label: 'None', value: null },
+  { label: 'Gray', value: '#f3f4f6' },
+  { label: 'Blue', value: '#dbeafe' },
+  { label: 'Green', value: '#dcfce7' },
+  { label: 'Yellow', value: '#fef9c3' },
+  { label: 'Red', value: '#fee2e2' },
 ]
 
-export const DEFAULT_LINE_HEIGHT = '1.5'
+// Swatches offered for table border color — black is the default
+const BORDER_COLORS = [
+  { label: 'Black', value: '#000000' },
+  { label: 'Gray', value: '#d1d5db' },
+  { label: 'Blue', value: '#3b82f6' },
+  { label: 'Green', value: '#16a34a' },
+  { label: 'Red', value: '#dc2626' },
+]
 
-// ── Custom ParagraphNode: carries a per-paragraph line-height ──
-// Stored as an inline style on the <p> element so it round-trips through
-// $generateHtmlFromNodes / $generateNodesFromDOM. New paragraphs default to
-// 1.5 line spacing; the toolbar lets the user change it per paragraph.
-export type SerializedStyledParagraphNode = Spread<{ lineHeight: string }, SerializedParagraphNode>
-
-export class StyledParagraphNode extends ParagraphNode {
-  __lineHeight: string
-
-  constructor(lineHeight: string = DEFAULT_LINE_HEIGHT, key?: NodeKey) {
-    super(key)
-    this.__lineHeight = lineHeight
-  }
-
-  static getType(): string {
-    return 'paragraph'
-  }
-
-  static clone(node: StyledParagraphNode): StyledParagraphNode {
-    return new StyledParagraphNode(node.__lineHeight, node.__key)
-  }
-
-  static importJSON(serializedNode: SerializedStyledParagraphNode): StyledParagraphNode {
-    const node = new StyledParagraphNode(serializedNode.lineHeight || DEFAULT_LINE_HEIGHT)
-    node.setFormat(serializedNode.format)
-    node.setIndent(serializedNode.indent)
-    node.setDirection(serializedNode.direction)
-    return node
-  }
-
-  exportJSON(): SerializedStyledParagraphNode {
-    return {
-     ...super.exportJSON(),
-      lineHeight: this.__lineHeight,
-    }
-  }
-
-  getLineHeight(): string {
-    return this.getLatest().__lineHeight
-  }
-
-  setLineHeight(lineHeight: string): void {
-    this.getWritable().__lineHeight = lineHeight
-  }
-
-  createDOM(config: EditorConfig): HTMLElement {
-    const dom = super.createDOM(config)
-    dom.style.lineHeight = this.__lineHeight
-    return dom
-  }
-
-  updateDOM(prevNode: this, dom: HTMLElement, config: EditorConfig): boolean {
-    const updated = super.updateDOM(prevNode, dom, config)
-    if (prevNode.__lineHeight!== this.__lineHeight) {
-      dom.style.lineHeight = this.__lineHeight
-    }
-    return updated
-  }
-
-  exportDOM(editor: LexicalEditor): DOMExportOutput {
-    const output = super.exportDOM(editor)
-    const element = output.element
-    if (element instanceof HTMLElement) {
-      element.style.lineHeight = this.__lineHeight
-    }
-    return output
-  }
-
-  static importDOM(): DOMConversionMap | null {
-    const parentImport = ParagraphNode.importDOM?.()
-    const pImport = parentImport?.p
-    return {
-     ...parentImport,
-      p: (node: HTMLElement) => {
-        const parentConversion = pImport? pImport(node) : null
-        return {
-          priority: 1,
-         ...(parentConversion || {}),
-          conversion: (element: HTMLElement) => {
-            const output = parentConversion
-             ? parentConversion.conversion(element)
-              : { node: $createStyledParagraphNode() }
-            if (!output ||!output.node) return output
-            const lineHeight = element.style.lineHeight || DEFAULT_LINE_HEIGHT
-            const pNode = output.node as StyledParagraphNode
-            if (typeof pNode.setLineHeight === 'function') {
-              pNode.setLineHeight(lineHeight)
-            }
-            return output
-          },
-        }
-      },
-    }
-  }
-}
-
-export function $createStyledParagraphNode(lineHeight: string = DEFAULT_LINE_HEIGHT): StyledParagraphNode {
-  return new StyledParagraphNode(lineHeight)
-}
-
-export function $isStyledParagraphNode(node: LexicalNode | null | undefined): node is StyledParagraphNode {
-  return node instanceof StyledParagraphNode
-}
+const BORDER_WIDTHS = [
+  { label: 'Thin', value: '1px' },
+  { label: 'Medium', value: '2px' },
+  { label: 'Thick', value: '3px' },
+]
 
 const theme = {
   heading: { h2: 'rte-h2', h3: 'rte-h3' },
@@ -386,7 +296,7 @@ function onError(error: Error) {
 }
 
 // ── Loads initial `value` HTML into the editor once, and re-syncs it
-// whenever `value` changes from outside ──
+//    whenever `value` changes from outside ──
 function InitialContentPlugin({
   value,
   isInternalUpdate,
@@ -420,7 +330,7 @@ function InitialContentPlugin({
       isInternalUpdate.current = false
       return
     }
-    if (value!== lastHtml.current) {
+    if (value !== lastHtml.current) {
       editor.update(() => {
         const dom = new DOMParser().parseFromString(ensureParagraphs(value || ''), 'text/html')
         const nodes = $generateNodesFromDOM(editor, dom)
@@ -454,7 +364,6 @@ function OnChangeHtmlPlugin({
     (_editorState: EditorState, editor: LexicalEditor) => {
       editor.getEditorState().read(() => {
         const html = $generateHtmlFromNodes(editor, null)
-        console.log(html)
         isInternalUpdate.current = true
         lastHtml.current = html
         onChange(html)
@@ -467,8 +376,8 @@ function OnChangeHtmlPlugin({
 }
 
 // ── Paste handling: cleans Word/WPS junk, guarantees real paragraphs,
-// and turns plain-text articles (no HTML on the clipboard at all) into
-// one <p> per paragraph instead of a single blob. ──
+//    and turns plain-text articles (no HTML on the clipboard at all) into
+//    one <p> per paragraph instead of a single blob. ──
 function PasteCleanupPlugin() {
   const [editor] = useLexicalComposerContext()
 
@@ -508,12 +417,12 @@ function PasteCleanupPlugin() {
       editor.update(() => {
         const selection = $getSelection()
         const paragraphs = text
-         .replace(/\r\n/g, '\n')
-         .split(/\n{2,}/)
-         .map((p) => p.trim())
-         .filter(Boolean)
+          .replace(/\r\n/g, '\n')
+          .split(/\n{2,}/)
+          .map((p) => p.trim())
+          .filter(Boolean)
 
-        const paragraphNodes = (paragraphs.length > 0? paragraphs : [text]).map((para) => {
+        const paragraphNodes = (paragraphs.length > 0 ? paragraphs : [text]).map((para) => {
           const p = $createParagraphNode()
           para.split('\n').forEach((line, i) => {
             if (i > 0) p.append($createLineBreakNode())
@@ -550,7 +459,6 @@ function Toolbar() {
   const [currentBorderWidth, setCurrentBorderWidth] = useState('1px')
   const [showCellColors, setShowCellColors] = useState(false)
   const [showBorderPanel, setShowBorderPanel] = useState(false)
-  const [currentLineHeight, setCurrentLineHeight] = useState(DEFAULT_LINE_HEIGHT)
 
   useEffect(() => {
     return mergeRegister(
@@ -564,7 +472,7 @@ function Toolbar() {
 
             const anchorNode = selection.anchor.getNode()
             const element =
-              anchorNode.getKey() === 'root'? anchorNode : anchorNode.getTopLevelElementOrThrow()
+              anchorNode.getKey() === 'root' ? anchorNode : anchorNode.getTopLevelElementOrThrow()
             const type = element.getType()
             if (type === 'heading') {
               // @ts-expect-error - getTag exists on HeadingNode
@@ -573,18 +481,14 @@ function Toolbar() {
               setBlockType(type)
             }
 
-            if ($isStyledParagraphNode(element)) {
-              setCurrentLineHeight(element.getLineHeight())
-            }
-
             const tableCell = $getNearestNodeOfType(anchorNode, TableCellNode)
-            const inTable =!!tableCell || $isTableSelection(selection)
+            const inTable = !!tableCell || $isTableSelection(selection)
             setIsInTable(inTable)
 
             if (inTable) {
-              const cellNode = tableCell?? null
+              const cellNode = tableCell ?? null
               const tableNode = cellNode
-               ? $getNearestNodeOfType(cellNode, TableNode)
+                ? $getNearestNodeOfType(cellNode, TableNode)
                 : null
               if (tableNode && $isStyledTableNode(tableNode)) {
                 setCurrentBorderColor(tableNode.getBorderColor())
@@ -625,23 +529,6 @@ function Toolbar() {
     })
   }
 
-  const applyLineHeight = (value: string) => {
-    editor.update(() => {
-      const selection = $getSelection()
-      if (!$isRangeSelection(selection) &&!$isTableSelection(selection)) return
-      const seen = new Set<string>()
-      selection.getNodes().forEach((node) => {
-        const topNode = node.getKey() === 'root'? node : node.getTopLevelElementOrThrow()
-        if (seen.has(topNode.getKey())) return
-        seen.add(topNode.getKey())
-        if ($isStyledParagraphNode(topNode)) {
-          topNode.setLineHeight(value)
-        }
-      })
-    })
-    setCurrentLineHeight(value)
-  }
-
   const toggleBulletList = () => editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined)
   const toggleOrderedList = () => editor.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined)
 
@@ -672,21 +559,8 @@ function Toolbar() {
   }
 
  const insertTable = () => {
-  // editor.focus() restores selection asynchronously — dispatching the
-  // command immediately after calling it (without waiting) means Lexical
-  // often finds no active selection and silently drops the insert. The
-  // callback runs only once focus + selection restoration has completed.
-  editor.focus(() => {
-    editor.update(() => {
-      const selection = $getSelection()
-      if (!$isRangeSelection(selection) &&!$isTableSelection(selection)) {
-        // Still no selection (e.g. an empty editor) — put the cursor at
-        // the end of the document so there's somewhere to insert into.
-        $getRoot().selectEnd()
-      }
-    })
-    editor.dispatchCommand(INSERT_TABLE_COMMAND, { rows: '3', columns: '3', includeHeaders: true })
-  })
+  editor.focus() // ensure the editor has focus/selection before dispatching
+  editor.dispatchCommand(INSERT_TABLE_COMMAND, { rows: '3', columns: '3', includeHeaders: true })
 }
 
   // Applies fill color to every selected cell (multi-cell drag) or the
@@ -711,9 +585,9 @@ function Toolbar() {
     editor.update(() => {
       const selection = $getSelection()
       const anchorNode = $isRangeSelection(selection)
-       ? selection.anchor.getNode()
+        ? selection.anchor.getNode()
         : $isTableSelection(selection)
-       ? selection.getNodes()[0]
+        ? selection.getNodes()[0]
         : null
       if (!anchorNode) return
       const cell = $getNearestNodeOfType(anchorNode, TableCellNode)
@@ -753,16 +627,16 @@ function Toolbar() {
   const toggleHeaderRow = () => {
     editor.update(() => {
       const selection = $getSelection()
-      const anchorNode = $isRangeSelection(selection)? selection.anchor.getNode() : null
+      const anchorNode = $isRangeSelection(selection) ? selection.anchor.getNode() : null
       if (!anchorNode) return
       const cell = $getNearestNodeOfType(anchorNode, TableCellNode)
       if (!cell) return
-      cell.setHeaderStyles(cell.getHeaderStyles() === 0? 1 : 0)
+      cell.setHeaderStyles(cell.getHeaderStyles() === 0 ? 1 : 0)
     })
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-1 p-2 border-b bg-background">
+    <div className="flex flex-wrap gap-1 p-2 border-b bg-background">
       <ToolbarButton onClick={() => formatText('bold')} active={isBold} title="Bold">
         <b>B</b>
       </ToolbarButton>
@@ -784,19 +658,6 @@ function Toolbar() {
       <ToolbarButton onClick={setParagraph} active={blockType === 'paragraph'} title="Convert to paragraph">
         ¶ Paragraph
       </ToolbarButton>
-
-      <select
-        value={currentLineHeight}
-        onChange={(e) => applyLineHeight(e.target.value)}
-        title="Line spacing"
-        className="px-2 py-1 rounded text-sm font-medium text-gray-600 border border-transparent hover:bg-gray-100 focus:outline-none"
-      >
-        {LINE_HEIGHT_OPTIONS.map((opt) => (
-          <option key={opt.value} value={opt.value}>
-            Spacing: {opt.label}
-          </option>
-        ))}
-      </select>
 
       <Divider />
 
@@ -835,7 +696,7 @@ function Toolbar() {
           <div className="relative">
             <ToolbarButton
               onClick={() => {
-                setShowCellColors((s) =>!s)
+                setShowCellColors((s) => !s)
                 setShowBorderPanel(false)
               }}
               active={showCellColors}
@@ -852,7 +713,7 @@ function Toolbar() {
                     title={c.label}
                     onClick={() => applyCellColor(c.value)}
                     className="w-6 h-6 rounded border border-gray-300"
-                    style={{ backgroundColor: c.value?? '#ffffff' }}
+                    style={{ backgroundColor: c.value ?? '#ffffff' }}
                   />
                 ))}
               </div>
@@ -863,7 +724,7 @@ function Toolbar() {
           <div className="relative">
             <ToolbarButton
               onClick={() => {
-                setShowBorderPanel((s) =>!s)
+                setShowBorderPanel((s) => !s)
                 setShowCellColors(false)
               }}
               active={showBorderPanel}
@@ -883,7 +744,7 @@ function Toolbar() {
                         title={c.label}
                         onClick={() => applyBorderColor(c.value)}
                         className={`w-6 h-6 rounded-full border-2 ${
-                          currentBorderColor === c.value? 'border-gray-900' : 'border-gray-200'
+                          currentBorderColor === c.value ? 'border-gray-900' : 'border-gray-200'
                         }`}
                         style={{ backgroundColor: c.value }}
                       />
@@ -900,7 +761,7 @@ function Toolbar() {
                         onClick={() => applyBorderWidth(w.value)}
                         className={`px-2 py-1 rounded text-xs border ${
                           currentBorderWidth === w.value
-                           ? 'border-gray-900 bg-gray-100 text-gray-900'
+                            ? 'border-gray-900 bg-gray-100 text-gray-900'
                             : 'border-gray-200 text-gray-500 hover:bg-gray-50'
                         }`}
                       >
@@ -931,31 +792,6 @@ function Toolbar() {
   )
 }
 
-// Swatches offered for cell fill color
-const CELL_COLORS = [
-  { label: 'None', value: null },
-  { label: 'Gray', value: '#f3f4f6' },
-  { label: 'Blue', value: '#dbeafe' },
-  { label: 'Green', value: '#dcfce7' },
-  { label: 'Yellow', value: '#fef9c3' },
-  { label: 'Red', value: '#fee2e2' },
-]
-
-// Swatches offered for table border color — black is the default
-const BORDER_COLORS = [
-  { label: 'Black', value: '#000000' },
-  { label: 'Gray', value: '#d1d5db' },
-  { label: 'Blue', value: '#3b82f6' },
-  { label: 'Green', value: '#16a34a' },
-  { label: 'Red', value: '#dc2626' },
-]
-
-const BORDER_WIDTHS = [
-  { label: 'Thin', value: '1px' },
-  { label: 'Medium', value: '2px' },
-  { label: 'Thick', value: '3px' },
-]
-
 export function RichTextEditor({ value, onChange, placeholder, className }: Props) {
   const isInternalUpdate = useRef(false)
   const lastHtml = useRef('')
@@ -967,18 +803,10 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Prop
     nodes: [
       HeadingNode,
       QuoteNode,
+      ListNode,
       ListItemNode,
       CodeNode,
-      {
-        replace: ParagraphNode,
-        with: (node: ParagraphNode) => new StyledParagraphNode(DEFAULT_LINE_HEIGHT, node.__key),
-        withKlass: StyledParagraphNode,
-      },
-      {
-        replace: TableNode,
-        with: (node: TableNode) => new StyledTableNode('#000000', '1px', node.__key),
-        withKlass: StyledTableNode,
-      },
+      { replace: TableNode, with: (node: TableNode) => new StyledTableNode('#000000', '1px', node.__key) },
       TableCellNode,
       TableRowNode,
     ],
@@ -988,35 +816,35 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Prop
     <>
       {/* Table + block styles injected once */}
       <style>{`
-       .rte-table {
+        .rte-table {
           border-collapse: collapse;
           width: 100%;
           margin: 0.75rem 0;
           font-size: 0.875rem;
         }
-       .rte-table-cell,
-       .rte-table-cell-header {
-          border: var(--table-border-width, 1px) solid var(--table-border-color, #000000)!important;
+        .rte-table-cell,
+        .rte-table-cell-header {
+          border: var(--table-border-width, 1px) solid var(--table-border-color, #000000) !important;
           padding: 6px 10px;
           text-align: left;
           vertical-align: top;
           min-width: 60px;
         }
-       .rte-table-cell-header {
+        .rte-table-cell-header {
           background-color: #f3f4f6;
           font-weight: 600;
         }
-       .rte-h2 { font-size: 1.25rem; font-weight: 700; margin: 1rem 0 0.5rem; }
-       .rte-h3 { font-size: 1.05rem; font-weight: 600; margin: 0.75rem 0 0.4rem; }
-       .rte-ul,.rte-ol { margin: 0.5rem 0; padding-left: 1.5rem; }
-       .rte-quote {
+        .rte-h2 { font-size: 1.25rem; font-weight: 700; margin: 1rem 0 0.5rem; }
+        .rte-h3 { font-size: 1.05rem; font-weight: 600; margin: 0.75rem 0 0.4rem; }
+        .rte-ul, .rte-ol { margin: 0.5rem 0; padding-left: 1.5rem; }
+        .rte-quote {
           border-left: 3px solid #9ca3af;
           padding-left: 1rem;
           margin: 0.75rem 0;
           color: #4b5563;
           font-style: italic;
         }
-       .rte-code {
+        .rte-code {
           background: #f3f4f6;
           padding: 0.75rem 1rem;
           border-radius: 8px;
@@ -1025,9 +853,9 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Prop
           font-size: 0.85rem;
           font-family: monospace;
         }
-       .rte-bold { font-weight: 700; }
-       .rte-italic { font-style: italic; }
-       .rte-strike { text-decoration: line-through; }
+        .rte-bold { font-weight: 700; }
+        .rte-italic { font-style: italic; }
+        .rte-strike { text-decoration: line-through; }
       `}</style>
 
       <div className={`border rounded-md overflow-hidden ${className}`}>
@@ -1083,9 +911,9 @@ function ToolbarButton({
       className={`px-2 py-1 rounded text-sm font-medium transition-colors
         ${
           danger
-           ? 'text-red-500 hover:bg-red-50'
+            ? 'text-red-500 hover:bg-red-50'
             : active
-           ? 'bg-gray-200 text-gray-900'
+            ? 'bg-gray-200 text-gray-900'
             : 'text-gray-600 hover:bg-gray-100'
         }`}
     >
