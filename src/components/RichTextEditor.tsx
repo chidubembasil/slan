@@ -435,7 +435,7 @@ function OnChangeHtmlPlugin({
     (_editorState: EditorState, editor: LexicalEditor) => {
       editor.getEditorState().read(() => {
         let html = $generateHtmlFromNodes(editor, null)
-        html = html.replace(/(<br\s*\/?>\s*){1,}/gi, '<br>')
+        html = html.replace(/<\/p>\s*<p/gi, '</p><br><br><p')
         console.log(html)
         isInternalUpdate.current = true
         lastHtml.current = html
@@ -1034,11 +1034,10 @@ export function reinforceParagraphBreaks(html: string): string {
       }
     }
 
-    // Keep only one <br> between paragraphs
-    body.innerHTML = body.innerHTML.replace(
-      /(<br\s*\/?>\s*){1,}/gi,
-      '<br>'
-    )
+      body.innerHTML = body.innerHTML.replace(
+    /<\/p>\s*<p/gi,
+    '</p><br><br><p'
+  )
 
     return body.innerHTML
   } catch {
