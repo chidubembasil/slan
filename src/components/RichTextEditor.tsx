@@ -949,24 +949,30 @@ export function reinforceParagraphBreaks(html: string): string {
   try {
     const doc = new DOMParser().parseFromString(html, 'text/html')
     const body = doc.body
-    const topLevelBlocks = Array.from(body.children)
 
-    topLevelBlocks.forEach((el, i) => {
-      const isLast = i === topLevelBlocks.length - 1
-      if (isLast) return
+    // Merge heading-only paragraphs into the next paragraph
+    const paragraphs = Array.from(body.querySelectorAll('p'))
 
-      // Don't stack <br><br> next to a table — insert once, right after it,
-      // not inside it, and skip if the next sibling is already a break.
-      const next = el.nextSibling
-      const nextIsBreak =
-        next?.nodeType === Node.ELEMENT_NODE && (next as Element).tagName === 'BR'
-      if (nextIsBreak) return
+    for (let i = 0; i < paragraphs.length - 1; i++) {
+      const current = paragraphs[i]
+      const next = paragraphs[i + 1]
 
-      // const br1 = doc.createElement('br')
-      // const br2 = doc.createElement('br')
-      // el.insertAdjacentElement('afterend', br2)
-      // el.insertAdjacentElement('afterend', br1)
-    })
+      if (
+        current.querySelector('strong') &&
+        !current.querySelector('span') &&
+        current.textContent?.trim()
+      ) {
+        const heading = current.innerHTML
+        next.innerHTML = `${heading} ${next.innerHTML}`
+        current.remove()
+      }
+    }
+
+    // Keep only one <br> between paragraphs
+    body.innerHTML = body.innerHTML.replace(
+      /(<br\s*\/?>\s*){2,}/gi,
+      '<br>'
+    )
 
     return body.innerHTML
   } catch {
