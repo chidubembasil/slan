@@ -662,6 +662,7 @@ function Toolbar() {
       </ToolbarButton>
       <ToolbarButton
         onClick={setParagraph}
+        // active={blockType === 'paragraph'}
         title="Convert to paragraph"
       >
         ¶ Paragraph
@@ -854,8 +855,8 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Prop
           font-style: italic;
         }
         .rte-paragraph {
-          line-height: 1.4;
-          margin: 0 0 6px 0;
+          line-height: 0;
+          
         }
 
         .rte-paragraph:last-child {
@@ -970,3 +971,5 @@ export function reinforceParagraphBreaks(html: string): string {
     return html
   }
 }
+
+// margin: 0 0 6px 0;
