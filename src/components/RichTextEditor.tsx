@@ -370,6 +370,7 @@ function OnChangeHtmlPlugin({
     (_editorState: EditorState, editor: LexicalEditor) => {
       editor.getEditorState().read(() => {
         const html = $generateHtmlFromNodes(editor, null)
+        console.log(html)
         isInternalUpdate.current = true
         lastHtml.current = html
         onChange(html)
