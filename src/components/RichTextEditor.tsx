@@ -112,7 +112,7 @@ function ensureParagraphs(html: string): string {
           p.style = "lineHeight: 1;"
           fragment.appendChild(p)
         })
-      buffer = []
+      buffer = [] 
     }
 
     children.forEach((node) => {
