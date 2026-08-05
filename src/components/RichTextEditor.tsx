@@ -157,7 +157,7 @@ async function deleteImageFromCloudinary(src: string): Promise<void> {
 // as base64 data URLs directly in the HTML, so keep this conservative —
 // swap in a real upload endpoint (returning a hosted URL instead of a data
 // URL) if you need to support larger files.
-const MAX_IMAGE_BYTES = 20 * 1024 * 1024 // 5MB
+// const MAX_IMAGE_BYTES = 20 * 1024 * 1024 // 5MB
 
 // ── Strip Word/WPS junk before it hits the DOM parser ──
 function cleanPastedHtml(html: string): string {
@@ -725,26 +725,26 @@ function ImagesPlugin() {
 // keeping the document HTML small regardless of image size. Without one,
 // falls back to a base64 data URL embedded directly in the HTML (fine for
 // small images, but see the warning below for why that doesn't scale).
-async function resolveImageSrc(
-  file: File,
-  onUploadImage?: (file: File) => Promise<string>
-): Promise<string> {
-  if (!file.type.startsWith('image/')) {
-    throw new Error('Please choose an image file.')
-  }
+// async function resolveImageSrc(
+//   file: File,
+//   onUploadImage?: (file: File) => Promise<string>
+// ): Promise<string> {
+//   if (!file.type.startsWith('image/')) {
+//     throw new Error('Please choose an image file.')
+//   }
 
-  if (file.size > MAX_IMAGE_BYTES) {
-    throw new Error(
-      `Image is too large (max ${Math.round(MAX_IMAGE_BYTES / (1024 * 1024))}MB).`
-    )
-  }
+//   // if (file.size > MAX_IMAGE_BYTES) {
+//   //   throw new Error(
+//   //     `Image is too large (max ${Math.round(MAX_IMAGE_BYTES / (1024 * 1024))}MB).`
+//   //   )
+//   }
 
-  if (!onUploadImage) {
-    throw new Error('Image upload is not configured.')
-  }
+//   if (!onUploadImage) {
+//     throw new Error('Image upload is not configured.')
+//   }
 
-  return await onUploadImage(file)
-}
+//   return await onUploadImage(file)
+// }
 
 const theme = {
   heading: { h2: 'rte-h2', h3: 'rte-h3' },
@@ -856,18 +856,18 @@ function PasteCleanupPlugin({ onUploadImage }: { onUploadImage?: (file: File) =>
     const handlePaste = (event: ClipboardEvent) => {
       // Image pasted directly from the clipboard (e.g. screenshot, copied
       // image) — clipboardData.files is where browsers put these.
-      const files = event.clipboardData?.files
-      const imageFile = files ? Array.from(files).find((f) => f.type.startsWith('image/')) : undefined
-      if (imageFile) {
-        event.preventDefault()
-        event.stopPropagation()
-        resolveImageSrc(imageFile, onUploadImage)
-          .then((src) => {
-            editor.dispatchCommand(INSERT_IMAGE_COMMAND, { src, altText: imageFile.name })
-          })
-          .catch((err) => console.error(err))
-        return
-      }
+      // const files = event.clipboardData?.files
+      // const imageFile = files ? Array.from(files).find((f) => f.type.startsWith('image/')) : undefined
+      // if (imageFile) {
+      //   event.preventDefault()
+      //   event.stopPropagation()
+      //   resolveImageSrc(imageFile, onUploadImage)
+      //     .then((src) => {
+      //       editor.dispatchCommand(INSERT_IMAGE_COMMAND, { src, altText: imageFile.name })
+      //     })
+      //     .catch((err) => console.error(err))
+      //   return
+      // }
 
       const html = event.clipboardData?.getData('text/html')
 
@@ -931,7 +931,7 @@ function PasteCleanupPlugin({ onUploadImage }: { onUploadImage?: (file: File) =>
 }
 
 // ── Toolbar ──
-function Toolbar({ onUploadImage }: { onUploadImage?: (file: File) => Promise<string> }) {
+function Toolbar() {
   const [editor] = useLexicalComposerContext()
   const [isBold, setIsBold] = useState(false)
   const [isItalic, setIsItalic] = useState(false)
@@ -1160,19 +1160,19 @@ function Toolbar({ onUploadImage }: { onUploadImage?: (file: File) => Promise<st
     imageInputRef.current?.click()
   }
 
-  const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    // reset so picking the same file again still fires onChange
-    e.target.value = ''
-    if (!file) return
-    try {
-      const src = await resolveImageSrc(file, onUploadImage)
-      editor.dispatchCommand(INSERT_IMAGE_COMMAND, { src, altText: file.name })
-      setImageError(null)
-    } catch (err) {
-      setImageError(err instanceof Error ? err.message : 'Could not insert image.')
-    }
-  }
+  // const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  //   const file = e.target.files?.[0]
+  //   // reset so picking the same file again still fires onChange
+  //   e.target.value = ''
+  //   if (!file) return
+  //   try {
+  //     // const src = await resolveImageSrc(file, onUploadImage)
+  //     editor.dispatchCommand(INSERT_IMAGE_COMMAND, { src, altText: file.name })
+  //     setImageError(null)
+  //   } catch (err) {
+  //     setImageError(err instanceof Error ? err.message : 'Could not insert image.')
+  //   }
+  // }
 
   return (
     <div className="flex flex-wrap items-center gap-1 p-2 border-b bg-background">
@@ -1235,7 +1235,7 @@ function Toolbar({ onUploadImage }: { onUploadImage?: (file: File) => Promise<st
         ref={imageInputRef}
         type="file"
         accept="image/*"
-        onChange={handleImageFileChange}
+        // onChange={handleImageFileChange}
         className="hidden"
       />
       {imageError && <span className="text-xs text-red-500 ml-1">{imageError}</span>}
@@ -1465,7 +1465,7 @@ export function RichTextEditor({ value, onChange, placeholder, className, onUplo
 
       <div className={`border rounded-md overflow-hidden ${className}`}>
         <LexicalComposer initialConfig={initialConfig}>
-          <Toolbar onUploadImage={onUploadImage} />
+          <Toolbar />
           <RichTextPlugin
             contentEditable={
               <ContentEditable className="prose max-w-none p-3 min-h-37.5 focus:outline-none" />
