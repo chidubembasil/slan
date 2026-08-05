@@ -5,25 +5,17 @@ import {
   $createParagraphNode,
   $createTextNode,
   $createLineBreakNode,
-  // $insertNodes,
-  // $isRootOrShadowRoot,
   FORMAT_TEXT_COMMAND,
   UNDO_COMMAND,
   REDO_COMMAND,
-  // createCommand,
-  // COMMAND_PRIORITY_EDITOR,
-  // DecoratorNode,
   ParagraphNode,
-  // $getNodeByKey,
   type EditorState,
   type EditorConfig,
   type LexicalEditor,
   type LexicalNode,
-  // type LexicalCommand,
   type NodeKey,
   type DOMConversionMap,
   type DOMExportOutput,
-  // type SerializedLexicalNode,
   type SerializedParagraphNode,
   type Spread,
 } from 'lexical'
@@ -39,7 +31,7 @@ import {LexicalErrorBoundary} from '@lexical/react/LexicalErrorBoundary'
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
 import { HeadingNode, QuoteNode, $createHeadingNode, $createQuoteNode } from '@lexical/rich-text'
 import {
-  ListNode,
+  // ListNode,
   ListItemNode,
   INSERT_UNORDERED_LIST_COMMAND,
   INSERT_ORDERED_LIST_COMMAND,
@@ -64,25 +56,15 @@ interface Props {
   className?: string
 }
 
-
-
-
-
-
-
-
-
-
-
 // ── Strip Word/WPS junk before it hits the DOM parser ──
 function cleanPastedHtml(html: string): string {
   return html
-    .replace(/<o:p>.*?<\/o:p>/gi, '')
-    .replace(/<w:[^>]+>.*?<\/w:[^>]+>/gi, '')
-    .replace(/<m:[^>]+>.*?<\/m:[^>]+>/gi, '')
-    .replace(/style="[^"]*mso[^"]*"/gi, '')
-    .replace(/<span[^>]*mso[^>]*>(.*?)<\/span>/gi, '$1')
-    .replace(/class="Mso[^"]*"/gi, '')
+   .replace(/<o:p>.*?<\/o:p>/gi, '')
+   .replace(/<w:[^>]+>.*?<\/w:[^>]+>/gi, '')
+   .replace(/<m:[^>]+>.*?<\/m:[^>]+>/gi, '')
+   .replace(/style="[^"]*mso[^"]*"/gi, '')
+   .replace(/<span[^>]*mso[^>]*>(.*?)<\/span>/gi, '$1')
+   .replace(/class="Mso[^"]*"/gi, '')
 }
 
 // ── Guarantees pasted content lands as real paragraphs ──
@@ -105,7 +87,7 @@ function ensureParagraphs(html: string): string {
     Array.from(body.children).forEach((el) => {
       if (
         el.tagName === 'DIV' &&
-        !el.querySelector('table, ul, ol, blockquote, div, h1, h2, h3, h4, h5, h6')
+       !el.querySelector('table, ul, ol, blockquote, div, h1, h2, h3, h4, h5, h6')
       ) {
         const p = doc.createElement('p')
         p.innerHTML = el.innerHTML
@@ -122,10 +104,10 @@ function ensureParagraphs(html: string): string {
       const wrapper = doc.createElement('div')
       buffer.forEach((n) => wrapper.appendChild(n))
       wrapper.innerHTML
-        .split(/(?:<br\s*\/?>\s*){2,}/i)
-        .map((c) => c.trim())
-        .filter(Boolean)
-        .forEach((chunk) => {
+       .split(/(?:<br\s*\/?>\s*){2,}/i)
+       .map((c) => c.trim())
+       .filter(Boolean)
+       .forEach((chunk) => {
           const p = doc.createElement('p')
           p.innerHTML = chunk
           fragment.appendChild(p)
@@ -135,8 +117,8 @@ function ensureParagraphs(html: string): string {
 
     children.forEach((node) => {
       const isBlock = node.nodeType === Node.ELEMENT_NODE && blockTags.has((node as Element).tagName)
-      const isText = node.nodeType === Node.TEXT_NODE && !!node.textContent?.trim()
-      const isInlineEl = node.nodeType === Node.ELEMENT_NODE && !isBlock
+      const isText = node.nodeType === Node.TEXT_NODE &&!!node.textContent?.trim()
+      const isInlineEl = node.nodeType === Node.ELEMENT_NODE &&!isBlock
       if (isBlock) {
         flushBuffer()
         fragment.appendChild(node)
@@ -157,7 +139,7 @@ function ensureParagraphs(html: string): string {
 // ── Custom TableNode: adds a per-table border color + width ──
 // Packed as CSS custom properties on the table element (--table-border-color,
 // --table-border-width) so a single style attribute drives every cell's
-// border via the .rte-table CSS below — same approach as the Tiptap version.
+// border via the.rte-table CSS below — same approach as the Tiptap version.
 export type SerializedStyledTableNode = Spread<
   { borderColor: string; borderWidth: string },
   SerializedTableNode
@@ -187,7 +169,7 @@ export class StyledTableNode extends TableNode {
 
   exportJSON(): SerializedStyledTableNode {
     return {
-      ...super.exportJSON(),
+     ...super.exportJSON(),
       borderColor: this.__borderColor,
       borderWidth: this.__borderWidth,
     }
@@ -217,12 +199,11 @@ export class StyledTableNode extends TableNode {
     return dom
   }
 
-
 updateDOM(prevNode: this, dom: HTMLElement, config: EditorConfig): boolean {
   const updated = super.updateDOM(prevNode, dom, config)
   if (
-    prevNode.__borderColor !== this.__borderColor ||
-    prevNode.__borderWidth !== this.__borderWidth
+    prevNode.__borderColor!== this.__borderColor ||
+    prevNode.__borderWidth!== this.__borderWidth
   ) {
     dom.style.setProperty('--table-border-color', this.__borderColor)
     dom.style.setProperty('--table-border-width', this.__borderWidth)
@@ -244,17 +225,17 @@ updateDOM(prevNode: this, dom: HTMLElement, config: EditorConfig): boolean {
   static importDOM(): DOMConversionMap | null {
     const parentImport = TableNode.importDOM?.()
     const tableImport = parentImport?.table
-    if (!tableImport) return parentImport ?? null
+    if (!tableImport) return parentImport?? null
     return {
-      ...parentImport,
+     ...parentImport,
       table: (node: HTMLElement) => {
         const parentConversion = tableImport(node)
         if (!parentConversion) return null
         return {
-          ...parentConversion,
+         ...parentConversion,
           conversion: (element: HTMLElement) => {
             const output = parentConversion.conversion(element)
-            if (!output || !output.node) return output
+            if (!output ||!output.node) return output
             const borderColor = element.style.getPropertyValue('--table-border-color').trim() || '#000000'
             const borderWidth = element.style.getPropertyValue('--table-border-width').trim() || '1px'
             const tableNode = output.node as StyledTableNode
@@ -316,7 +297,7 @@ export class StyledParagraphNode extends ParagraphNode {
 
   exportJSON(): SerializedStyledParagraphNode {
     return {
-      ...super.exportJSON(),
+     ...super.exportJSON(),
       lineHeight: this.__lineHeight,
     }
   }
@@ -337,7 +318,7 @@ export class StyledParagraphNode extends ParagraphNode {
 
   updateDOM(prevNode: this, dom: HTMLElement, config: EditorConfig): boolean {
     const updated = super.updateDOM(prevNode, dom, config)
-    if (prevNode.__lineHeight !== this.__lineHeight) {
+    if (prevNode.__lineHeight!== this.__lineHeight) {
       dom.style.lineHeight = this.__lineHeight
     }
     return updated
@@ -356,17 +337,17 @@ export class StyledParagraphNode extends ParagraphNode {
     const parentImport = ParagraphNode.importDOM?.()
     const pImport = parentImport?.p
     return {
-      ...parentImport,
+     ...parentImport,
       p: (node: HTMLElement) => {
-        const parentConversion = pImport ? pImport(node) : null
+        const parentConversion = pImport? pImport(node) : null
         return {
           priority: 1,
-          ...(parentConversion || {}),
+         ...(parentConversion || {}),
           conversion: (element: HTMLElement) => {
             const output = parentConversion
-              ? parentConversion.conversion(element)
+             ? parentConversion.conversion(element)
               : { node: $createStyledParagraphNode() }
-            if (!output || !output.node) return output
+            if (!output ||!output.node) return output
             const lineHeight = element.style.lineHeight || DEFAULT_LINE_HEIGHT
             const pNode = output.node as StyledParagraphNode
             if (typeof pNode.setLineHeight === 'function') {
@@ -388,14 +369,6 @@ export function $isStyledParagraphNode(node: LexicalNode | null | undefined): no
   return node instanceof StyledParagraphNode
 }
 
-
-
-
-
-
-
-
-
 const theme = {
   heading: { h2: 'rte-h2', h3: 'rte-h3' },
   list: { ul: 'rte-ul', ol: 'rte-ol', listitem: 'rte-li' },
@@ -413,7 +386,7 @@ function onError(error: Error) {
 }
 
 // ── Loads initial `value` HTML into the editor once, and re-syncs it
-//    whenever `value` changes from outside ──
+// whenever `value` changes from outside ──
 function InitialContentPlugin({
   value,
   isInternalUpdate,
@@ -447,7 +420,7 @@ function InitialContentPlugin({
       isInternalUpdate.current = false
       return
     }
-    if (value !== lastHtml.current) {
+    if (value!== lastHtml.current) {
       editor.update(() => {
         const dom = new DOMParser().parseFromString(ensureParagraphs(value || ''), 'text/html')
         const nodes = $generateNodesFromDOM(editor, dom)
@@ -493,7 +466,9 @@ function OnChangeHtmlPlugin({
   return <OnChangePlugin onChange={handleChange} ignoreSelectionChange />
 }
 
-
+// ── Paste handling: cleans Word/WPS junk, guarantees real paragraphs,
+// and turns plain-text articles (no HTML on the clipboard at all) into
+// one <p> per paragraph instead of a single blob. ──
 function PasteCleanupPlugin() {
   const [editor] = useLexicalComposerContext()
 
@@ -502,8 +477,6 @@ function PasteCleanupPlugin() {
     if (!rootElement) return
 
     const handlePaste = (event: ClipboardEvent) => {
-      
-
       const html = event.clipboardData?.getData('text/html')
 
       if (html) {
@@ -535,12 +508,12 @@ function PasteCleanupPlugin() {
       editor.update(() => {
         const selection = $getSelection()
         const paragraphs = text
-          .replace(/\r\n/g, '\n')
-          .split(/\n{2,}/)
-          .map((p) => p.trim())
-          .filter(Boolean)
+         .replace(/\r\n/g, '\n')
+         .split(/\n{2,}/)
+         .map((p) => p.trim())
+         .filter(Boolean)
 
-        const paragraphNodes = (paragraphs.length > 0 ? paragraphs : [text]).map((para) => {
+        const paragraphNodes = (paragraphs.length > 0? paragraphs : [text]).map((para) => {
           const p = $createParagraphNode()
           para.split('\n').forEach((line, i) => {
             if (i > 0) p.append($createLineBreakNode())
@@ -591,7 +564,7 @@ function Toolbar() {
 
             const anchorNode = selection.anchor.getNode()
             const element =
-              anchorNode.getKey() === 'root' ? anchorNode : anchorNode.getTopLevelElementOrThrow()
+              anchorNode.getKey() === 'root'? anchorNode : anchorNode.getTopLevelElementOrThrow()
             const type = element.getType()
             if (type === 'heading') {
               // @ts-expect-error - getTag exists on HeadingNode
@@ -605,13 +578,13 @@ function Toolbar() {
             }
 
             const tableCell = $getNearestNodeOfType(anchorNode, TableCellNode)
-            const inTable = !!tableCell || $isTableSelection(selection)
+            const inTable =!!tableCell || $isTableSelection(selection)
             setIsInTable(inTable)
 
             if (inTable) {
-              const cellNode = tableCell ?? null
+              const cellNode = tableCell?? null
               const tableNode = cellNode
-                ? $getNearestNodeOfType(cellNode, TableNode)
+               ? $getNearestNodeOfType(cellNode, TableNode)
                 : null
               if (tableNode && $isStyledTableNode(tableNode)) {
                 setCurrentBorderColor(tableNode.getBorderColor())
@@ -655,10 +628,10 @@ function Toolbar() {
   const applyLineHeight = (value: string) => {
     editor.update(() => {
       const selection = $getSelection()
-      if (!$isRangeSelection(selection) && !$isTableSelection(selection)) return
+      if (!$isRangeSelection(selection) &&!$isTableSelection(selection)) return
       const seen = new Set<string>()
       selection.getNodes().forEach((node) => {
-        const topNode = node.getKey() === 'root' ? node : node.getTopLevelElementOrThrow()
+        const topNode = node.getKey() === 'root'? node : node.getTopLevelElementOrThrow()
         if (seen.has(topNode.getKey())) return
         seen.add(topNode.getKey())
         if ($isStyledParagraphNode(topNode)) {
@@ -706,7 +679,7 @@ function Toolbar() {
   editor.focus(() => {
     editor.update(() => {
       const selection = $getSelection()
-      if (!$isRangeSelection(selection) && !$isTableSelection(selection)) {
+      if (!$isRangeSelection(selection) &&!$isTableSelection(selection)) {
         // Still no selection (e.g. an empty editor) — put the cursor at
         // the end of the document so there's somewhere to insert into.
         $getRoot().selectEnd()
@@ -738,9 +711,9 @@ function Toolbar() {
     editor.update(() => {
       const selection = $getSelection()
       const anchorNode = $isRangeSelection(selection)
-        ? selection.anchor.getNode()
+       ? selection.anchor.getNode()
         : $isTableSelection(selection)
-        ? selection.getNodes()[0]
+       ? selection.getNodes()[0]
         : null
       if (!anchorNode) return
       const cell = $getNearestNodeOfType(anchorNode, TableCellNode)
@@ -780,16 +753,13 @@ function Toolbar() {
   const toggleHeaderRow = () => {
     editor.update(() => {
       const selection = $getSelection()
-      const anchorNode = $isRangeSelection(selection) ? selection.anchor.getNode() : null
+      const anchorNode = $isRangeSelection(selection)? selection.anchor.getNode() : null
       if (!anchorNode) return
       const cell = $getNearestNodeOfType(anchorNode, TableCellNode)
       if (!cell) return
-      cell.setHeaderStyles(cell.getHeaderStyles() === 0 ? 1 : 0)
+      cell.setHeaderStyles(cell.getHeaderStyles() === 0? 1 : 0)
     })
   }
-
-
-  
 
   return (
     <div className="flex flex-wrap items-center gap-1 p-2 border-b bg-background">
@@ -845,10 +815,6 @@ function Toolbar() {
 
       <Divider />
 
-
-
-      <Divider />
-
       {!isInTable && (
         <ToolbarButton onClick={insertTable} active={false} title="Insert table">
           ⊞ Table
@@ -869,7 +835,7 @@ function Toolbar() {
           <div className="relative">
             <ToolbarButton
               onClick={() => {
-                setShowCellColors((s) => !s)
+                setShowCellColors((s) =>!s)
                 setShowBorderPanel(false)
               }}
               active={showCellColors}
@@ -886,7 +852,7 @@ function Toolbar() {
                     title={c.label}
                     onClick={() => applyCellColor(c.value)}
                     className="w-6 h-6 rounded border border-gray-300"
-                    style={{ backgroundColor: c.value ?? '#ffffff' }}
+                    style={{ backgroundColor: c.value?? '#ffffff' }}
                   />
                 ))}
               </div>
@@ -897,7 +863,7 @@ function Toolbar() {
           <div className="relative">
             <ToolbarButton
               onClick={() => {
-                setShowBorderPanel((s) => !s)
+                setShowBorderPanel((s) =>!s)
                 setShowCellColors(false)
               }}
               active={showBorderPanel}
@@ -917,7 +883,7 @@ function Toolbar() {
                         title={c.label}
                         onClick={() => applyBorderColor(c.value)}
                         className={`w-6 h-6 rounded-full border-2 ${
-                          currentBorderColor === c.value ? 'border-gray-900' : 'border-gray-200'
+                          currentBorderColor === c.value? 'border-gray-900' : 'border-gray-200'
                         }`}
                         style={{ backgroundColor: c.value }}
                       />
@@ -934,7 +900,7 @@ function Toolbar() {
                         onClick={() => applyBorderWidth(w.value)}
                         className={`px-2 py-1 rounded text-xs border ${
                           currentBorderWidth === w.value
-                            ? 'border-gray-900 bg-gray-100 text-gray-900'
+                           ? 'border-gray-900 bg-gray-100 text-gray-900'
                             : 'border-gray-200 text-gray-500 hover:bg-gray-50'
                         }`}
                       >
@@ -990,7 +956,7 @@ const BORDER_WIDTHS = [
   { label: 'Thick', value: '3px' },
 ]
 
-export function RichTextEditor({ value, onChange, placeholder, className,  }: Props)  {
+export function RichTextEditor({ value, onChange, placeholder, className }: Props) {
   const isInternalUpdate = useRef(false)
   const lastHtml = useRef('')
 
@@ -1001,7 +967,6 @@ export function RichTextEditor({ value, onChange, placeholder, className,  }: Pr
     nodes: [
       HeadingNode,
       QuoteNode,
-      ListNode,
       ListItemNode,
       CodeNode,
       {
@@ -1016,7 +981,6 @@ export function RichTextEditor({ value, onChange, placeholder, className,  }: Pr
       },
       TableCellNode,
       TableRowNode,
-      
     ],
   }
 
@@ -1024,35 +988,35 @@ export function RichTextEditor({ value, onChange, placeholder, className,  }: Pr
     <>
       {/* Table + block styles injected once */}
       <style>{`
-        .rte-table {
+       .rte-table {
           border-collapse: collapse;
           width: 100%;
           margin: 0.75rem 0;
           font-size: 0.875rem;
         }
-        .rte-table-cell,
-        .rte-table-cell-header {
-          border: var(--table-border-width, 1px) solid var(--table-border-color, #000000) !important;
+       .rte-table-cell,
+       .rte-table-cell-header {
+          border: var(--table-border-width, 1px) solid var(--table-border-color, #000000)!important;
           padding: 6px 10px;
           text-align: left;
           vertical-align: top;
           min-width: 60px;
         }
-        .rte-table-cell-header {
+       .rte-table-cell-header {
           background-color: #f3f4f6;
           font-weight: 600;
         }
-        .rte-h2 { font-size: 1.25rem; font-weight: 700; margin: 1rem 0 0.5rem; }
-        .rte-h3 { font-size: 1.05rem; font-weight: 600; margin: 0.75rem 0 0.4rem; }
-        .rte-ul, .rte-ol { margin: 0.5rem 0; padding-left: 1.5rem; }
-        .rte-quote {
+       .rte-h2 { font-size: 1.25rem; font-weight: 700; margin: 1rem 0 0.5rem; }
+       .rte-h3 { font-size: 1.05rem; font-weight: 600; margin: 0.75rem 0 0.4rem; }
+       .rte-ul,.rte-ol { margin: 0.5rem 0; padding-left: 1.5rem; }
+       .rte-quote {
           border-left: 3px solid #9ca3af;
           padding-left: 1rem;
           margin: 0.75rem 0;
           color: #4b5563;
           font-style: italic;
         }
-        .rte-code {
+       .rte-code {
           background: #f3f4f6;
           padding: 0.75rem 1rem;
           border-radius: 8px;
@@ -1061,9 +1025,9 @@ export function RichTextEditor({ value, onChange, placeholder, className,  }: Pr
           font-size: 0.85rem;
           font-family: monospace;
         }
-        .rte-bold { font-weight: 700; }
-        .rte-italic { font-style: italic; }
-        .rte-strike { text-decoration: line-through; }
+       .rte-bold { font-weight: 700; }
+       .rte-italic { font-style: italic; }
+       .rte-strike { text-decoration: line-through; }
       `}</style>
 
       <div className={`border rounded-md overflow-hidden ${className}`}>
@@ -1081,9 +1045,9 @@ export function RichTextEditor({ value, onChange, placeholder, className,  }: Pr
             ErrorBoundary={LexicalErrorBoundary}
           />
           <HistoryPlugin />
-          <PasteCleanupPlugin />
           <ListPlugin />
           <TablePlugin />
+          <PasteCleanupPlugin />
           <InitialContentPlugin value={value} isInternalUpdate={isInternalUpdate} lastHtml={lastHtml} />
           <OnChangeHtmlPlugin onChange={onChange} isInternalUpdate={isInternalUpdate} lastHtml={lastHtml} />
         </LexicalComposer>
@@ -1119,9 +1083,9 @@ function ToolbarButton({
       className={`px-2 py-1 rounded text-sm font-medium transition-colors
         ${
           danger
-            ? 'text-red-500 hover:bg-red-50'
+           ? 'text-red-500 hover:bg-red-50'
             : active
-            ? 'bg-gray-200 text-gray-900'
+           ? 'bg-gray-200 text-gray-900'
             : 'text-gray-600 hover:bg-gray-100'
         }`}
     >
