@@ -854,8 +854,8 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Prop
           font-style: italic;
         }
         .rte-paragraph {
-          line-height: 1.5;
-          margin: 0 0 1.0rem;
+          line-height: 1.4;
+          margin: 0 0 6px 0;
         }
 
         .rte-paragraph:last-child {
