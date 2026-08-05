@@ -284,7 +284,12 @@ const theme = {
   list: { ul: 'rte-ul', ol: 'rte-ol', listitem: 'rte-li' },
   quote: 'rte-quote',
   code: 'rte-code',
-  text: { bold: 'rte-bold', italic: 'rte-italic', strikethrough: 'rte-strike' },
+  paragraph: 'rte-paragraph',   // <-- Add this
+  text: {
+    bold: 'rte-bold',
+    italic: 'rte-italic',
+    strikethrough: 'rte-strike',
+  },
   table: 'rte-table',
   tableCell: 'rte-table-cell',
   tableCellHeader: 'rte-table-cell-header',
@@ -822,6 +827,7 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Prop
           margin: 0.75rem 0;
           font-size: 0.875rem;
         }
+          
         .rte-table-cell,
         .rte-table-cell-header {
           border: var(--table-border-width, 1px) solid var(--table-border-color, #000000) !important;
@@ -843,6 +849,14 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Prop
           margin: 0.75rem 0;
           color: #4b5563;
           font-style: italic;
+        }
+        .rte-paragraph {
+          line-height: 1.5;
+          margin: 0 0 1.5rem;
+        }
+
+        .rte-paragraph:last-child {
+          margin-bottom: 0;
         }
         .rte-code {
           background: #f3f4f6;
