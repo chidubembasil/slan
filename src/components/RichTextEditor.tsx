@@ -924,7 +924,7 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Prop
         }
         .rte-paragraph {
           line-height: 1.5;
-          margin-bottom: 1.5em;
+          margin-bottom: 2.25em;
         }
 
         .rte-paragraph:last-child {
