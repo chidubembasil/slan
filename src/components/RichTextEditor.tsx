@@ -5,9 +5,14 @@ import {
   $createParagraphNode,
   $createTextNode,
   $createLineBreakNode,
+  $getNodeByKey,
+  $getNearestNodeFromDOMNode,
+  $isTextNode,
+  $isElementNode,
   FORMAT_TEXT_COMMAND,
   UNDO_COMMAND,
   REDO_COMMAND,
+  DecoratorNode,
   type EditorState,
   type EditorConfig,
   type LexicalEditor,
@@ -15,6 +20,7 @@ import {
   type NodeKey,
   type DOMConversionMap,
   type DOMExportOutput,
+  type SerializedLexicalNode,
   type Spread,
 } from 'lexical'
 import { $generateHtmlFromNodes, $generateNodesFromDOM } from '@lexical/html'
@@ -44,8 +50,8 @@ import {
   type SerializedTableNode,
 } from '@lexical/table'
 import { $setBlocksType } from '@lexical/selection'
-import { $getNearestNodeOfType, mergeRegister } from '@lexical/utils'
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { $getNearestNodeOfType, mergeRegister, $insertNodeToNearestRoot } from '@lexical/utils'
+import { useEffect, useRef, useState, useCallback, type JSX } from 'react'
 
 interface Props {
   value: string
@@ -63,6 +69,10 @@ function cleanPastedHtml(html: string): string {
     .replace(/style="[^"]*mso[^"]*"/gi, '')
     .replace(/<span[^>]*mso[^>]*>(.*?)<\/span>/gi, '$1')
     .replace(/class="Mso[^"]*"/gi, '')
+    // Strip base64 data-URI images on paste — every image in this editor
+    // must be a Cloudinary-hosted <img src="https://..."> uploaded through
+    // the image button, never inline image bytes.
+    .replace(/<img[^>]*src="data:[^"]*"[^>]*>/gi, '')
 }
 
 // ── Forces the content that follows a bold/strong "sub-header" onto its
@@ -138,19 +148,21 @@ function splitBoldSubheaders(html: string): string {
 // <p>, and wraps any remaining loose inline content into <p> tags split on
 // double line breaks. It also runs splitBoldSubheaders() at the end so any
 // bold "sub-header" runs get their trailing content pushed to the next line.
+// 'IMG' is treated as a block tag (same as TABLE) so a Cloudinary <img>
+// never gets wrapped inside a <p>, which Lexical wouldn't accept.
 function ensureParagraphs(html: string): string {
   try {
     const doc = new DOMParser().parseFromString(html, 'text/html')
     const body = doc.body
     const blockTags = new Set([
-      'P', 'DIV', 'TABLE', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6',
+      'P', 'DIV', 'TABLE', 'IMG', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6',
       'UL', 'OL', 'LI', 'BLOCKQUOTE', 'PRE',
     ])
 
     Array.from(body.children).forEach((el) => {
       if (
         el.tagName === 'DIV' &&
-        !el.querySelector('table, ul, ol, blockquote, div, h1, h2, h3, h4, h5, h6')
+        !el.querySelector('table, ul, ol, blockquote, div, h1, h2, h3, h4, h5, h6, img')
       ) {
         const p = doc.createElement('p')
         p.innerHTML = el.innerHTML
@@ -198,6 +210,252 @@ function ensureParagraphs(html: string): string {
   } catch {
     return html
   }
+}
+
+// ── Cloudinary image upload/delete helpers ──
+// Demo-only setup: requests are signed client-side with the API secret so
+// no backend endpoint is needed. The file is sent straight to Cloudinary
+// as a File inside FormData — it is never converted to base64 and never
+// touches localStorage/sessionStorage. Only the resulting Cloudinary URL
+// ever lands in the document, as a plain <img src="...">.
+async function sha1Hex(message: string): Promise<string> {
+  const data = new TextEncoder().encode(message)
+  const hashBuffer = await crypto.subtle.digest('SHA-1', data)
+  return Array.from(new Uint8Array(hashBuffer))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
+}
+
+function getCloudinaryConfig() {
+  return {
+    cloudName: import.meta.env.VITE_CLOUDINARY_CLOUD_NAME as string,
+    apiKey: import.meta.env.VITE_API_KEY as string,
+    apiSecret: import.meta.env.VITE_API_SECRET_KEY as string,
+  }
+}
+
+async function uploadImageToCloudinary(file: File): Promise<string> {
+  const { cloudName, apiKey, apiSecret } = getCloudinaryConfig()
+  const timestamp = Math.floor(Date.now() / 1000)
+  const signature = await sha1Hex(`timestamp=${timestamp}${apiSecret}`)
+
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('api_key', apiKey)
+  formData.append('timestamp', String(timestamp))
+  formData.append('signature', signature)
+
+  const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
+    method: 'POST',
+    body: formData,
+  })
+
+  if (!response.ok) {
+    const errorText = await response.text()
+    throw new Error(`Cloudinary upload failed: ${errorText}`)
+  }
+
+  const data = await response.json()
+  return data.secure_url as string
+}
+
+// Pulls the public_id back out of a Cloudinary delivery URL so an image can
+// be deleted without persisting anything beyond the plain <img src="...">.
+function extractCloudinaryPublicId(url: string): string | null {
+  const match = url.match(/\/upload\/(?:[^/]+\/)*?(?:v\d+\/)?(.+)\.[a-zA-Z0-9]+(?:\?.*)?$/)
+  return match ? match[1] : null
+}
+
+async function deleteImageFromCloudinary(url: string): Promise<void> {
+  const publicId = extractCloudinaryPublicId(url)
+  if (!publicId) return
+
+  const { cloudName, apiKey, apiSecret } = getCloudinaryConfig()
+  const timestamp = Math.floor(Date.now() / 1000)
+  const signature = await sha1Hex(`public_id=${publicId}&timestamp=${timestamp}${apiSecret}`)
+
+  const formData = new FormData()
+  formData.append('public_id', publicId)
+  formData.append('api_key', apiKey)
+  formData.append('timestamp', String(timestamp))
+  formData.append('signature', signature)
+
+  const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/destroy`, {
+    method: 'POST',
+    body: formData,
+  })
+
+  if (!response.ok) {
+    const errorText = await response.text()
+    throw new Error(`Cloudinary delete failed: ${errorText}`)
+  }
+}
+
+// ── ImageNode: renders a Cloudinary-hosted image, nothing else ──
+// exportDOM emits a bare <img src="..."> (no wrapper div, no class, no
+// inline style) so the HTML saved for the article is exactly that tag.
+export type SerializedImageNode = Spread<
+  { src: string; altText: string },
+  SerializedLexicalNode
+>
+
+export class ImageNode extends DecoratorNode<JSX.Element> {
+  __src: string
+  __altText: string
+
+  constructor(src: string, altText: string = '', key?: NodeKey) {
+    super(key)
+    this.__src = src
+    this.__altText = altText
+  }
+
+  static getType(): string {
+    return 'image'
+  }
+
+  static clone(node: ImageNode): ImageNode {
+    return new ImageNode(node.__src, node.__altText, node.__key)
+  }
+
+  static importJSON(serializedNode: SerializedImageNode): ImageNode {
+    return $createImageNode(serializedNode.src, serializedNode.altText)
+  }
+
+  exportJSON(): SerializedImageNode {
+    return {
+      type: 'image',
+      version: 1,
+      src: this.__src,
+      altText: this.__altText,
+    }
+  }
+
+  createDOM(): HTMLElement {
+    const div = document.createElement('div')
+    div.className = 'rte-image-block'
+    return div
+  }
+
+  updateDOM(): false {
+    return false
+  }
+
+  exportDOM(): DOMExportOutput {
+    const img = document.createElement('img')
+    img.setAttribute('src', this.__src)
+    if (this.__altText) img.setAttribute('alt', this.__altText)
+    return { element: img }
+  }
+
+  static importDOM(): DOMConversionMap | null {
+    return {
+      img: () => ({
+        conversion: (domNode: HTMLElement) => {
+          if (domNode instanceof HTMLImageElement) {
+            const node = $createImageNode(domNode.getAttribute('src') || '', domNode.getAttribute('alt') || '')
+            return { node }
+          }
+          return null
+        },
+        priority: 0,
+      }),
+    }
+  }
+
+  getSrc(): string {
+    return this.__src
+  }
+
+  decorate(): JSX.Element {
+    return <ImageComponent src={this.__src} altText={this.__altText} nodeKey={this.__key} />
+  }
+}
+
+export function $createImageNode(src: string, altText: string = ''): ImageNode {
+  return new ImageNode(src, altText)
+}
+
+export function $isImageNode(node: LexicalNode | null | undefined): node is ImageNode {
+  return node instanceof ImageNode
+}
+
+// ── Renders the image in the editor + right-click "Delete image" ──
+// Deletes from Cloudinary first (best-effort), then removes the node from
+// the document either way so the editor never gets stuck with a broken ref.
+function ImageComponent({
+  src,
+  altText,
+  nodeKey,
+}: {
+  src: string
+  altText: string
+  nodeKey: NodeKey
+}) {
+  const [editor] = useLexicalComposerContext()
+  const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null)
+  const [deleting, setDeleting] = useState(false)
+
+  useEffect(() => {
+    if (!menuPos) return
+    const close = () => setMenuPos(null)
+    window.addEventListener('click', close)
+    return () => window.removeEventListener('click', close)
+  }, [menuPos])
+
+  const handleContextMenu = (event: React.MouseEvent) => {
+    event.preventDefault()
+    setMenuPos({ x: event.clientX, y: event.clientY })
+  }
+
+  const handleDelete = async () => {
+    setMenuPos(null)
+    setDeleting(true)
+    try {
+      await deleteImageFromCloudinary(src)
+    } catch (err) {
+      console.error('Failed to delete image from Cloudinary:', err)
+    }
+    editor.update(() => {
+      const node = $getNodeByKey(nodeKey)
+      node?.remove()
+    })
+  }
+
+  return (
+    <>
+      <img
+        src={src}
+        alt={altText}
+        onContextMenu={handleContextMenu}
+        draggable={false}
+        style={{
+          maxWidth: '100%',
+          borderRadius: 8,
+          display: 'block',
+          margin: '0.75rem 0',
+          opacity: deleting ? 0.4 : 1,
+          cursor: 'context-menu',
+        }}
+      />
+      {menuPos && (
+        <div
+          className="fixed z-50 bg-white border rounded-md shadow-md py-1 text-sm w-44"
+          style={{ top: menuPos.y, left: menuPos.x }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={handleDelete}
+            disabled={deleting}
+            className="block w-full text-left px-3 py-1.5 text-red-500 hover:bg-red-50 disabled:opacity-50"
+          >
+            🗑 Delete image
+          </button>
+        </div>
+      )}
+    </>
+  )
 }
 
 // ── Custom TableNode: adds a per-table border color + width ──
@@ -343,6 +601,16 @@ const BORDER_WIDTHS = [
   { label: 'Thin', value: '1px' },
   { label: 'Medium', value: '2px' },
   { label: 'Thick', value: '3px' },
+]
+
+// Swatches offered for cell text color
+const TEXT_COLORS = [
+  { label: 'Default', value: null },
+  { label: 'Black', value: '#111827' },
+  { label: 'Gray', value: '#6b7280' },
+  { label: 'Blue', value: '#2563eb' },
+  { label: 'Green', value: '#16a34a' },
+  { label: 'Red', value: '#dc2626' },
 ]
 
 const theme = {
@@ -520,6 +788,252 @@ function PasteCleanupPlugin() {
   return null
 }
 
+// ── Right-click context menu for existing tables ──
+// Right-clicking any cell in a table (freshly inserted or loaded from saved
+// HTML) opens a menu to edit borders, cell fill, and text color, plus the
+// usual row/column/table operations — same controls as the toolbar's table
+// section, just reachable via right click like in Word/WPS.
+function TableContextMenuPlugin() {
+  const [editor] = useLexicalComposerContext()
+  const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null)
+  const [section, setSection] = useState<'main' | 'border' | 'fill' | 'text'>('main')
+
+  useEffect(() => {
+    const rootElement = editor.getRootElement()
+    if (!rootElement) return
+
+    const handleContextMenu = (event: MouseEvent) => {
+      const target = event.target as HTMLElement
+      const cellEl = target.closest('td, th')
+      if (!cellEl) return
+
+      event.preventDefault()
+
+      editor.update(() => {
+        const nodeAtPoint = $getNearestNodeFromDOMNode(cellEl)
+        const cellNode = nodeAtPoint ? $getNearestNodeOfType(nodeAtPoint, TableCellNode) : null
+        cellNode?.selectEnd()
+      })
+
+      setSection('main')
+      setMenuPos({ x: event.clientX, y: event.clientY })
+    }
+
+    rootElement.addEventListener('contextmenu', handleContextMenu)
+    return () => rootElement.removeEventListener('contextmenu', handleContextMenu)
+  }, [editor])
+
+  useEffect(() => {
+    if (!menuPos) return
+    const close = () => setMenuPos(null)
+    window.addEventListener('click', close)
+    return () => window.removeEventListener('click', close)
+  }, [menuPos])
+
+  const withCurrentCell = (fn: (cell: TableCellNode, table: StyledTableNode | null) => void) => {
+    editor.update(() => {
+      const selection = $getSelection()
+      const anchorNode = $isRangeSelection(selection) ? selection.anchor.getNode() : null
+      if (!anchorNode) return
+      const cell = $getNearestNodeOfType(anchorNode, TableCellNode)
+      if (!cell) return
+      const table = $getNearestNodeOfType(cell, TableNode)
+      fn(cell, table && $isStyledTableNode(table) ? table : null)
+    })
+  }
+
+  const closeMenu = () => setMenuPos(null)
+
+  const applyCellFill = (color: string | null) => {
+    withCurrentCell((cell) => cell.setBackgroundColor(color))
+    closeMenu()
+  }
+
+  const applyTextColor = (color: string | null) => {
+    withCurrentCell((cell) => {
+      const walk = (node: LexicalNode) => {
+        if ($isTextNode(node)) {
+          node.setStyle(color ? `color: ${color}` : '')
+        } else if ($isElementNode(node)) {
+          node.getChildren().forEach(walk)
+        }
+      }
+      cell.getChildren().forEach(walk)
+    })
+    closeMenu()
+  }
+
+  const applyBorderColor = (color: string) => {
+    withCurrentCell((_cell, table) => table?.setBorderColor(color))
+    closeMenu()
+  }
+
+  const applyBorderWidth = (width: string) => {
+    withCurrentCell((_cell, table) => table?.setBorderWidth(width))
+    closeMenu()
+  }
+
+  const addColumn = (before: boolean) => {
+    import('@lexical/table').then(({ $insertTableColumn__EXPERIMENTAL }) =>
+      editor.update(() => $insertTableColumn__EXPERIMENTAL(before))
+    )
+    closeMenu()
+  }
+  const addRow = (before: boolean) => {
+    import('@lexical/table').then(({ $insertTableRow__EXPERIMENTAL }) =>
+      editor.update(() => $insertTableRow__EXPERIMENTAL(before))
+    )
+    closeMenu()
+  }
+  const deleteColumn = () => {
+    import('@lexical/table').then(({ $deleteTableColumn__EXPERIMENTAL }) =>
+      editor.update(() => $deleteTableColumn__EXPERIMENTAL())
+    )
+    closeMenu()
+  }
+  const deleteRow = () => {
+    import('@lexical/table').then(({ $deleteTableRow__EXPERIMENTAL }) =>
+      editor.update(() => $deleteTableRow__EXPERIMENTAL())
+    )
+    closeMenu()
+  }
+  const deleteTable = () => {
+    withCurrentCell((_cell, table) => table?.remove())
+    closeMenu()
+  }
+  const toggleHeaderRow = () => {
+    withCurrentCell((cell) => cell.setHeaderStyles(cell.getHeaderStyles() === 0 ? 1 : 0))
+    closeMenu()
+  }
+
+  if (!menuPos) return null
+
+  return (
+    <div
+      className="fixed z-50 bg-white border rounded-md shadow-md text-sm w-52 overflow-hidden"
+      style={{ top: menuPos.y, left: menuPos.x }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      {section === 'main' && (
+        <div className="py-1">
+          <MenuItem onClick={() => setSection('border')}>▦ Borders</MenuItem>
+          <MenuItem onClick={() => setSection('fill')}>🎨 Cell fill color</MenuItem>
+          <MenuItem onClick={() => setSection('text')}>A Text color</MenuItem>
+          <MenuDivider />
+          <MenuItem onClick={() => addRow(true)}>↑ Insert row above</MenuItem>
+          <MenuItem onClick={() => addRow(false)}>↓ Insert row below</MenuItem>
+          <MenuItem onClick={() => addColumn(true)}>← Insert column left</MenuItem>
+          <MenuItem onClick={() => addColumn(false)}>→ Insert column right</MenuItem>
+          <MenuItem onClick={toggleHeaderRow}>⇅ Toggle header row</MenuItem>
+          <MenuDivider />
+          <MenuItem onClick={deleteRow} danger>✕ Delete row</MenuItem>
+          <MenuItem onClick={deleteColumn} danger>✕ Delete column</MenuItem>
+          <MenuItem onClick={deleteTable} danger>🗑 Delete table</MenuItem>
+        </div>
+      )}
+
+      {section === 'border' && (
+        <div className="p-3 space-y-3">
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => setSection('main')}
+            className="text-xs text-gray-400"
+          >
+            ← Back
+          </button>
+          <div>
+            <p className="text-xs font-medium text-gray-500 mb-1.5">Stroke color</p>
+            <div className="flex gap-1.5">
+              {BORDER_COLORS.map((c) => (
+                <button
+                  key={c.label}
+                  type="button"
+                  title={c.label}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => applyBorderColor(c.value)}
+                  className="w-6 h-6 rounded-full border-2 border-gray-200"
+                  style={{ backgroundColor: c.value }}
+                />
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="text-xs font-medium text-gray-500 mb-1.5">Stroke width</p>
+            <div className="flex gap-1.5">
+              {BORDER_WIDTHS.map((w) => (
+                <button
+                  key={w.label}
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => applyBorderWidth(w.value)}
+                  className="px-2 py-1 rounded text-xs border border-gray-200 text-gray-500 hover:bg-gray-50"
+                >
+                  {w.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {section === 'fill' && (
+        <div className="p-3 space-y-2">
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => setSection('main')}
+            className="text-xs text-gray-400"
+          >
+            ← Back
+          </button>
+          <p className="text-xs font-medium text-gray-500 mb-1.5">Cell fill color</p>
+          <div className="flex gap-1.5 flex-wrap">
+            {CELL_COLORS.map((c) => (
+              <button
+                key={c.label}
+                type="button"
+                title={c.label}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => applyCellFill(c.value)}
+                className="w-6 h-6 rounded border border-gray-300"
+                style={{ backgroundColor: c.value ?? '#ffffff' }}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {section === 'text' && (
+        <div className="p-3 space-y-2">
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => setSection('main')}
+            className="text-xs text-gray-400"
+          >
+            ← Back
+          </button>
+          <p className="text-xs font-medium text-gray-500 mb-1.5">Text color</p>
+          <div className="flex gap-1.5 flex-wrap">
+            {TEXT_COLORS.map((c) => (
+              <button
+                key={c.label}
+                type="button"
+                title={c.label}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => applyTextColor(c.value)}
+                className="w-6 h-6 rounded-full border border-gray-300"
+                style={{ backgroundColor: c.value ?? '#ffffff' }}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Toolbar ──
 function Toolbar() {
   const [editor] = useLexicalComposerContext()
@@ -532,6 +1046,8 @@ function Toolbar() {
   const [currentBorderWidth, setCurrentBorderWidth] = useState('1px')
   const [showCellColors, setShowCellColors] = useState(false)
   const [showBorderPanel, setShowBorderPanel] = useState(false)
+  const imageInputRef = useRef<HTMLInputElement>(null)
+  const [isUploadingImage, setIsUploadingImage] = useState(false)
 
   useEffect(() => {
     return mergeRegister(
@@ -635,6 +1151,25 @@ function Toolbar() {
   editor.focus() // ensure the editor has focus/selection before dispatching
   editor.dispatchCommand(INSERT_TABLE_COMMAND, { rows: '3', columns: '3', includeHeaders: true })
 }
+
+  const handleImageFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = '' // reset so selecting the same file again re-triggers onChange
+    if (!file) return
+
+    setIsUploadingImage(true)
+    try {
+      const url = await uploadImageToCloudinary(file)
+      editor.update(() => {
+        const imageNode = $createImageNode(url)
+        $insertNodeToNearestRoot(imageNode)
+      })
+    } catch (err) {
+      console.error('Image upload failed:', err)
+    } finally {
+      setIsUploadingImage(false)
+    }
+  }
 
   // Applies fill color to every selected cell (multi-cell drag) or the
   // single cell the cursor is in.
@@ -859,6 +1394,23 @@ function Toolbar() {
 
       <Divider />
 
+      <input
+        type="file"
+        accept="image/*"
+        ref={imageInputRef}
+        onChange={handleImageFileSelected}
+        className="hidden"
+      />
+      <ToolbarButton
+        onClick={() => imageInputRef.current?.click()}
+        active={false}
+        title="Insert image"
+      >
+        {isUploadingImage ? '⏳ Uploading…' : '🖼 Image'}
+      </ToolbarButton>
+
+      <Divider />
+
       <ToolbarButton onClick={() => editor.dispatchCommand(UNDO_COMMAND, undefined)} active={false} title="Undo">
         ↩
       </ToolbarButton>
@@ -883,6 +1435,7 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Prop
       ListNode,
       ListItemNode,
       CodeNode,
+      ImageNode,
       { replace: TableNode, with: (node: TableNode) => new StyledTableNode('#000000', '1px', node.__key) },
       TableCellNode,
       TableRowNode,
@@ -961,6 +1514,7 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Prop
           <HistoryPlugin />
           <ListPlugin />
           <TablePlugin />
+          <TableContextMenuPlugin />
           <PasteCleanupPlugin />
           <InitialContentPlugin value={value} isInternalUpdate={isInternalUpdate} lastHtml={lastHtml} />
           <OnChangeHtmlPlugin onChange={onChange} isInternalUpdate={isInternalUpdate} lastHtml={lastHtml} />
@@ -1007,6 +1561,34 @@ function ToolbarButton({
     </button>
   )
 }
+
+function MenuItem({
+  onClick,
+  children,
+  danger,
+}: {
+  onClick: () => void
+  children: React.ReactNode
+  danger?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={onClick}
+      className={`block w-full text-left px-3 py-1.5 ${
+        danger ? 'text-red-500 hover:bg-red-50' : 'text-gray-700 hover:bg-gray-100'
+      }`}
+    >
+      {children}
+    </button>
+  )
+}
+
+function MenuDivider() {
+  return <div className="h-px bg-gray-200 my-1" />
+}
+
 // ── Reinforces paragraph/block breaks with explicit <br><br> markers ──
 // Defends against learner-side sanitizers that strip <p>/<div>/<table>
 // wrappers but leave basic inline tags like <br> untouched. Safe to run
