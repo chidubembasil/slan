@@ -65,6 +65,70 @@ function cleanPastedHtml(html: string): string {
     .replace(/class="Mso[^"]*"/gi, '')
 }
 
+// ── Forces the content that follows a bold/strong "sub-header" onto its
+// own line ──
+// Handles the common pattern where a paragraph starts with a bold run used
+// as a sub-header (e.g. "**Overview:** Lorem ipsum dolor sit amet...") and
+// the rest of the paragraph's text trails right after it on the same line.
+// This walks every <p>, finds a leading <strong>/<b> element, and inserts a
+// <br> immediately after it (if one isn't already there) so the body text
+// starts on the next line while remaining part of the same paragraph block.
+function splitBoldSubheaders(html: string): string {
+  try {
+    const doc = new DOMParser().parseFromString(html, 'text/html')
+    const paragraphs = Array.from(doc.body.querySelectorAll('p'))
+
+    paragraphs.forEach((p) => {
+      // Find the first "meaningful" child (skip whitespace-only text nodes)
+      let firstMeaningfulChild: ChildNode | null = null
+      for (const child of Array.from(p.childNodes)) {
+        if (child.nodeType === Node.TEXT_NODE && !child.textContent?.trim()) continue
+        firstMeaningfulChild = child
+        break
+      }
+
+      if (
+        !firstMeaningfulChild ||
+        firstMeaningfulChild.nodeType !== Node.ELEMENT_NODE ||
+        !['STRONG', 'B'].includes((firstMeaningfulChild as Element).tagName)
+      ) {
+        return
+      }
+
+      const boldEl = firstMeaningfulChild as Element
+
+      // Walk forward from the bold element to see whether there's more
+      // content after it, and whether a line break already separates it.
+      let node: ChildNode | null = boldEl.nextSibling
+      let alreadyBroken = false
+      let hasContentAfter = false
+
+      while (node) {
+        if (node.nodeType === Node.ELEMENT_NODE && (node as Element).tagName === 'BR') {
+          alreadyBroken = true
+          node = node.nextSibling
+          continue
+        }
+        if (node.nodeType === Node.TEXT_NODE && !node.textContent?.trim()) {
+          node = node.nextSibling
+          continue
+        }
+        hasContentAfter = true
+        break
+      }
+
+      if (hasContentAfter && !alreadyBroken) {
+        const br = doc.createElement('br')
+        boldEl.after(br)
+      }
+    })
+
+    return doc.body.innerHTML
+  } catch {
+    return html
+  }
+}
+
 // ── Guarantees pasted content lands as real paragraphs ──
 // Some sources (plain web copy, notes apps) hand over HTML that has no <p>
 // tags at all — either bare text, <span>/<br> chains, or top-level <div>s
@@ -72,7 +136,8 @@ function cleanPastedHtml(html: string): string {
 // elements to create separate ParagraphNodes, so without this the whole
 // article can land as one flat block. This promotes <div> paragraphs to
 // <p>, and wraps any remaining loose inline content into <p> tags split on
-// double line breaks.
+// double line breaks. It also runs splitBoldSubheaders() at the end so any
+// bold "sub-header" runs get their trailing content pushed to the next line.
 function ensureParagraphs(html: string): string {
   try {
     const doc = new DOMParser().parseFromString(html, 'text/html')
@@ -129,7 +194,7 @@ function ensureParagraphs(html: string): string {
 
     body.innerHTML = ''
     body.appendChild(fragment)
-    return body.innerHTML
+    return splitBoldSubheaders(body.innerHTML)
   } catch {
     return html
   }
@@ -859,7 +924,7 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Prop
         }
         .rte-paragraph {
           line-height: 1.5;
-          margin-bottom: 12px;
+          margin-bottom: 1.5em;
         }
 
         .rte-paragraph:last-child {
