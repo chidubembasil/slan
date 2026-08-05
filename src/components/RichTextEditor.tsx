@@ -856,7 +856,7 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Prop
         }
         .rte-paragraph {
           line-height: 0;
-          
+          margin: 0;
         }
 
         .rte-paragraph:last-child {
@@ -971,5 +971,3 @@ export function reinforceParagraphBreaks(html: string): string {
     return html
   }
 }
-
-// margin: 0 0 6px 0;
