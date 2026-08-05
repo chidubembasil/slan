@@ -370,7 +370,7 @@ function OnChangeHtmlPlugin({
     (_editorState: EditorState, editor: LexicalEditor) => {
       editor.getEditorState().read(() => {
         let html = $generateHtmlFromNodes(editor, null)
-        html = html.replace(/(<br\s*\/?>\s*){2,}/gi, '<br>')
+        html = html.replace(/(<br\s*\/?>\s*){1,}/gi, '<br>')
         console.log(html)
         isInternalUpdate.current = true
         lastHtml.current = html
@@ -858,8 +858,8 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Prop
           font-style: italic;
         }
         .rte-paragraph {
-          line-height: 0.5;
-          margin: 0;
+          line-height: 1.5;
+          margin-bottom: 12px;
         }
 
         .rte-paragraph:last-child {
@@ -971,7 +971,7 @@ export function reinforceParagraphBreaks(html: string): string {
 
     // Keep only one <br> between paragraphs
     body.innerHTML = body.innerHTML.replace(
-      /(<br\s*\/?>\s*){2,}/gi,
+      /(<br\s*\/?>\s*){1,}/gi,
       '<br>'
     )
 
