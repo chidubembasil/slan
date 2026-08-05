@@ -51,6 +51,7 @@ import {
 } from '@lexical/table'
 import { $setBlocksType } from '@lexical/selection'
 import { $getNearestNodeOfType, mergeRegister, $insertNodeToNearestRoot } from '@lexical/utils'
+import { $insertGeneratedNodes } from '@lexical/clipboard'
 import { useEffect, useRef, useState, useCallback, type JSX } from 'react'
 
 interface Props {
@@ -170,6 +171,22 @@ function ensureParagraphs(html: string): string {
         el.replaceWith(p)
       }
     })
+
+    // Word/Google Docs wrap pasted tables in a <div> with no Lexical
+    // converter, which silently drops the table on paste. Unwrap any div
+    // that only contains a single <table> so the table becomes its own
+    // top-level block instead of getting nested inside that div. Repeat a
+    // few passes in case of double-wrapping (div > div > table).
+    for (let pass = 0; pass < 5; pass++) {
+      let unwrapped = false
+      Array.from(body.querySelectorAll('div')).forEach((div) => {
+        if (div.children.length === 1 && div.children[0].tagName === 'TABLE') {
+          div.replaceWith(div.children[0])
+          unwrapped = true
+        }
+      })
+      if (!unwrapped) break
+    }
 
     const children = Array.from(body.childNodes)
     const fragment = doc.createDocumentFragment()
@@ -737,8 +754,13 @@ function PasteCleanupPlugin() {
           const dom = new DOMParser().parseFromString(prepared, 'text/html')
           const nodes = $generateNodesFromDOM(editor, dom)
           const selection = $getSelection()
-          if ($isRangeSelection(selection)) {
-            selection.insertNodes(nodes)
+          if (selection !== null) {
+            // $insertGeneratedNodes (the same helper Lexical's own default
+            // paste command uses) correctly splits the current paragraph
+            // and places block-level nodes — tables included — instead of
+            // a plain selection.insertNodes(), which silently fails on
+            // tables and made pasting one look "blocked".
+            $insertGeneratedNodes(editor, nodes, selection)
           } else {
             const root = $getRoot()
             nodes.forEach((n) => root.append(n))
