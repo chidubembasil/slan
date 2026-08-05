@@ -157,7 +157,7 @@ async function deleteImageFromCloudinary(src: string): Promise<void> {
 // as base64 data URLs directly in the HTML, so keep this conservative —
 // swap in a real upload endpoint (returning a hosted URL instead of a data
 // URL) if you need to support larger files.
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024 // 5MB
+const MAX_IMAGE_BYTES = 20 * 1024 * 1024 // 5MB
 
 // ── Strip Word/WPS junk before it hits the DOM parser ──
 function cleanPastedHtml(html: string): string {
