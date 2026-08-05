@@ -369,7 +369,8 @@ function OnChangeHtmlPlugin({
   const handleChange = useCallback(
     (_editorState: EditorState, editor: LexicalEditor) => {
       editor.getEditorState().read(() => {
-        const html = $generateHtmlFromNodes(editor, null)
+        let html = $generateHtmlFromNodes(editor, null)
+        html = html.replace(/(<br\s*\/?>\s*){2,}/gi, '<br>')
         console.log(html)
         isInternalUpdate.current = true
         lastHtml.current = html
