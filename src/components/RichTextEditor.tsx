@@ -660,7 +660,10 @@ function Toolbar() {
       <ToolbarButton onClick={() => toggleHeading('h3')} active={blockType === 'heading-h3'} title="Subheading">
         H3
       </ToolbarButton>
-      <ToolbarButton onClick={setParagraph} active={blockType === 'paragraph'} title="Convert to paragraph">
+      <ToolbarButton
+        onClick={setParagraph}
+        title="Convert to paragraph"
+      >
         ¶ Paragraph
       </ToolbarButton>
 
