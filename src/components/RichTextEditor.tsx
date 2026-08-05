@@ -5,25 +5,25 @@ import {
   $createParagraphNode,
   $createTextNode,
   $createLineBreakNode,
-  $insertNodes,
-  $isRootOrShadowRoot,
+  // $insertNodes,
+  // $isRootOrShadowRoot,
   FORMAT_TEXT_COMMAND,
   UNDO_COMMAND,
   REDO_COMMAND,
-  createCommand,
-  COMMAND_PRIORITY_EDITOR,
-  DecoratorNode,
+  // createCommand,
+  // COMMAND_PRIORITY_EDITOR,
+  // DecoratorNode,
   ParagraphNode,
-  $getNodeByKey,
+  // $getNodeByKey,
   type EditorState,
   type EditorConfig,
   type LexicalEditor,
   type LexicalNode,
-  type LexicalCommand,
+  // type LexicalCommand,
   type NodeKey,
   type DOMConversionMap,
   type DOMExportOutput,
-  type SerializedLexicalNode,
+  // type SerializedLexicalNode,
   type SerializedParagraphNode,
   type Spread,
 } from 'lexical'
@@ -54,7 +54,7 @@ import {
   type SerializedTableNode,
 } from '@lexical/table'
 import { $setBlocksType } from '@lexical/selection'
-import { $getNearestNodeOfType, $wrapNodeInElement, mergeRegister } from '@lexical/utils'
+import { $getNearestNodeOfType, mergeRegister } from '@lexical/utils'
 import { useEffect, useRef, useState, useCallback } from 'react'
 
 interface Props {
@@ -62,102 +62,17 @@ interface Props {
   onChange: (html: string) => void
   placeholder?: string
   className?: string
-  // Optional: upload the file to your own storage/CDN and resolve with the
-  // hosted URL. If omitted, images fall back to base64 data URLs embedded
-  // directly in the document HTML — fine for small icons, but large images
-  // (or several of them) will bloat the stored HTML and can make loading
-  // the doc for editing freeze the tab, since that HTML has to be parsed
-  // on the main thread. Strongly recommended for any real deployment.
-  onUploadImage?: (file: File) => Promise<string>
-}
-
-const CLOUDINARY_CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME
-const CLOUDINARY_API_KEY = import.meta.env.VITE_API_KEY
-const CLOUDINARY_API_SECRET = import.meta.env.VITE_API_SECRET_KEY
-
-async function sha1Hex(input: string): Promise<string> {
-  const encoder = new TextEncoder()
-  const hashBuffer = await crypto.subtle.digest('SHA-1', encoder.encode(input))
-  return Array.from(new Uint8Array(hashBuffer))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('')
-}
-
-async function uploadImageToCloudinary(file: File): Promise<string> {
-  const timestamp = Math.round(Date.now() / 1000)
-  const paramsToSign = `folder=articles&timestamp=${timestamp}${CLOUDINARY_API_SECRET}`
-  const signature = await sha1Hex(paramsToSign)
-
-  const formData = new FormData()
-  formData.append('file', file)
-  formData.append('api_key', CLOUDINARY_API_KEY)
-  formData.append('timestamp', String(timestamp))
-  formData.append('signature', signature)
-  formData.append('folder', 'articles')
-
-  const res = await fetch(
-    `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`,
-    { method: 'POST', body: formData }
-  )
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error(err?.error?.message || 'Cloudinary upload failed')
-  }
-
-  const data = await res.json()
-  return data.secure_url as string
-}
-
-// ── Extracts the Cloudinary public_id from a secure_url ──
-// Cloudinary URLs look like:
-// https://res.cloudinary.com/<cloud>/image/upload/v169.../articles/abc123.png
-// The public_id (needed to delete the asset) is everything between the
-// version segment (vNNNN/) and the file extension, including any folder.
-function extractPublicIdFromCloudinaryUrl(url: string): string | null {
-  try {
-    const match = url.match(/\/upload\/(?:v\d+\/)?(.+)\.[a-zA-Z0-9]+$/)
-    return match ? match[1] : null
-  } catch {
-    return null
-  }
 }
 
 
-// ── Deletes an asset from Cloudinary by public_id ──
-// Cloudinary's destroy endpoint requires a signature just like upload does,
-// so this needs the same secret. In a real deployment this call (and the
-// secret it depends on) should move to your backend — see the note in the
-// upload function above.
-async function deleteImageFromCloudinary(src: string): Promise<void> {
-  const publicId = extractPublicIdFromCloudinaryUrl(src)
-  if (!publicId) return // not a Cloudinary-hosted image (e.g. base64 fallback) — nothing to delete
 
-  const timestamp = Math.round(Date.now() / 1000)
-  const paramsToSign = `public_id=${publicId}&timestamp=${timestamp}${CLOUDINARY_API_SECRET}`
-  const signature = await sha1Hex(paramsToSign)
 
-  const formData = new FormData()
-  formData.append('public_id', publicId)
-  formData.append('api_key', CLOUDINARY_API_KEY)
-  formData.append('timestamp', String(timestamp))
-  formData.append('signature', signature)
 
-  const res = await fetch(
-    `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/destroy`,
-    { method: 'POST', body: formData }
-  )
 
-  if (!res.ok) {
-    console.error('Failed to delete image from Cloudinary:', await res.text().catch(() => ''))
-  }
-}
 
-// Max size accepted for image uploads/pastes, in bytes. Images are embedded
-// as base64 data URLs directly in the HTML, so keep this conservative —
-// swap in a real upload endpoint (returning a hosted URL instead of a data
-// URL) if you need to support larger files.
-// const MAX_IMAGE_BYTES = 20 * 1024 * 1024 // 5MB
+
+
+
 
 // ── Strip Word/WPS junk before it hits the DOM parser ──
 function cleanPastedHtml(html: string): string {
@@ -473,278 +388,13 @@ export function $isStyledParagraphNode(node: LexicalNode | null | undefined): no
   return node instanceof StyledParagraphNode
 }
 
-// ── Custom ImageNode ──
-// Renders as a plain <img> both in the editor and in exported HTML, so
-// images round-trip cleanly through $generateHtmlFromNodes /
-// $generateNodesFromDOM without needing any special server-side handling.
-export interface ImagePayload {
-  src: string
-  altText: string
-  width?: number
-  height?: number
-  key?: NodeKey
-}
 
-export type SerializedImageNode = Spread<
-  {
-    src: string
-    altText: string
-    width?: number
-    height?: number
-  },
-  SerializedLexicalNode
->
 
-function ImageComponent({
-  src,
-  altText,
-  width,
-  height,
-  nodeKey,
-}: {
-  src: string
-  altText: string
-  width?: number
-  height?: number
-  nodeKey: NodeKey
-}) {
-  const [editor] = useLexicalComposerContext()
-  const [deleting, setDeleting] = useState(false)
 
-  const handleRemove = async (e: React.MouseEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    if (deleting) return
-    setDeleting(true)
-    try {
-      // Best-effort: also remove the file from Cloudinary storage so
-      // removed images don't sit around as orphaned assets. If this fails
-      // (network issue, non-Cloudinary src, etc.) we still remove the node
-      // from the document so the user isn't blocked.
-      await deleteImageFromCloudinary(src)
-    } catch (err) {
-      console.error('Could not delete image from Cloudinary:', err)
-    } finally {
-      editor.update(() => {
-        const node = $getNodeByKey(nodeKey)
-        if ($isImageNode(node)) {
-          node.remove()
-        }
-      })
-    }
-  }
 
-  return (
-    <span style={{ position: 'relative', display: 'inline-block', maxWidth: '100%' }}>
-      <img
-        src={src}
-        alt={altText}
-        draggable={false}
-        style={{
-          maxWidth: '100%',
-          height: height ? `${height}px` : 'auto',
-          width: width ? `${width}px` : 'auto',
-          borderRadius: 6,
-          display: 'block',
-          opacity: deleting ? 0.5 : 1,
-        }}
-      />
-      <button
-        type="button"
-        title="Delete image"
-        aria-label="Delete image"
-        onMouseDown={(e) => e.preventDefault()}
-        onClick={handleRemove}
-        disabled={deleting}
-        style={{
-          position: 'absolute',
-          top: 6,
-          right: 6,
-          width: 24,
-          height: 24,
-          padding: 0,
-          border: 'none',
-          borderRadius: '9999px',
-          background: 'rgba(0,0,0,0.65)',
-          color: '#fff',
-          fontSize: 14,
-          lineHeight: '24px',
-          textAlign: 'center',
-          cursor: deleting ? 'default' : 'pointer',
-        }}
-      >
-        {deleting ? '…' : '×'}
-      </button>
-    </span>
-  )
-}
 
-export class ImageNode extends DecoratorNode<React.ReactElement> {
-  __src: string
-  __altText: string
-  __width?: number
-  __height?: number
 
-  static getType(): string {
-    return 'image'
-  }
 
-  static clone(node: ImageNode): ImageNode {
-    return new ImageNode(node.__src, node.__altText, node.__width, node.__height, node.__key)
-  }
-
-  constructor(src: string, altText: string, width?: number, height?: number, key?: NodeKey) {
-    super(key)
-    this.__src = src
-    this.__altText = altText
-    this.__width = width
-    this.__height = height
-  }
-
-  static importJSON(serializedNode: SerializedImageNode): ImageNode {
-    return $createImageNode({
-      src: serializedNode.src,
-      altText: serializedNode.altText,
-      width: serializedNode.width,
-      height: serializedNode.height,
-    })
-  }
-
-  exportJSON(): SerializedImageNode {
-    return {
-      ...super.exportJSON(),
-      type: 'image',
-      version: 1,
-      src: this.__src,
-      altText: this.__altText,
-      width: this.__width,
-      height: this.__height,
-    }
-  }
-
-  createDOM(): HTMLElement {
-    const span = document.createElement('span')
-    span.className = 'rte-image-wrapper'
-    return span
-  }
-
-  updateDOM(): false {
-    return false
-  }
-
-  static importDOM(): DOMConversionMap | null {
-    return {
-      img: () => ({
-        conversion: (element: HTMLElement) => {
-          if (!(element instanceof HTMLImageElement)) return null
-          const { src, alt } = element
-          const width = element.getAttribute('width')
-          const height = element.getAttribute('height')
-          const node = $createImageNode({
-            src,
-            altText: alt || '',
-            width: width ? Number(width) : undefined,
-            height: height ? Number(height) : undefined,
-          })
-          return { node }
-        },
-        priority: 0,
-      }),
-    }
-  }
-
-  exportDOM(): DOMExportOutput {
-    const element = document.createElement('img')
-    element.setAttribute('src', this.__src)
-    element.setAttribute('alt', this.__altText)
-    if (this.__width) element.setAttribute('width', String(this.__width))
-    if (this.__height) element.setAttribute('height', String(this.__height))
-    return { element }
-  }
-
-  getSrc(): string {
-    return this.__src
-  }
-
-  getAltText(): string {
-    return this.__altText
-  }
-
-  decorate(): React.ReactElement {
-    return (
-      <ImageComponent
-        src={this.__src}
-        altText={this.__altText}
-        width={this.__width}
-        height={this.__height}
-        nodeKey={this.getKey()}
-      />
-    )
-  }
-}
-
-export function $createImageNode({ src, altText, width, height, key }: ImagePayload): ImageNode {
-  return new ImageNode(src, altText, width, height, key)
-}
-
-export function $isImageNode(node: LexicalNode | null | undefined): node is ImageNode {
-  return node instanceof ImageNode
-}
-
-export const INSERT_IMAGE_COMMAND: LexicalCommand<ImagePayload> = createCommand('INSERT_IMAGE_COMMAND')
-
-// ── Registers the insert-image command ──
-// Any code (toolbar button, paste handler, drag-and-drop, etc.) can insert
-// an image by dispatching INSERT_IMAGE_COMMAND with { src, altText }.
-function ImagesPlugin() {
-  const [editor] = useLexicalComposerContext()
-
-  useEffect(() => {
-    if (!editor.hasNodes([ImageNode])) {
-      throw new Error('ImagesPlugin: ImageNode not registered on editor')
-    }
-    return editor.registerCommand<ImagePayload>(
-      INSERT_IMAGE_COMMAND,
-      (payload) => {
-        const imageNode = $createImageNode(payload)
-        $insertNodes([imageNode])
-        if ($isRootOrShadowRoot(imageNode.getParentOrThrow())) {
-          $wrapNodeInElement(imageNode, $createParagraphNode).selectEnd()
-        }
-        return true
-      },
-      COMMAND_PRIORITY_EDITOR
-    )
-  }, [editor])
-
-  return null
-}
-
-// Resolves a File to a usable <img src>. If an onUploadImage function is
-// provided, the file is uploaded and the returned hosted URL is used —
-// keeping the document HTML small regardless of image size. Without one,
-// falls back to a base64 data URL embedded directly in the HTML (fine for
-// small images, but see the warning below for why that doesn't scale).
-// async function resolveImageSrc(
-//   file: File,
-//   onUploadImage?: (file: File) => Promise<string>
-// ): Promise<string> {
-//   if (!file.type.startsWith('image/')) {
-//     throw new Error('Please choose an image file.')
-//   }
-
-//   // if (file.size > MAX_IMAGE_BYTES) {
-//   //   throw new Error(
-//   //     `Image is too large (max ${Math.round(MAX_IMAGE_BYTES / (1024 * 1024))}MB).`
-//   //   )
-//   }
-
-//   if (!onUploadImage) {
-//     throw new Error('Image upload is not configured.')
-//   }
-
-//   return await onUploadImage(file)
-// }
 
 const theme = {
   heading: { h2: 'rte-h2', h3: 'rte-h3' },
@@ -843,10 +493,8 @@ function OnChangeHtmlPlugin({
   return <OnChangePlugin onChange={handleChange} ignoreSelectionChange />
 }
 
-// ── Paste handling: cleans Word/WPS junk, guarantees real paragraphs,
-//    inserts pasted images, and turns plain-text articles (no HTML on the
-//    clipboard at all) into one <p> per paragraph instead of a single blob. ──
-function PasteCleanupPlugin({ onUploadImage }: { onUploadImage?: (file: File) => Promise<string> }) {
+
+function PasteCleanupPlugin() {
   const [editor] = useLexicalComposerContext()
 
   useEffect(() => {
@@ -854,20 +502,7 @@ function PasteCleanupPlugin({ onUploadImage }: { onUploadImage?: (file: File) =>
     if (!rootElement) return
 
     const handlePaste = (event: ClipboardEvent) => {
-      // Image pasted directly from the clipboard (e.g. screenshot, copied
-      // image) — clipboardData.files is where browsers put these.
-      // const files = event.clipboardData?.files
-      // const imageFile = files ? Array.from(files).find((f) => f.type.startsWith('image/')) : undefined
-      // if (imageFile) {
-      //   event.preventDefault()
-      //   event.stopPropagation()
-      //   resolveImageSrc(imageFile, onUploadImage)
-      //     .then((src) => {
-      //       editor.dispatchCommand(INSERT_IMAGE_COMMAND, { src, altText: imageFile.name })
-      //     })
-      //     .catch((err) => console.error(err))
-      //   return
-      // }
+      
 
       const html = event.clipboardData?.getData('text/html')
 
@@ -925,7 +560,7 @@ function PasteCleanupPlugin({ onUploadImage }: { onUploadImage?: (file: File) =>
 
     rootElement.addEventListener('paste', handlePaste, true)
     return () => rootElement.removeEventListener('paste', handlePaste, true)
-  }, [editor, onUploadImage])
+  }, [editor])
 
   return null
 }
@@ -942,8 +577,6 @@ function Toolbar() {
   const [currentBorderWidth, setCurrentBorderWidth] = useState('1px')
   const [showCellColors, setShowCellColors] = useState(false)
   const [showBorderPanel, setShowBorderPanel] = useState(false)
-  const [imageError, setImageError] = useState<string | null>(null)
-  const imageInputRef = useRef<HTMLInputElement>(null)
   const [currentLineHeight, setCurrentLineHeight] = useState(DEFAULT_LINE_HEIGHT)
 
   useEffect(() => {
@@ -1155,24 +788,8 @@ function Toolbar() {
     })
   }
 
-  const handleImageButtonClick = () => {
-    setImageError(null)
-    imageInputRef.current?.click()
-  }
 
-  // const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-  //   const file = e.target.files?.[0]
-  //   // reset so picking the same file again still fires onChange
-  //   e.target.value = ''
-  //   if (!file) return
-  //   try {
-  //     // const src = await resolveImageSrc(file, onUploadImage)
-  //     editor.dispatchCommand(INSERT_IMAGE_COMMAND, { src, altText: file.name })
-  //     setImageError(null)
-  //   } catch (err) {
-  //     setImageError(err instanceof Error ? err.message : 'Could not insert image.')
-  //   }
-  // }
+  
 
   return (
     <div className="flex flex-wrap items-center gap-1 p-2 border-b bg-background">
@@ -1228,17 +845,7 @@ function Toolbar() {
 
       <Divider />
 
-      <ToolbarButton onClick={handleImageButtonClick} active={false} title="Insert image">
-        🖼 Image
-      </ToolbarButton>
-      <input
-        ref={imageInputRef}
-        type="file"
-        accept="image/*"
-        // onChange={handleImageFileChange}
-        className="hidden"
-      />
-      {imageError && <span className="text-xs text-red-500 ml-1">{imageError}</span>}
+
 
       <Divider />
 
@@ -1383,7 +990,7 @@ const BORDER_WIDTHS = [
   { label: 'Thick', value: '3px' },
 ]
 
-export function RichTextEditor({ value, onChange, placeholder, className, onUploadImage = uploadImageToCloudinary }: Props)  {
+export function RichTextEditor({ value, onChange, placeholder, className,  }: Props)  {
   const isInternalUpdate = useRef(false)
   const lastHtml = useRef('')
 
@@ -1409,7 +1016,7 @@ export function RichTextEditor({ value, onChange, placeholder, className, onUplo
       },
       TableCellNode,
       TableRowNode,
-      ImageNode,
+      
     ],
   }
 
@@ -1457,10 +1064,6 @@ export function RichTextEditor({ value, onChange, placeholder, className, onUplo
         .rte-bold { font-weight: 700; }
         .rte-italic { font-style: italic; }
         .rte-strike { text-decoration: line-through; }
-        .rte-image-wrapper {
-          display: block;
-          margin: 0.75rem 0;
-        }
       `}</style>
 
       <div className={`border rounded-md overflow-hidden ${className}`}>
@@ -1478,10 +1081,9 @@ export function RichTextEditor({ value, onChange, placeholder, className, onUplo
             ErrorBoundary={LexicalErrorBoundary}
           />
           <HistoryPlugin />
+          <PasteCleanupPlugin />
           <ListPlugin />
           <TablePlugin />
-          <ImagesPlugin />
-          <PasteCleanupPlugin onUploadImage={onUploadImage} />
           <InitialContentPlugin value={value} isInternalUpdate={isInternalUpdate} lastHtml={lastHtml} />
           <OnChangeHtmlPlugin onChange={onChange} isInternalUpdate={isInternalUpdate} lastHtml={lastHtml} />
         </LexicalComposer>
