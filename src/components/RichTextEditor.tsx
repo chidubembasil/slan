@@ -89,6 +89,7 @@ function ensureParagraphs(html: string): string {
       ) {
         const p = doc.createElement('p')
         p.innerHTML = el.innerHTML
+        p.style = "lineHeight: 1;"
         el.replaceWith(p)
       }
     })
@@ -108,6 +109,7 @@ function ensureParagraphs(html: string): string {
         .forEach((chunk) => {
           const p = doc.createElement('p')
           p.innerHTML = chunk
+          p.style = "lineHeight: 1;"
           fragment.appendChild(p)
         })
       buffer = []
@@ -855,7 +857,7 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Prop
           font-style: italic;
         }
         .rte-paragraph {
-          line-height: 0;
+          line-height: 0.5;
           margin: 0;
         }
 
@@ -884,7 +886,7 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Prop
               <ContentEditable className="prose max-w-none p-3 min-h-37.5 focus:outline-none" />
             }
             placeholder={
-              <div className="p-3 text-gray-400 text-sm pointer-events-none absolute top-10">
+              <div className="p-3 text-gray-400 text-sm pointer-events-none absolute top-7">
                 {placeholder}
               </div>
             }
