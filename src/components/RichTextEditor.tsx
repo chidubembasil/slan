@@ -123,6 +123,7 @@ function extractPublicIdFromCloudinaryUrl(url: string): string | null {
   }
 }
 
+
 // ── Deletes an asset from Cloudinary by public_id ──
 // Cloudinary's destroy endpoint requires a signature just like upload does,
 // so this needs the same secret. In a real deployment this call (and the
@@ -724,8 +725,6 @@ function ImagesPlugin() {
 // keeping the document HTML small regardless of image size. Without one,
 // falls back to a base64 data URL embedded directly in the HTML (fine for
 // small images, but see the warning below for why that doesn't scale).
-let warnedAboutBase64Fallback = false
-
 async function resolveImageSrc(
   file: File,
   onUploadImage?: (file: File) => Promise<string>
@@ -733,29 +732,18 @@ async function resolveImageSrc(
   if (!file.type.startsWith('image/')) {
     throw new Error('Please choose an image file.')
   }
+
   if (file.size > MAX_IMAGE_BYTES) {
-    throw new Error(`Image is too large (max ${Math.round(MAX_IMAGE_BYTES / (1024 * 1024))}MB).`)
-  }
-
-  if (onUploadImage) {
-    return onUploadImage(file)
-  }
-
-  if (!warnedAboutBase64Fallback) {
-    warnedAboutBase64Fallback = true
-    console.warn(
-      '[RichTextEditor] No onUploadImage prop provided — embedding image as base64 in the document HTML. ' +
-        'This can make documents with images slow or freeze the tab when loaded for editing. ' +
-        'Pass an onUploadImage={(file) => Promise<string>} prop that uploads to your storage/CDN and resolves the hosted URL.'
+    throw new Error(
+      `Image is too large (max ${Math.round(MAX_IMAGE_BYTES / (1024 * 1024))}MB).`
     )
   }
 
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(reader.result as string)
-    reader.onerror = () => reject(new Error('Could not read the image file.'))
-    reader.readAsDataURL(file)
-  })
+  if (!onUploadImage) {
+    throw new Error('Image upload is not configured.')
+  }
+
+  return await onUploadImage(file)
 }
 
 const theme = {
@@ -843,6 +831,7 @@ function OnChangeHtmlPlugin({
     (_editorState: EditorState, editor: LexicalEditor) => {
       editor.getEditorState().read(() => {
         const html = $generateHtmlFromNodes(editor, null)
+        console.log(html)
         isInternalUpdate.current = true
         lastHtml.current = html
         onChange(html)
