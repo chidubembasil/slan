@@ -109,10 +109,9 @@ function ensureParagraphs(html: string): string {
         .forEach((chunk) => {
           const p = doc.createElement('p')
           p.innerHTML = chunk
-          p.style = "lineHeight: 1;"
           fragment.appendChild(p)
         })
-      buffer = [] 
+      buffer = []
     }
 
     children.forEach((node) => {
@@ -962,10 +961,10 @@ export function reinforceParagraphBreaks(html: string): string {
         next?.nodeType === Node.ELEMENT_NODE && (next as Element).tagName === 'BR'
       if (nextIsBreak) return
 
-      const br1 = doc.createElement('br')
-      const br2 = doc.createElement('br')
-      el.insertAdjacentElement('afterend', br2)
-      el.insertAdjacentElement('afterend', br1)
+      // const br1 = doc.createElement('br')
+      // const br2 = doc.createElement('br')
+      // el.insertAdjacentElement('afterend', br2)
+      // el.insertAdjacentElement('afterend', br1)
     })
 
     return body.innerHTML
