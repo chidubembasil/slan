@@ -3,8 +3,8 @@ import {
   $getSelection,
   $isRangeSelection,
   $createParagraphNode,
-  $createTextNode,
-  $createLineBreakNode,
+  // $createTextNode,
+  // $createLineBreakNode,
   $getNodeByKey,
   $getNearestNodeFromDOMNode,
   $isTextNode,
@@ -79,6 +79,37 @@ function cleanPastedHtml(html: string): string {
     // must be a Cloudinary-hosted <img src="https://..."> uploaded through
     // the image button, never inline image bytes.
     .replace(/<img[^>]*src="data:[^"]*"[^>]*>/gi, '')
+}
+
+// ── Escapes HTML special characters before inserting raw text into markup ──
+// Used exclusively by plainTextToHtml() to safely turn clipboard
+// `text/plain` content into HTML without risking injected markup.
+function escapeHtml(text: string): string {
+  const div = document.createElement('div')
+  div.textContent = text
+  return div.innerHTML
+}
+
+// ── Converts plain-text clipboard content into the same shape the HTML
+// pipeline expects ──
+// Some laptops/OS clipboard managers only populate `text/plain` on copy
+// (no `text/html` at all), which used to take a completely separate
+// insertion path. This normalizes that case into an HTML string —
+// `<p>Paragraph 1</p><br><br><p>Paragraph 2</p>` — so it can be run through
+// the exact same cleanPastedHtml() → ensureParagraphs() → DOMParser →
+// $generateNodesFromDOM() pipeline as real HTML pastes. This is the ONLY
+// place that injects `<br><br>` paragraph spacing (see OnChangeHtmlPlugin
+// below, which no longer does this) so spacing never gets doubled.
+function plainTextToHtml(text: string): string {
+  const normalized = text.replace(/\r\n/g, '\n')
+  const paragraphs = normalized
+    .split(/\n{2,}/)
+    .map((p) => p.trim())
+    .filter(Boolean)
+
+  const source = paragraphs.length > 0 ? paragraphs : [normalized]
+
+  return source.map((p) => `<p>${escapeHtml(p)}</p>`).join('<br><br>')
 }
 
 // ── Forces the content that follows a bold/strong "sub-header" onto its
@@ -753,6 +784,12 @@ function InitialContentPlugin({
 }
 
 // ── Emits HTML on every change ──
+// NOTE: this used to also run `html.replace(/<\/p>\s*<p/gi, '</p><br><br><p')`
+// to inject paragraph spacing. That has been removed — paragraph spacing is
+// now injected exactly once, at paste time, by plainTextToHtml() (for the
+// text/plain clipboard case). Keeping it here as well would double the
+// spacing every time the document changes/saves, since HTML-origin pastes
+// already have real <p> tags and don't need this transform.
 function OnChangeHtmlPlugin({
   onChange,
   isInternalUpdate,
@@ -762,32 +799,14 @@ function OnChangeHtmlPlugin({
   isInternalUpdate: React.MutableRefObject<boolean>
   lastHtml: React.MutableRefObject<string>
 }) {
-//   const handleChange = useCallback(
-//   (_editorState: EditorState, editor: LexicalEditor) => {
-//     editor.getEditorState().read(() => {
-//       let html = $generateHtmlFromNodes(editor, null)
-//       html = html.replace(/<\/p>\s*<p/gi, '</p><br><br><p')
-//       html = html.replace(
-//         /class="rte-paragraph"/gi,
-//         'style="line-height:1.5;margin-bottom:1.5em;"'
-//       )
-//       isInternalUpdate.current = true
-//       lastHtml.current = html
-//       onChange(html)
-//     })
-//   },
-//   [onChange, isInternalUpdate, lastHtml]
-// )
-const handleChange = useCallback(
+  const handleChange = useCallback(
   (_editorState: EditorState, editor: LexicalEditor) => {
     editor.getEditorState().read(() => {
       let html = $generateHtmlFromNodes(editor, null)
-      html = html.replace(/<\/p>\s*<p/gi, '</p><br><br><p')
       html = html.replace(
         /class="rte-paragraph"/gi,
         'style="line-height:1.5;margin-bottom:1.5em;"'
       )
-
       isInternalUpdate.current = true
       lastHtml.current = html
       onChange(html)
@@ -799,9 +818,21 @@ const handleChange = useCallback(
   return <OnChangePlugin onChange={handleChange} ignoreSelectionChange />
 }
 
-// ── Paste handling: cleans Word/WPS junk, guarantees real paragraphs,
-//    and turns plain-text articles (no HTML on the clipboard at all) into
-//    one <p> per paragraph instead of a single blob. ──
+// ── Paste handling: cleans Word/WPS junk, guarantees real paragraphs, and
+//    normalizes plain-text-only clipboards (no text/html available) into
+//    the same <p> structure before running them through the identical
+//    HTML → Lexical pipeline. ──
+//
+// Laptop A (clipboard has text/html):
+//   text/html → cleanPastedHtml() → ensureParagraphs() → Lexical nodes
+// Laptop B (clipboard has only text/plain):
+//   text/plain → plainTextToHtml() → cleanPastedHtml() → ensureParagraphs()
+//   → Lexical nodes
+//
+// Both converge on the exact same DOMParser → $generateNodesFromDOM() →
+// selection-aware insertion logic below, so there is only one Lexical
+// insertion implementation and paragraph structure/spacing stays identical
+// across both laptops.
 function PasteCleanupPlugin() {
   const [editor] = useLexicalComposerContext()
 
@@ -809,55 +840,40 @@ function PasteCleanupPlugin() {
     return editor.registerCommand(
       PASTE_COMMAND,
       (event) => {
-        if (!(event instanceof ClipboardEvent)) return false 
+        if (!(event instanceof ClipboardEvent)) return false
 
         const clipboardData = event.clipboardData
         const html = clipboardData?.getData('text/html')
 
+        // Resolve to a single HTML string regardless of clipboard source:
+        // real HTML when the browser/OS provided it, otherwise plain text
+        // converted into the same <p>...<p> (+ <br><br> between paragraphs)
+        // shape.
+        let sourceHtml: string
+
         if (html) {
-          const prepared = ensureParagraphs(cleanPastedHtml(html))
-          editor.update(() => {
-            const dom = new DOMParser().parseFromString(prepared, 'text/html')
-            const nodes = $generateNodesFromDOM(editor, dom)
-            const selection = $getSelection()
-            if (selection !== null) {
-              $insertGeneratedNodes(editor, nodes, selection)
-            } else {
-              const root = $getRoot()
-              nodes.forEach((n) => root.append(n))
-            }
-          })
-          return true // mark handled, stop Lexical's default from also running
+          sourceHtml = cleanPastedHtml(html)
+        } else {
+          const text = clipboardData?.getData('text/plain') || ''
+          if (!text.trim()) return false
+          sourceHtml = plainTextToHtml(text)
         }
 
-        const text = clipboardData?.getData('text/plain') || ''
-        if (!text.trim()) return false
+        const prepared = ensureParagraphs(sourceHtml)
 
         editor.update(() => {
+          const dom = new DOMParser().parseFromString(prepared, 'text/html')
+          const nodes = $generateNodesFromDOM(editor, dom)
           const selection = $getSelection()
-          const paragraphs = text
-            .replace(/\r\n/g, '\n')
-            .split(/\n{2,}/)
-            .map((p) => p.trim())
-            .filter(Boolean)
-
-          const paragraphNodes = (paragraphs.length > 0 ? paragraphs : [text]).map((para) => {
-            const p = $createParagraphNode()
-            para.split('\n').forEach((line, i) => {
-              if (i > 0) p.append($createLineBreakNode())
-              if (line) p.append($createTextNode(line))
-            })
-            return p
-          })
-
-          if ($isRangeSelection(selection)) {
-            selection.insertNodes(paragraphNodes)
+          if (selection !== null) {
+            $insertGeneratedNodes(editor, nodes, selection)
           } else {
             const root = $getRoot()
-            paragraphNodes.forEach((p) => root.append(p))
+            nodes.forEach((n) => root.append(n))
           }
         })
-        return true
+
+        return true // mark handled, stop Lexical's default from also running
       },
       COMMAND_PRIORITY_CRITICAL, // runs before Lexical's own default handler, and returning true stops it from also firing
     )
