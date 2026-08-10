@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { UserPlus, X, Mail, User as UserIcon, ShieldCheck } from "lucide-react";
-
+import { useAuthGuard } from "../hooks/useAuthGuard"
 const API_BASE = import.meta.env.VITE_BASE_URL;
 
 interface InvitedAdmin {
@@ -19,6 +19,7 @@ function emptyForm(): InviteFormState {
 }
 
 export default function AdminUsers() {
+  useAuthGuard();
   // There's no documented GET /admin/admins endpoint yet, so this keeps a
   // local running list of admins invited during this session as a lightweight
   // confirmation trail. Swap this for real fetched data once a list endpoint
