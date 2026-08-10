@@ -85,7 +85,7 @@ function cleanPastedHtml(html: string): string {
 // Used exclusively by plainTextToHtml() to safely turn clipboard
 // `text/plain` content into HTML without risking injected markup.
 function escapeHtml(text: string): string {
-  const div = document.createElement('div')
+  const div  = document.createElement('div')
   div.textContent = text
   return div.innerHTML
 }
