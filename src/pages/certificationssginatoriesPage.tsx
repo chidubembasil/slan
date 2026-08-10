@@ -1,46 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
 
-/**
- * CertificationsSignatoriesPage
- * ------------------------------------------------------------------
- * Drop this into your admin app the same way "Assessment Page" is wired
- * up (same route-level component pattern, same sidebar layout wrapper).
- * This file only renders the CONTENT PANE — plug it into whatever
- * layout component already renders the green sidebar.
- *
- * Endpoints used (from your Swagger docs):
- *   POST   /admin/certifications/issue
- *   GET    /admin/certifications/{id}
- *   GET    /admin/certifications/{id}/download
- *   POST   /admin/signatories               (multipart/form-data)
- *   GET    /admin/signatories
- *   GET    /admin/signatories/{id}
- *   PUT    /admin/signatories/{id}           (multipart/form-data)
- *   DELETE /admin/signatories/{id}
- *   GET    /admin/users?search=&limit=&offset=   (confirmed real, replaces old decoy)
- *   GET    /admin/courses                        (list all courses, all statuses)
- *   GET    /admin/tracks                         (list all tracks)
- *
- * certType is now restricted to "course" | "track" only, per confirmed
- * scope — module/unit certs are not issued through this page.
- *
- * NOTE / assumptions (flag if wrong, easy one-line fixes):
- *  - /admin/users response items are assumed to have `fullName` + `email`
- *    (per the docs description: "search on fullName or email"). I fall
- *    back to `name` if that's what actually comes back.
- *  - /admin/courses and /admin/tracks list endpoints didn't show a
- *    `search` query param in your docs, so I fetch the full list once
- *    per tab-open and filter client-side as the admin types. If those
- *    endpoints DO support ?search=, swap the fetch call in
- *    ReferenceSearchSelect's `runSearch`/load effect to use it instead.
- *  - Course/track list items are assumed to at least have `{id, title}`
- *    (inferred from the certificate-issue response shape).
- * ------------------------------------------------------------------
- */
-
-// ---------------------------------------------------------------------------
-// Config
-// ---------------------------------------------------------------------------
 
 const API_BASE = import.meta.env.VITE_API_KEY;
 

@@ -51,7 +51,12 @@ import {
 } from '@lexical/table'
 import { $setBlocksType } from '@lexical/selection'
 import { $getNearestNodeOfType, mergeRegister, $insertNodeToNearestRoot } from '@lexical/utils'
-import { $insertGeneratedNodes } from '@lexical/clipboard'
+import {
+  $insertGeneratedNodes,
+  $getClipboardDataFromSelection,
+  copyToClipboard,
+} from '@lexical/clipboard'
+import { PASTE_COMMAND, COMMAND_PRIORITY_CRITICAL, COPY_COMMAND, CUT_COMMAND } from 'lexical'
 import { useEffect, useRef, useState, useCallback, type JSX } from 'react'
 
 interface Props {
@@ -139,7 +144,48 @@ function splitBoldSubheaders(html: string): string {
     return html
   }
 }
+function CopyCleanupPlugin() {
+  const [editor] = useLexicalComposerContext()
 
+  useEffect(() => {
+    return mergeRegister(
+      editor.registerCommand(
+        COPY_COMMAND,
+        (event) => {
+          if (!(event instanceof ClipboardEvent)) return false
+          editor.getEditorState().read(() => {
+            const selection = $getSelection()
+            if (selection) {
+              copyToClipboard(editor, event, $getClipboardDataFromSelection(selection))
+            }
+          })
+          return true
+        },
+        COMMAND_PRIORITY_CRITICAL,
+      ),
+      editor.registerCommand(
+        CUT_COMMAND,
+        (event) => {
+          if (!(event instanceof ClipboardEvent)) return false
+          editor.getEditorState().read(() => {
+            const selection = $getSelection()
+            if (selection) {
+              copyToClipboard(editor, event, $getClipboardDataFromSelection(selection))
+            }
+          })
+          editor.update(() => {
+            const selection = $getSelection()
+            if ($isRangeSelection(selection)) selection.removeText()
+          })
+          return true
+        },
+        COMMAND_PRIORITY_CRITICAL,
+      ),
+    )
+  }, [editor])
+
+  return null
+}
 // ── Guarantees pasted content lands as real paragraphs ──
 // Some sources (plain web copy, notes apps) hand over HTML that has no <p>
 // tags at all — either bare text, <span>/<br> chains, or top-level <div>s
@@ -716,19 +762,39 @@ function OnChangeHtmlPlugin({
   isInternalUpdate: React.MutableRefObject<boolean>
   lastHtml: React.MutableRefObject<string>
 }) {
-  const handleChange = useCallback(
-    (_editorState: EditorState, editor: LexicalEditor) => {
-      editor.getEditorState().read(() => {
-        let html = $generateHtmlFromNodes(editor, null)
-        html = html.replace(/<\/p>\s*<p/gi, '</p><br><br><p')
-        console.log(html)
-        isInternalUpdate.current = true
-        lastHtml.current = html
-        onChange(html)
-      })
-    },
-    [onChange, isInternalUpdate, lastHtml]
-  )
+//   const handleChange = useCallback(
+//   (_editorState: EditorState, editor: LexicalEditor) => {
+//     editor.getEditorState().read(() => {
+//       let html = $generateHtmlFromNodes(editor, null)
+//       html = html.replace(/<\/p>\s*<p/gi, '</p><br><br><p')
+//       html = html.replace(
+//         /class="rte-paragraph"/gi,
+//         'style="line-height:1.5;margin-bottom:1.5em;"'
+//       )
+//       isInternalUpdate.current = true
+//       lastHtml.current = html
+//       onChange(html)
+//     })
+//   },
+//   [onChange, isInternalUpdate, lastHtml]
+// )
+const handleChange = useCallback(
+  (_editorState: EditorState, editor: LexicalEditor) => {
+    editor.getEditorState().read(() => {
+      let html = $generateHtmlFromNodes(editor, null)
+      html = html.replace(/<\/p>\s*<p/gi, '</p><br><br><p')
+      html = html.replace(
+        /class="rte-paragraph"/gi,
+        'style="line-height:1.5;margin-bottom:1.5em;"'
+      )
+
+      isInternalUpdate.current = true
+      lastHtml.current = html
+      onChange(html)
+    })
+  },
+  [onChange, isInternalUpdate, lastHtml]
+)
 
   return <OnChangePlugin onChange={handleChange} ignoreSelectionChange />
 }
@@ -740,76 +806,65 @@ function PasteCleanupPlugin() {
   const [editor] = useLexicalComposerContext()
 
   useEffect(() => {
-    const rootElement = editor.getRootElement()
-    if (!rootElement) return
+    return editor.registerCommand(
+      PASTE_COMMAND,
+      (event) => {
+        if (!(event instanceof ClipboardEvent)) return false 
 
-    const handlePaste = (event: ClipboardEvent) => {
-      const html = event.clipboardData?.getData('text/html')
+        const clipboardData = event.clipboardData
+        const html = clipboardData?.getData('text/html')
 
-      if (html) {
-        const prepared = ensureParagraphs(cleanPastedHtml(html))
-        event.preventDefault()
-        event.stopPropagation()
+        if (html) {
+          const prepared = ensureParagraphs(cleanPastedHtml(html))
+          editor.update(() => {
+            const dom = new DOMParser().parseFromString(prepared, 'text/html')
+            const nodes = $generateNodesFromDOM(editor, dom)
+            const selection = $getSelection()
+            if (selection !== null) {
+              $insertGeneratedNodes(editor, nodes, selection)
+            } else {
+              const root = $getRoot()
+              nodes.forEach((n) => root.append(n))
+            }
+          })
+          return true // mark handled, stop Lexical's default from also running
+        }
+
+        const text = clipboardData?.getData('text/plain') || ''
+        if (!text.trim()) return false
+
         editor.update(() => {
-          const dom = new DOMParser().parseFromString(prepared, 'text/html')
-          const nodes = $generateNodesFromDOM(editor, dom)
           const selection = $getSelection()
-          if (selection !== null) {
-            // $insertGeneratedNodes (the same helper Lexical's own default
-            // paste command uses) correctly splits the current paragraph
-            // and places block-level nodes — tables included — instead of
-            // a plain selection.insertNodes(), which silently fails on
-            // tables and made pasting one look "blocked".
-            $insertGeneratedNodes(editor, nodes, selection)
+          const paragraphs = text
+            .replace(/\r\n/g, '\n')
+            .split(/\n{2,}/)
+            .map((p) => p.trim())
+            .filter(Boolean)
+
+          const paragraphNodes = (paragraphs.length > 0 ? paragraphs : [text]).map((para) => {
+            const p = $createParagraphNode()
+            para.split('\n').forEach((line, i) => {
+              if (i > 0) p.append($createLineBreakNode())
+              if (line) p.append($createTextNode(line))
+            })
+            return p
+          })
+
+          if ($isRangeSelection(selection)) {
+            selection.insertNodes(paragraphNodes)
           } else {
             const root = $getRoot()
-            nodes.forEach((n) => root.append(n))
+            paragraphNodes.forEach((p) => root.append(p))
           }
         })
-        return
-      }
-
-      // No HTML on the clipboard — plain text paste. Split on blank lines so
-      // each paragraph of the article becomes its own paragraph node.
-      const text = event.clipboardData?.getData('text/plain') || ''
-      if (!text.trim()) return
-
-      event.preventDefault()
-      event.stopPropagation()
-
-      editor.update(() => {
-        const selection = $getSelection()
-        const paragraphs = text
-          .replace(/\r\n/g, '\n')
-          .split(/\n{2,}/)
-          .map((p) => p.trim())
-          .filter(Boolean)
-
-        const paragraphNodes = (paragraphs.length > 0 ? paragraphs : [text]).map((para) => {
-          const p = $createParagraphNode()
-          para.split('\n').forEach((line, i) => {
-            if (i > 0) p.append($createLineBreakNode())
-            if (line) p.append($createTextNode(line))
-          })
-          return p
-        })
-
-        if ($isRangeSelection(selection)) {
-          selection.insertNodes(paragraphNodes)
-        } else {
-          const root = $getRoot()
-          paragraphNodes.forEach((p) => root.append(p))
-        }
-      })
-    }
-
-    rootElement.addEventListener('paste', handlePaste, true)
-    return () => rootElement.removeEventListener('paste', handlePaste, true)
+        return true
+      },
+      COMMAND_PRIORITY_CRITICAL, // runs before Lexical's own default handler, and returning true stops it from also firing
+    )
   }, [editor])
 
   return null
 }
-
 // ── Right-click context menu for existing tables ──
 // Right-clicking any cell in a table (freshly inserted or loaded from saved
 // HTML) opens a menu to edit borders, cell fill, and text color, plus the
@@ -1288,6 +1343,7 @@ function Toolbar() {
       <ToolbarButton
         onClick={setParagraph}
         // active={blockType === 'paragraph'}
+        active={true}
         title="Convert to paragraph"
       >
         ¶ Paragraph
@@ -1536,6 +1592,7 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Prop
           <HistoryPlugin />
           <ListPlugin />
           <TablePlugin />
+          <CopyCleanupPlugin />
           <TableContextMenuPlugin />
           <PasteCleanupPlugin />
           <InitialContentPlugin value={value} isInternalUpdate={isInternalUpdate} lastHtml={lastHtml} />
