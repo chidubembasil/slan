@@ -802,11 +802,23 @@ function OnChangeHtmlPlugin({
   const handleChange = useCallback(
   (_editorState: EditorState, editor: LexicalEditor) => {
     editor.getEditorState().read(() => {
+
+      // 1. Generate the HTML first
       let html = $generateHtmlFromNodes(editor, null)
+
+      // 2. Add your paragraph spacing
+      html = html.replace(
+        /<\/p>\s*<p/gi,
+        '</p><br><br><p'
+      )
+
+      // 3. Add your paragraph styling
       html = html.replace(
         /class="rte-paragraph"/gi,
         'style="line-height:1.5;margin-bottom:1.5em;"'
       )
+
+      // 4. Save/send the final HTML
       isInternalUpdate.current = true
       lastHtml.current = html
       onChange(html)
