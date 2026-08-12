@@ -15,6 +15,7 @@ import {
   $isRangeSelection,
   $createParagraphNode,
   $getNodeByKey,
+  $getNearestNodeFromDOMNode,
   DecoratorNode,
   FORMAT_ELEMENT_COMMAND,
   FORMAT_TEXT_COMMAND,
@@ -43,6 +44,15 @@ import {
   $insertTableColumn__EXPERIMENTAL,
   $deleteTableRow__EXPERIMENTAL,
   $deleteTableColumn__EXPERIMENTAL,
+} from "@lexical/table";
+// Additional table utilities, needed only for the new right-click menu /
+// hover "+" controls added below. Kept as a separate import so the
+// original import block above is untouched.
+import {
+  $isTableNode,
+  $isTableSelection,
+  $getTableRowIndexFromTableCellNode,
+  $getTableColumnIndexFromTableCellNode,
 } from "@lexical/table";
 import { $generateHtmlFromNodes, $generateNodesFromDOM } from "@lexical/html";
 import { $getNearestNodeOfType } from "@lexical/utils";
@@ -598,6 +608,280 @@ function Toolbar() {
   );
 }
 
+// ============================================================================
+// NEW: Table right-click context menu (mirrors the Word/WPS-style menu you
+// get when right-clicking inside a table — Insert, Merge/Split Cells, Delete
+// Row/Column, Cell Alignment, Borders and Shading, Delete Table).
+// ============================================================================
+function TableActionMenuPlugin() {
+  const [editor] = useLexicalComposerContext();
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const [showInsertSub, setShowInsertSub] = useState(false);
+  const [showAlignSub, setShowAlignSub] = useState(false);
+  const [showColorSub, setShowColorSub] = useState(false);
+
+  useEffect(() => {
+    const root = editor.getRootElement();
+    if (!root) return;
+    const onContextMenu = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      const cell = target.closest("td, th") as HTMLElement | null;
+      if (!cell) return; // right-click outside a table — let the browser/other menus handle it
+      e.preventDefault();
+      editor.update(() => {
+        const existing = $getSelection();
+        // If the user already dragged out a multi-cell selection (for a
+        // merge), don't clobber it by moving the caret into just this cell.
+        if ($isTableSelection(existing)) return;
+        const node = $getNearestNodeFromDOMNode(cell);
+        if (node && $isTableCellNode(node)) node.selectEnd();
+      });
+      setShowInsertSub(false);
+      setShowAlignSub(false);
+      setShowColorSub(false);
+      setMenu({ x: e.clientX, y: e.clientY });
+    };
+    root.addEventListener("contextmenu", onContextMenu);
+    return () => root.removeEventListener("contextmenu", onContextMenu);
+  }, [editor]);
+
+  useEffect(() => {
+    if (!menu) return;
+    const close = () => setMenu(null);
+    window.addEventListener("click", close);
+    return () => window.removeEventListener("click", close);
+  }, [menu]);
+
+  if (!menu) return null;
+
+  const insertRow = (after: boolean) => editor.update(() => {
+    try { $insertTableRow__EXPERIMENTAL(after); } catch { /* not inside a table */ }
+  });
+  const insertColumn = (after: boolean) => editor.update(() => {
+    try { $insertTableColumn__EXPERIMENTAL(after); } catch { /* not inside a table */ }
+  });
+  const deleteRow = () => editor.update(() => {
+    try { $deleteTableRow__EXPERIMENTAL(); } catch { /* not inside a table */ }
+  });
+  const deleteColumn = () => editor.update(() => {
+    try { $deleteTableColumn__EXPERIMENTAL(); } catch { /* not inside a table */ }
+  });
+  const deleteTable = () => editor.update(() => {
+    const selection = $getSelection();
+    if (!$isRangeSelection(selection)) return;
+    const tableNode = $getNearestNodeOfType(selection.anchor.getNode(), TableNode);
+    if (tableNode) tableNode.remove();
+  });
+  const setCellAlign = (dir: ElementFormatType) => editor.update(() => {
+    const selection = $getSelection();
+    if ($isRangeSelection(selection)) editor.dispatchCommand(FORMAT_ELEMENT_COMMAND, dir);
+  });
+  const setCellColor = (color: string) => editor.update(() => {
+    const selection = $getSelection();
+    if (!$isRangeSelection(selection)) return;
+    let node: any = selection.anchor.getNode();
+    while (node != null && !$isTableCellNode(node)) node = node.getParent();
+    if (node && $isTableCellNode(node)) node.setBackgroundColor(color);
+  });
+  // Merges a rectangular multi-cell selection into its top-left cell by
+  // moving every other cell's content into it and stamping colSpan/rowSpan.
+  // Requires the user to have dragged across multiple cells first.
+  const mergeCells = () => editor.update(() => {
+    const selection = $getSelection();
+    if (!$isTableSelection(selection)) return;
+    const cellNodes = selection.getNodes().filter($isTableCellNode);
+    if (cellNodes.length < 2) return;
+    let minRow = Infinity, maxRow = -Infinity, minCol = Infinity, maxCol = -Infinity;
+    const positions = cellNodes.map(cell => {
+      const r = $getTableRowIndexFromTableCellNode(cell);
+      const c = $getTableColumnIndexFromTableCellNode(cell);
+      minRow = Math.min(minRow, r); maxRow = Math.max(maxRow, r);
+      minCol = Math.min(minCol, c); maxCol = Math.max(maxCol, c);
+      return { cell, r, c };
+    });
+    const topLeft = positions.find(p => p.r === minRow && p.c === minCol)?.cell ?? cellNodes[0];
+    cellNodes.forEach(cell => {
+      if (cell === topLeft) return;
+      cell.getChildren().forEach(child => topLeft.append(child));
+      cell.remove();
+    });
+    topLeft.setColSpan(maxCol - minCol + 1);
+    topLeft.setRowSpan(maxRow - minRow + 1);
+  });
+  // Simple split: resets the current cell back to a 1x1 span.
+  const splitCell = () => editor.update(() => {
+    const selection = $getSelection();
+    if (!$isRangeSelection(selection)) return;
+    let node: any = selection.anchor.getNode();
+    while (node != null && !$isTableCellNode(node)) node = node.getParent();
+    if (node && $isTableCellNode(node)) { node.setColSpan(1); node.setRowSpan(1); }
+  });
+
+  const item: React.CSSProperties = { padding: "8px 14px", cursor: "pointer", fontSize: 13, whiteSpace: "nowrap", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16 };
+  const itemDanger: React.CSSProperties = { ...item, color: "#dc2626" };
+  const sep: React.CSSProperties = { borderTop: "1px solid #f3f4f6", margin: "4px 0" };
+  const menuBox: React.CSSProperties = { position: "fixed", left: menu.x, top: menu.y, background: "white", border: "1px solid #e5e7eb", borderRadius: 6, boxShadow: "0 10px 30px rgba(0,0,0,.15)", zIndex: 9999, minWidth: 210, padding: "4px 0", fontSize: 13 };
+  const subBox: React.CSSProperties = { position: "absolute", left: "100%", top: 0, background: "white", border: "1px solid #e5e7eb", borderRadius: 6, boxShadow: "0 10px 30px rgba(0,0,0,.15)", minWidth: 180, padding: "4px 0" };
+
+  return (
+    <div style={menuBox} onClick={e => e.stopPropagation()}>
+      <div style={{ position: "relative" }} onMouseEnter={() => setShowInsertSub(true)} onMouseLeave={() => setShowInsertSub(false)}>
+        <div style={item}>Insert <span>›</span></div>
+        {showInsertSub && (
+          <div style={subBox}>
+            <div style={item} onMouseDown={e => { e.preventDefault(); insertRow(false); setMenu(null); }}>Insert row above</div>
+            <div style={item} onMouseDown={e => { e.preventDefault(); insertRow(true); setMenu(null); }}>Insert row below</div>
+            <div style={item} onMouseDown={e => { e.preventDefault(); insertColumn(false); setMenu(null); }}>Insert column left</div>
+            <div style={item} onMouseDown={e => { e.preventDefault(); insertColumn(true); setMenu(null); }}>Insert column right</div>
+          </div>
+        )}
+      </div>
+      <div style={sep} />
+      <div style={item} onMouseDown={e => { e.preventDefault(); mergeCells(); setMenu(null); }}>Merge Cells</div>
+      <div style={item} onMouseDown={e => { e.preventDefault(); splitCell(); setMenu(null); }}>Split Cell</div>
+      <div style={sep} />
+      <div style={itemDanger} onMouseDown={e => { e.preventDefault(); deleteRow(); setMenu(null); }}>Delete Row</div>
+      <div style={itemDanger} onMouseDown={e => { e.preventDefault(); deleteColumn(); setMenu(null); }}>Delete Column</div>
+      <div style={sep} />
+      <div style={{ position: "relative" }} onMouseEnter={() => setShowAlignSub(true)} onMouseLeave={() => setShowAlignSub(false)}>
+        <div style={item}>Cell Alignment <span>›</span></div>
+        {showAlignSub && (
+          <div style={subBox}>
+            <div style={item} onMouseDown={e => { e.preventDefault(); setCellAlign("left"); setMenu(null); }}>⇤ Left</div>
+            <div style={item} onMouseDown={e => { e.preventDefault(); setCellAlign("center"); setMenu(null); }}>≡ Center</div>
+            <div style={item} onMouseDown={e => { e.preventDefault(); setCellAlign("right"); setMenu(null); }}>⇥ Right</div>
+            <div style={item} onMouseDown={e => { e.preventDefault(); setCellAlign("justify"); setMenu(null); }}>≡ Justify</div>
+          </div>
+        )}
+      </div>
+      <div style={{ position: "relative" }} onMouseEnter={() => setShowColorSub(true)} onMouseLeave={() => setShowColorSub(false)}>
+        <div style={item}>Borders and Shading <span>›</span></div>
+        {showColorSub && (
+          <div style={{ ...subBox, padding: 10, display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 6, width: 160 }}>
+            {["#ffffff", "#f3f4f6", "#fee2e2", "#ffedd5", "#fef9c3", "#dcfce7", "#dbeafe", "#ede9fe", "#fce7f3", "#e5e7eb", "#111827", "#9ca3af"].map(c => (
+              <div key={c} onMouseDown={e => { e.preventDefault(); setCellColor(c); setMenu(null); }} style={{ width: 20, height: 20, background: c, border: "1px solid #d1d5db", cursor: "pointer", borderRadius: 3 }} />
+            ))}
+          </div>
+        )}
+      </div>
+      <div style={sep} />
+      <div style={itemDanger} onMouseDown={e => { e.preventDefault(); deleteTable(); setMenu(null); }}>Delete Table</div>
+    </div>
+  );
+}
+
+// ============================================================================
+// NEW: Hover-to-expand controls. Hovering a table shows small "+" buttons on
+// its top / bottom / left / right edges — click one to insert a row or
+// column right there, without needing to click into the table first.
+// ============================================================================
+function TableHoverControlsPlugin() {
+  const [editor] = useLexicalComposerContext();
+  const [rect, setRect] = useState<DOMRect | null>(null);
+  const [hoveredTable, setHoveredTable] = useState<HTMLTableElement | null>(null);
+  const hideTimeout = useRef<number | null>(null);
+
+  useEffect(() => {
+    const root = editor.getRootElement();
+    if (!root) return;
+    const onMove = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      const table = target.closest("table") as HTMLTableElement | null;
+      if (!table) return;
+      if (hideTimeout.current) { window.clearTimeout(hideTimeout.current); hideTimeout.current = null; }
+      setHoveredTable(table);
+      setRect(table.getBoundingClientRect());
+    };
+    const onLeave = () => {
+      hideTimeout.current = window.setTimeout(() => { setHoveredTable(null); setRect(null); }, 200);
+    };
+    root.addEventListener("mousemove", onMove);
+    root.addEventListener("mouseleave", onLeave);
+    return () => {
+      root.removeEventListener("mousemove", onMove);
+      root.removeEventListener("mouseleave", onLeave);
+    };
+  }, [editor]);
+
+  const keepVisible = () => { if (hideTimeout.current) { window.clearTimeout(hideTimeout.current); hideTimeout.current = null; } };
+  const scheduleHide = () => { hideTimeout.current = window.setTimeout(() => { setHoveredTable(null); setRect(null); }, 200); };
+
+  const withTableNode = (fn: (tableNode: any) => void) => {
+    if (!hoveredTable) return;
+    editor.update(() => {
+      const tableNode = $getNearestNodeFromDOMNode(hoveredTable);
+      if (!tableNode || !$isTableNode(tableNode)) return;
+      fn(tableNode);
+    });
+  };
+
+  const addRowAbove = () => withTableNode(tableNode => {
+    const rows = tableNode.getChildren();
+    const firstRow = rows[0];
+    if (!firstRow) return;
+    const cells = firstRow.getChildren();
+    const firstCell = cells[0];
+    if (!firstCell) return;
+    firstCell.selectEnd();
+    $insertTableRow__EXPERIMENTAL(false);
+  });
+  const addRowBelow = () => withTableNode(tableNode => {
+    const rows = tableNode.getChildren();
+    const lastRow = rows[rows.length - 1];
+    if (!lastRow) return;
+    const cells = lastRow.getChildren();
+    const lastCell = cells[cells.length - 1];
+    if (!lastCell) return;
+    lastCell.selectEnd();
+    $insertTableRow__EXPERIMENTAL(true);
+  });
+  const addColumnLeft = () => withTableNode(tableNode => {
+    const rows = tableNode.getChildren();
+    const firstRow = rows[0];
+    if (!firstRow) return;
+    const cells = firstRow.getChildren();
+    const firstCell = cells[0];
+    if (!firstCell) return;
+    firstCell.selectEnd();
+    $insertTableColumn__EXPERIMENTAL(false);
+  });
+  const addColumnRight = () => withTableNode(tableNode => {
+    const rows = tableNode.getChildren();
+    const firstRow = rows[0];
+    if (!firstRow) return;
+    const cells = firstRow.getChildren();
+    const lastCell = cells[cells.length - 1];
+    if (!lastCell) return;
+    lastCell.selectEnd();
+    $insertTableColumn__EXPERIMENTAL(true);
+  });
+
+  if (!rect) return null;
+
+  const base: React.CSSProperties = {
+    position: "fixed", width: 18, height: 18, borderRadius: 4, background: "#0b57d0", color: "white",
+    border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+    fontSize: 13, lineHeight: 1, zIndex: 30, boxShadow: "0 1px 4px rgba(0,0,0,.25)", padding: 0,
+  };
+
+  return (
+    <>
+      <button title="Insert row above" onMouseEnter={keepVisible} onMouseLeave={scheduleHide}
+        onMouseDown={e => { e.preventDefault(); addRowAbove(); }}
+        style={{ ...base, left: rect.left + rect.width / 2 - 9, top: rect.top - 9 }}>+</button>
+      <button title="Insert row below" onMouseEnter={keepVisible} onMouseLeave={scheduleHide}
+        onMouseDown={e => { e.preventDefault(); addRowBelow(); }}
+        style={{ ...base, left: rect.left + rect.width / 2 - 9, top: rect.bottom - 9 }}>+</button>
+      <button title="Insert column left" onMouseEnter={keepVisible} onMouseLeave={scheduleHide}
+        onMouseDown={e => { e.preventDefault(); addColumnLeft(); }}
+        style={{ ...base, left: rect.left - 9, top: rect.top + rect.height / 2 - 9 }}>+</button>
+      <button title="Insert column right" onMouseEnter={keepVisible} onMouseLeave={scheduleHide}
+        onMouseDown={e => { e.preventDefault(); addColumnRight(); }}
+        style={{ ...base, left: rect.right - 9, top: rect.top + rect.height / 2 - 9 }}>+</button>
+    </>
+  );
+}
+
 export default function RichTextEditor({ value, onChange, placeholder }: RichTextEditorProps) {
   const config = {
     namespace: "SLANEditor",
@@ -621,6 +905,8 @@ export default function RichTextEditor({ value, onChange, placeholder }: RichTex
         <div style={{ position: "relative" }}>
           <RichTextPlugin contentEditable={<ContentEditable style={{ minHeight: 300, padding: 20, outline: "none" }} />} placeholder={<div style={{ position: "absolute", top: 20, left: 20, color: "#999", pointerEvents: "none" }}>{placeholder || "Write content..."}</div>} ErrorBoundary={LexicalErrorBoundary} />
           <HistoryPlugin /><ListPlugin /><TablePlugin /><PasteCleanupPlugin />
+          <TableActionMenuPlugin />
+          <TableHoverControlsPlugin />
           <InitialHtmlPlugin value={value} />
           <OnChangePlugin onChange={(editorState, editor) => { editorState.read(() => { const html = $generateHtmlFromNodes(editor, null); onChange(html); }); }} />
         </div>
