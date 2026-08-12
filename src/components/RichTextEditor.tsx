@@ -1581,9 +1581,11 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Prop
           color: #4b5563;
           font-style: italic;
         }
+        
         .rte-paragraph {
           line-height: 1.5;
           margin-bottom: 1.5em;
+          display : block;
         }
 
         .rte-paragraph:last-child {
@@ -1598,7 +1600,11 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Prop
           font-size: 0.85rem;
           font-family: monospace;
         }
-        .rte-bold { font-weight: 700; }
+        .rte-bold { 
+          font-weight: 700;
+          line-height: 1.5;
+          margin-bottom: 1.5em;
+        }
         .rte-italic { font-style: italic; }
         .rte-strike { text-decoration: line-through; }
       `}</style>
