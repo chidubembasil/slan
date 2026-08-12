@@ -15,6 +15,7 @@ import {
   $isRangeSelection,
   $createParagraphNode,
   $getNodeByKey,
+  $getNearestNodeFromDOMNode,
   DecoratorNode,
   FORMAT_ELEMENT_COMMAND,
   FORMAT_TEXT_COMMAND,
