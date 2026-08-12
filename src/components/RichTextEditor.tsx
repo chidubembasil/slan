@@ -353,234 +353,6 @@ async function uploadImageToCloudinary(file: File): Promise<string> {
   return data.secure_url as string
 }
 
-// ── Uploads a base64 data-URI image straight to Cloudinary ──
-// Same signature scheme as uploadImageToCloudinary(), but takes a
-// `data:<mime>;base64,<...>` string instead of a File. This is what the
-// document-import pipeline uses for images pulled out of a .docx or .pdf,
-// since those come out of mammoth/pdf.js as raw bytes/base64 rather than as
-// File objects from an <input>. Cloudinary's upload API accepts a base64
-// data URI directly in the `file` field, so no conversion to a Blob/File is
-// needed first.
-async function uploadBase64ToCloudinary(dataUri: string): Promise<string> {
-  const { cloudName, apiKey, apiSecret } = getCloudinaryConfig()
-  const timestamp = Math.floor(Date.now() / 1000)
-  const signature = await sha1Hex(`timestamp=${timestamp}${apiSecret}`)
-
-  const formData = new FormData()
-  formData.append('file', dataUri)
-  formData.append('api_key', apiKey)
-  formData.append('timestamp', String(timestamp))
-  formData.append('signature', signature)
-
-  const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
-    method: 'POST',
-    body: formData,
-  })
-
-  if (!response.ok) {
-    const errorText = await response.text()
-    throw new Error(`Cloudinary upload failed: ${errorText}`)
-  }
-
-  const data = await response.json()
-  return data.secure_url as string
-}
-
-// ── Document import: Word / PDF / Excel / CSV → HTML, with any embedded
-//    images routed through Cloudinary ──
-// All four converters below resolve to an ImportResult ({ html, imageUrls }).
-// The `html` is built the same way real clipboard HTML is: images end up
-// as bare Cloudinary <img src="https://..."> tags (never base64), and the
-// result is run through the exact same cleanPastedHtml() →
-// ensureParagraphs() → DOMParser() → $generateNodesFromDOM() pipeline used
-// for paste, so imported documents behave identically to a real paste once
-// they reach the editor.
-//
-// `imageUrls` collects every Cloudinary URL produced while converting the
-// file, in encounter order, so the caller can forward them to the backend
-// alongside the extracted article content without having to re-parse the
-// HTML.
-//
-// Each converter dynamically imports its library so the heavy parsing code
-// (mammoth / xlsx / pdfjs-dist) is only pulled into the bundle when a
-// document is actually imported.
-//
-// Requires these to be installed in the project:
-//   npm install mammoth xlsx pdfjs-dist
-
-export interface DocumentImportResult {
-  html: string
-  imageUrls: string[]
-}
-
-// .docx → HTML. mammoth walks the document and, for every embedded image,
-// calls convertImage with the image's bytes; each one is uploaded to
-// Cloudinary and swapped in as a plain <img src="...">. Every uploaded URL
-// is also pushed onto `imageUrls` as it comes back.
-async function convertDocxToHtml(file: File): Promise<DocumentImportResult> {
-  const mammoth: any = await import('mammoth')
-  const arrayBuffer = await file.arrayBuffer()
-  const imageUrls: string[] = []
-
-  const convertImage = mammoth.images.imgElement(async (image: any) => {
-    try {
-      const base64 = await image.read('base64')
-      const dataUri = `data:${image.contentType};base64,${base64}`
-      const url = await uploadBase64ToCloudinary(dataUri)
-      imageUrls.push(url)
-      return { src: url }
-    } catch (err) {
-      console.error('Failed to upload docx image to Cloudinary:', err)
-      return { src: '' }
-    }
-  })
-
-  const result = await mammoth.convertToHtml({ arrayBuffer }, { convertImage })
-  return { html: result.value as string, imageUrls }
-}
-
-// .xlsx / .xls → HTML. Each sheet becomes its own labeled <table>.
-// Note: the free/community SheetJS build used here does not expose
-// embedded cell images, so this path covers spreadsheet data/tables only —
-// there's nothing to route through Cloudinary for this format.
-async function convertXlsxToHtml(file: File): Promise<DocumentImportResult> {
-  const XLSX: any = await import('xlsx')
-  const arrayBuffer = await file.arrayBuffer()
-  const workbook = XLSX.read(arrayBuffer, { type: 'array' })
-
-  const htmlParts: string[] = []
-  workbook.SheetNames.forEach((sheetName: string) => {
-    const worksheet = workbook.Sheets[sheetName]
-    const rawTableHtml: string = XLSX.utils.sheet_to_html(worksheet, { header: '', footer: '' })
-    const match = rawTableHtml.match(/<table[\s\S]*?<\/table>/i)
-    const table = match ? match[0] : rawTableHtml
-    htmlParts.push(`<p><strong>${escapeHtml(sheetName)}</strong></p>`)
-    htmlParts.push(table)
-  })
-
-  return { html: htmlParts.join(''), imageUrls: [] }
-}
-
-// .csv → HTML table, via the same SheetJS parser used for xlsx.
-async function convertCsvToHtml(file: File): Promise<DocumentImportResult> {
-  const XLSX: any = await import('xlsx')
-  const text = await file.text()
-  const workbook = XLSX.read(text, { type: 'string' })
-  const worksheet = workbook.Sheets[workbook.SheetNames[0]]
-  const rawTableHtml: string = XLSX.utils.sheet_to_html(worksheet, { header: '', footer: '' })
-  const match = rawTableHtml.match(/<table[\s\S]*?<\/table>/i)
-  return { html: match ? match[0] : rawTableHtml, imageUrls: [] }
-}
-
-// .pdf → HTML. Text is extracted page by page into paragraphs. Embedded
-// raster images are pulled out via pdf.js's operator list (paintImageXObject
-// calls), redrawn onto a canvas, exported as a PNG data URI, and uploaded to
-// Cloudinary the same way docx images are — so a scanned/illustrated PDF
-// still ends up with real Cloudinary-hosted <img> tags instead of inline
-// bytes, and every uploaded URL is collected into `imageUrls`. Vector-only
-// PDFs (or pages with no raster images) will simply produce no <img> tags
-// (and no imageUrls entries) for that page.
-async function convertPdfToHtml(file: File): Promise<DocumentImportResult> {
-  const pdfjsLib: any = await import('pdfjs-dist')
-  pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-    'pdfjs-dist/build/pdf.worker.min.mjs',
-    import.meta.url,
-  ).toString()
-
-  const arrayBuffer = await file.arrayBuffer()
-  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
-
-  const htmlParts: string[] = []
-  const imageUrls: string[] = []
-
-  for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-    const page = await pdf.getPage(pageNum)
-
-    // ---- text ----
-    try {
-      const textContent = await page.getTextContent()
-      const pageText = textContent.items
-        .map((item: any) => ('str' in item ? item.str : ''))
-        .join(' ')
-        .replace(/\s+/g, ' ')
-        .trim()
-      if (pageText) {
-        htmlParts.push(`<p>${escapeHtml(pageText)}</p>`)
-      }
-    } catch (err) {
-      console.error(`Failed extracting text from PDF page ${pageNum}:`, err)
-    }
-
-    // ---- embedded raster images ----
-    try {
-      const opList = await page.getOperatorList()
-      const seenObjIds = new Set<string>()
-
-      for (let i = 0; i < opList.fnArray.length; i++) {
-        if (opList.fnArray[i] !== pdfjsLib.OPS.paintImageXObject) continue
-
-        const objId = opList.argsArray[i][0]
-        if (seenObjIds.has(objId)) continue
-        seenObjIds.add(objId)
-
-        const img: any = await new Promise((resolve) => page.objs.get(objId, resolve))
-        if (!img?.data || !img.width || !img.height) continue
-
-        const canvas = document.createElement('canvas')
-        canvas.width = img.width
-        canvas.height = img.height
-        const ctx = canvas.getContext('2d')
-        if (!ctx) continue
-
-        const imageData = ctx.createImageData(img.width, img.height)
-        const pixelCount = img.width * img.height
-
-        if (img.data.length === pixelCount * 4) {
-          // Already RGBA
-          imageData.data.set(img.data)
-        } else if (img.data.length === pixelCount * 3) {
-          // RGB → RGBA
-          for (let src = 0, dst = 0; src < img.data.length; src += 3, dst += 4) {
-            imageData.data[dst] = img.data[src]
-            imageData.data[dst + 1] = img.data[src + 1]
-            imageData.data[dst + 2] = img.data[src + 2]
-            imageData.data[dst + 3] = 255
-          }
-        } else {
-          // Unsupported pixel format (e.g. indexed/CMYK) — skip rather than
-          // draw garbage.
-          continue
-        }
-
-        ctx.putImageData(imageData, 0, 0)
-        const dataUri = canvas.toDataURL('image/png')
-
-        try {
-          const url = await uploadBase64ToCloudinary(dataUri)
-          imageUrls.push(url)
-          htmlParts.push(`<img src="${url}" />`)
-        } catch (err) {
-          console.error(`Failed to upload PDF image (page ${pageNum}) to Cloudinary:`, err)
-        }
-      }
-    } catch (err) {
-      console.error(`Failed extracting images from PDF page ${pageNum}:`, err)
-    }
-  }
-
-  return { html: htmlParts.join('<br><br>'), imageUrls }
-}
-
-// Routes a File to the right converter by extension.
-async function convertDocumentToHtml(file: File): Promise<DocumentImportResult> {
-  const name = file.name.toLowerCase()
-  if (name.endsWith('.docx')) return convertDocxToHtml(file)
-  if (name.endsWith('.xlsx') || name.endsWith('.xls')) return convertXlsxToHtml(file)
-  if (name.endsWith('.csv')) return convertCsvToHtml(file)
-  if (name.endsWith('.pdf')) return convertPdfToHtml(file)
-  throw new Error('Unsupported file type. Please upload a .docx, .pdf, .xlsx, .xls, or .csv file.')
-}
-
 // Pulls the public_id back out of a Cloudinary delivery URL so an image can
 // be deleted without persisting anything beyond the plain <img src="...">.
 function extractCloudinaryPublicId(url: string): string | null {
@@ -1381,15 +1153,6 @@ function Toolbar() {
   const [showBorderPanel, setShowBorderPanel] = useState(false)
   const imageInputRef = useRef<HTMLInputElement>(null)
   const [isUploadingImage, setIsUploadingImage] = useState(false)
-  // ── Document import (docx / pdf / xlsx / xls / csv) ──
-  const docInputRef = useRef<HTMLInputElement>(null)
-  const [isUploadingDocument, setIsUploadingDocument] = useState(false)
-  // Tracks the outcome of the "extract → insert → send to backend" pipeline
-  // so the toolbar can show the user that their document was imported (or
-  // that something went wrong), instead of failing silently.
-  const [importStatus, setImportStatus] = useState<'idle' | 'importing' | 'success' | 'error'>('idle')
-  const [importMessage, setImportMessage] = useState<string>('')
-  const importStatusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     return mergeRegister(
@@ -1433,23 +1196,6 @@ function Toolbar() {
       })
     )
   }, [editor])
-
-  // Clear any pending "status message" timeout on unmount.
-  useEffect(() => {
-    return () => {
-      if (importStatusTimeoutRef.current) clearTimeout(importStatusTimeoutRef.current)
-    }
-  }, [])
-
-  const showImportStatus = (status: 'success' | 'error', message: string) => {
-    setImportStatus(status)
-    setImportMessage(message)
-    if (importStatusTimeoutRef.current) clearTimeout(importStatusTimeoutRef.current)
-    importStatusTimeoutRef.current = setTimeout(() => {
-      setImportStatus('idle')
-      setImportMessage('')
-    }, 5000)
-  }
 
   const formatText = (format: 'bold' | 'italic' | 'strikethrough') => {
     editor.dispatchCommand(FORMAT_TEXT_COMMAND, format)
@@ -1530,70 +1276,6 @@ function Toolbar() {
     }
   }
 
-  // ── Handles a Word/PDF/Excel/CSV file picked via the "Import Doc" button.
-  //
-  // Pipeline:
-  //   1. Convert the file to HTML, uploading any embedded images to
-  //      Cloudinary along the way (convertDocumentToHtml) — same as every
-  //      other image in this editor, they land as plain Cloudinary
-  //      <img src="..."> tags, never base64.
-  //   2. Clean + normalize that HTML (cleanPastedHtml → ensureParagraphs)
-  //      and insert it into the editor exactly like a real paste would.
-  //
-  // There is no separate "send this document to the backend" call here.
-  // Inserting the nodes triggers editor.update(), which fires Lexical's
-  // update listener — the same OnChangeHtmlPlugin below that runs on every
-  // normal edit. That plugin regenerates the full document HTML and calls
-  // the `onChange` prop, which is however the parent already persists
-  // content to the backend. So an imported document reaches the backend
-  // exactly the same way as if the user had typed/pasted it in by hand —
-  // as the editor's regular saved HTML, no extra route involved.
-  const handleDocumentFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    e.target.value = '' // reset so selecting the same file again re-triggers onChange
-    if (!file) return
-
-    setIsUploadingDocument(true)
-    setImportStatus('importing')
-    setImportMessage('')
-
-    try {
-      // 1. Extract content, uploading any embedded images to Cloudinary
-      const { html: rawHtml, imageUrls } = await convertDocumentToHtml(file)
-      const cleaned = cleanPastedHtml(rawHtml)
-      const prepared = ensureParagraphs(cleaned)
-
-      // 2. Insert into the editor. Focus first so there's always an active
-      // selection to insert at (file-input imports don't naturally carry
-      // focus/selection the way a real paste event does) — this guarantees
-      // the content lands visibly in the doc rather than falling back to a
-      // root-append. This alone triggers the existing OnChangeHtmlPlugin →
-      // onChange(html) save path.
-      editor.focus()
-      editor.update(() => {
-        const dom = new DOMParser().parseFromString(prepared, 'text/html')
-        const nodes = $generateNodesFromDOM(editor, dom)
-        const selection = $getSelection()
-        if (selection !== null) {
-          $insertGeneratedNodes(editor, nodes, selection)
-        } else {
-          const root = $getRoot()
-          nodes.forEach((n) => root.append(n))
-        }
-      })
-
-      showImportStatus(
-        'success',
-        `"${file.name}" imported${imageUrls.length ? ` (${imageUrls.length} image${imageUrls.length === 1 ? '' : 's'})` : ''}.`,
-      )
-    } catch (err) {
-      console.error('Document import failed:', err)
-      showImportStatus('error', err instanceof Error ? err.message : 'Failed to import document.')
-    } finally {
-      setIsUploadingDocument(false)
-    }
-  }
-
   // Applies fill color to every selected cell (multi-cell drag) or the
   // single cell the cursor is in.
   const applyCellColor = (color: string | null) => {
@@ -1667,7 +1349,7 @@ function Toolbar() {
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-1 p-2 border-b bg-background">
+    <div className="flex flex-wrap gap-1 p-2 border-b bg-background">
       <ToolbarButton onClick={() => formatText('bold')} active={isBold} title="Bold">
         <b>B</b>
       </ToolbarButton>
@@ -1832,37 +1514,6 @@ function Toolbar() {
       >
         {isUploadingImage ? '⏳ Uploading…' : '🖼 Image'}
       </ToolbarButton>
-
-      <Divider />
-
-      {/* Import Word / PDF / Excel / CSV document. The extracted content is
-          inserted into the editor, any embedded images are uploaded to
-          Cloudinary (same as the Image button above), and the resulting
-          HTML + image URLs are sent to the backend so the import is
-          recorded server-side. */}
-      <input
-        type="file"
-        accept=".docx,.pdf,.xlsx,.xls,.csv"
-        ref={docInputRef}
-        onChange={handleDocumentFileSelected}
-        className="hidden"
-      />
-      <ToolbarButton
-        onClick={() => docInputRef.current?.click()}
-        active={false}
-        title="Import Word, PDF, or Excel document"
-      >
-        {isUploadingDocument ? '⏳ Importing…' : '📄 Import Doc'}
-      </ToolbarButton>
-
-      {/* Import status — confirms the doc made it into the editor and was
-          saved to the backend, or explains what went wrong. */}
-      {importStatus === 'success' && (
-        <span className="text-xs text-green-600 ml-1">✓ {importMessage}</span>
-      )}
-      {importStatus === 'error' && (
-        <span className="text-xs text-red-500 ml-1">⚠ {importMessage}</span>
-      )}
 
       <Divider />
 
