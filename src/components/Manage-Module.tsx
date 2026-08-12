@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { RichTextEditor, reinforceParagraphBreaks } from "./RichTextEditor"
+import RichTextEditor  from "./RichTextEditor"
 
 const BASE = import.meta.env.VITE_BASE_URL;
 
@@ -539,7 +539,7 @@ function UnitCreateModal({
         body: JSON.stringify({
           title: form.title,
           description: form.description,
-          content: form.content ? reinforceParagraphBreaks(form.content) : undefined,
+          content: form.content,
           summary: form.summary || undefined,
           caseStudy: form.caseStudy || undefined,
           discussionPrompt: form.discussionPrompt || undefined,
@@ -583,7 +583,7 @@ function UnitCreateModal({
       <Field label="Content" required error={errors.content}>
         <RichTextEditor
           value={form.content}
-          onChange={(html) => set("content", html)}
+          onChange={(html: string) => set("content", html)}
           placeholder="Main learning content for this unit"
         />
       </Field>

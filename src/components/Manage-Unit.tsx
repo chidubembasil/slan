@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { RichTextEditor, reinforceParagraphBreaks } from "./RichTextEditor"
+import RichTextEditor  from "./RichTextEditor"
 const BASE = import.meta.env.VITE_BASE_URL;
 
 type UnitStatus = "draft" | "published" | "archived";
@@ -297,7 +297,7 @@ function EditUnitForm({
         body: JSON.stringify({
           title: form.title,
           description: form.description,
-          content: form.content ? reinforceParagraphBreaks(form.content) : undefined,
+          content: form.content,
           summary: form.summary || undefined,
           caseStudy: form.caseStudy || undefined,
           discussionPrompt: form.discussionPrompt || undefined,
@@ -354,7 +354,7 @@ function EditUnitForm({
         </label>
         <RichTextEditor
           value={form.content}
-          onChange={(html) => set("content", html)}
+          onChange={(html: string) => set("content", html)}
           placeholder="Main learning content for this unit"
         />
         {formErrors.content && (
