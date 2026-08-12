@@ -16,12 +16,13 @@ import {
   $createParagraphNode,
   $getNodeByKey,
   DecoratorNode,
+  ParagraphNode,
   FORMAT_ELEMENT_COMMAND,
   FORMAT_TEXT_COMMAND,
   PASTE_COMMAND,
   COMMAND_PRIORITY_HIGH,
 } from "lexical";
-import type { NodeKey, ElementFormatType } from "lexical";
+import type { NodeKey, ElementFormatType, LexicalNode } from "lexical";
 import { $setBlocksType } from "@lexical/selection";
 import { $patchStyleText } from "@lexical/selection";
 import { HeadingNode, $createHeadingNode } from "@lexical/rich-text";
@@ -39,6 +40,10 @@ import {
   TableRowNode,
   INSERT_TABLE_COMMAND,
   $isTableCellNode,
+  $insertTableRow__EXPERIMENTAL,
+  $insertTableColumn__EXPERIMENTAL,
+  $deleteTableRow__EXPERIMENTAL,
+  $deleteTableColumn__EXPERIMENTAL,
 } from "@lexical/table";
 import { $generateHtmlFromNodes, $generateNodesFromDOM } from "@lexical/html";
 import { $getNearestNodeOfType } from "@lexical/utils";
@@ -123,20 +128,122 @@ function ImageRenderer({ src, nodeKey }: { src: string, nodeKey: NodeKey }) {
   );
 }
 
+// --- Custom Paragraph / Heading nodes with persisted block-level style ---
+// (line-height, space-before, space-after). Lexical's built-in Paragraph/Heading
+// nodes don't carry arbitrary CSS, so we subclass them and register them as
+// drop-in replacements. Because they extend the originals, every existing
+// Lexical API ($createParagraphNode, $createHeadingNode, paste import, the
+// initial empty document, etc.) keeps working exactly as before — Lexical's
+// node-replacement config transparently swaps in these classes everywhere.
+type BlockStyle = { lineHeight?: string; marginTop?: string; marginBottom?: string };
+
+function styleToCss(s: BlockStyle): string {
+  const parts: string[] = [];
+  if (s.lineHeight) parts.push(`line-height: ${s.lineHeight}`);
+  if (s.marginTop !== undefined) parts.push(`margin-top: ${s.marginTop}`);
+  if (s.marginBottom !== undefined) parts.push(`margin-bottom: ${s.marginBottom}`);
+  return parts.join("; ");
+}
+
+class StyledParagraphNode extends ParagraphNode {
+  __blockStyle: BlockStyle = {};
+  static getType() { return "styled-paragraph"; }
+  static clone(node: StyledParagraphNode): StyledParagraphNode {
+    const n = new StyledParagraphNode(node.__key);
+    n.__blockStyle = { ...node.__blockStyle };
+    return n;
+  }
+  static importJSON(json: any): StyledParagraphNode {
+    const node = new StyledParagraphNode();
+    node.__blockStyle = json.blockStyle || {};
+    if (json.format !== undefined) node.setFormat(json.format);
+    if (json.indent !== undefined) node.setIndent(json.indent);
+    if (json.direction !== undefined) node.setDirection(json.direction);
+    return node;
+  }
+  exportJSON(): any {
+    return { ...super.exportJSON(), type: "styled-paragraph", version: 1, blockStyle: this.__blockStyle };
+  }
+  createDOM(config: any): HTMLElement {
+    const dom = super.createDOM(config);
+    dom.style.cssText = styleToCss(this.__blockStyle);
+    return dom;
+  }
+  updateDOM(prevNode: any, dom: HTMLElement, config: any): boolean {
+    const changed = super.updateDOM(prevNode, dom, config);
+    dom.style.cssText = styleToCss(this.__blockStyle);
+    return changed;
+  }
+  setBlockStyle(patch: BlockStyle) {
+    const self = this.getWritable();
+    self.__blockStyle = { ...self.__blockStyle, ...patch };
+  }
+  getBlockStyle(): BlockStyle {
+    return this.getLatest().__blockStyle;
+  }
+}
+
+class StyledHeadingNode extends HeadingNode {
+  __blockStyle: BlockStyle = {};
+  static getType() { return "styled-heading"; }
+  static clone(node: StyledHeadingNode): StyledHeadingNode {
+    const n = new StyledHeadingNode(node.__tag, node.__key);
+    n.__blockStyle = { ...node.__blockStyle };
+    return n;
+  }
+  static importJSON(json: any): StyledHeadingNode {
+    const node = new StyledHeadingNode(json.tag);
+    node.__blockStyle = json.blockStyle || {};
+    if (json.format !== undefined) node.setFormat(json.format);
+    if (json.indent !== undefined) node.setIndent(json.indent);
+    if (json.direction !== undefined) node.setDirection(json.direction);
+    return node;
+  }
+  exportJSON(): any {
+    return { ...super.exportJSON(), type: "styled-heading", version: 1, blockStyle: this.__blockStyle };
+  }
+  createDOM(config: any): HTMLElement {
+    const dom = super.createDOM(config);
+    dom.style.cssText = styleToCss(this.__blockStyle);
+    return dom;
+  }
+  updateDOM(prevNode: any, dom: HTMLElement, config: any): boolean {
+    const changed = super.updateDOM(prevNode, dom, config);
+    dom.style.cssText = styleToCss(this.__blockStyle);
+    return changed;
+  }
+  setBlockStyle(patch: BlockStyle) {
+    const self = this.getWritable();
+    self.__blockStyle = { ...self.__blockStyle, ...patch };
+  }
+  getBlockStyle(): BlockStyle {
+    return this.getLatest().__blockStyle;
+  }
+}
+
+function isStyledBlock(node: LexicalNode | null | undefined): node is StyledParagraphNode | StyledHeadingNode {
+  return node instanceof StyledParagraphNode || node instanceof StyledHeadingNode;
+}
+
 // --- Paste cleanup ---
 // Anything pasted in from Word/Google Docs/a news site arrives full of inline
 // styles, <span>/<font> wrappers, and classes. We strip all of that down to a
 // small whitelist of structural/semantic tags so pasted content inherits the
 // editor's own styling instead of bringing its source formatting along.
+// EXCEPTION: table markup keeps its inline style + structural attributes
+// (colspan/rowspan/width/height/col widths/etc.) so pasted tables retain
+// their original formatting instead of collapsing to the default table style.
 const PASTE_ALLOWED_TAGS = new Set([
   "p", "br", "h1", "h2", "h3", "h4", "h5", "h6",
   "ul", "ol", "li",
   "b", "strong", "i", "em", "u",
   "a",
-  "table", "thead", "tbody", "tr", "td", "th",
+  "table", "thead", "tbody", "tfoot", "tr", "td", "th", "colgroup", "col",
   "blockquote",
 ]);
 const PASTE_BLOCKED_TAGS = new Set(["script", "style", "meta", "link", "head", "iframe", "object", "embed", "img"]);
+const TABLE_TAGS = new Set(["table", "thead", "tbody", "tfoot", "tr", "td", "th", "colgroup", "col"]);
+const TABLE_ATTRS_TO_KEEP = ["colspan", "rowspan", "width", "height", "bgcolor", "align", "valign", "border", "cellpadding", "cellspacing", "span"];
 
 function cleanPastedNode(outDoc: Document, node: Node): Node[] {
   if (node.nodeType === Node.TEXT_NODE) {
@@ -156,6 +263,15 @@ function cleanPastedNode(outDoc: Document, node: Node): Node[] {
     if (tag === "a") {
       const href = el.getAttribute("href");
       if (href) clean.setAttribute("href", href);
+    }
+    // table markup keeps its own formatting (style + structural attrs)
+    if (TABLE_TAGS.has(tag)) {
+      const styleAttr = el.getAttribute("style");
+      if (styleAttr) clean.setAttribute("style", styleAttr);
+      TABLE_ATTRS_TO_KEEP.forEach(attr => {
+        const v = el.getAttribute(attr);
+        if (v) clean.setAttribute(attr, v);
+      });
     }
     children.forEach(c => clean.appendChild(c));
     return [clean];
@@ -253,7 +369,7 @@ function Dropdown({ label, open, setOpen, children, width = 180 }: { label: Reac
         {label} <span style={{ fontSize: 10 }}>▼</span>
       </button>
       {open && (
-        <div style={{ position: "absolute", top: 32, left: 0, zIndex: 20, background: "white", border: "1px solid #e5e7eb", borderRadius: 6, boxShadow: "0 8px 24px rgba(0,0,0,.12)", width, overflow: "hidden" }}>
+        <div style={{ position: "absolute", top: 32, left: 0, zIndex: 20, background: "white", border: "1px solid #e5e7eb", borderRadius: 6, boxShadow: "0 8px 24px rgba(0,0,0,.12)", width, overflow: "hidden", maxHeight: 320, overflowY: "auto" }}>
           {children}
         </div>
       )}
@@ -274,6 +390,7 @@ const FONT_FAMILIES = [
   { label: "Trebuchet MS", value: "'Trebuchet MS', sans-serif" },
   { label: "Quattrocento Sans", value: "'Quattrocento Sans', sans-serif" },
 ];
+const LINE_HEIGHTS = ["1.0", "1.15", "1.5", "2.0", "2.5", "3.0"];
 
 function Toolbar() {
   const [editor] = useLexicalComposerContext();
@@ -285,10 +402,15 @@ function Toolbar() {
   const [showFontColor, setShowFontColor] = useState(false);
   const [showFontFamily, setShowFontFamily] = useState(false);
   const [showCellColor, setShowCellColor] = useState(false);
+  const [showLineHeight, setShowLineHeight] = useState(false);
+  const [showParagraph, setShowParagraph] = useState(false);
+  const [showTableTools, setShowTableTools] = useState(false);
   const [fontSizeIdx, setFontSizeIdx] = useState(3); // 16px default
   const fileRef = useRef<HTMLInputElement>(null);
   const btn: React.CSSProperties = { border: "1px solid #e5e7eb", background: "white", padding: "4px 8px", borderRadius: 4, cursor: "pointer", fontSize: 13 };
   const menuItem: React.CSSProperties = { padding: "8px 12px", cursor: "pointer", fontSize: 13, borderBottom: "1px solid #f3f4f6" };
+  const menuItemDanger: React.CSSProperties = { ...menuItem, color: "#dc2626" };
+  const menuLabel: React.CSSProperties = { padding: "6px 12px", fontSize: 11, color: "#9ca3af", textTransform: "uppercase", letterSpacing: 0.4, borderBottom: "1px solid #f3f4f6", background: "#fafafa" };
 
   const applyStyle = (s: Record<string, string>) => editor.update(() => {
     const sel = $getSelection();
@@ -347,6 +469,74 @@ function Toolbar() {
     let node: any = sel.anchor.getNode();
     while (node != null && !$isTableCellNode(node)) node = node.getParent();
     if (node && $isTableCellNode(node)) node.setBackgroundColor(color);
+  });
+
+  // --- Line height (applies to every top-level block touched by the selection) ---
+  const setLineHeight = (value: string) => editor.update(() => {
+    const selection = $getSelection();
+    if (!$isRangeSelection(selection)) return;
+    const seen = new Set<string>();
+    selection.getNodes().forEach(n => {
+      const top = n.getTopLevelElementOrThrow();
+      if (seen.has(top.getKey())) return;
+      seen.add(top.getKey());
+      if (isStyledBlock(top)) top.setBlockStyle({ lineHeight: value });
+    });
+  });
+
+  // --- Paragraph spacing (space before / space after) ---
+  const setParagraphSpacing = (patch: BlockStyle) => editor.update(() => {
+    const selection = $getSelection();
+    if (!$isRangeSelection(selection)) return;
+    const seen = new Set<string>();
+    selection.getNodes().forEach(n => {
+      const top = n.getTopLevelElementOrThrow();
+      if (seen.has(top.getKey())) return;
+      seen.add(top.getKey());
+      if (isStyledBlock(top)) top.setBlockStyle(patch);
+    });
+  });
+
+  // --- Table editing ---
+  const insertTableRow = (after: boolean) => editor.update(() => {
+    try { $insertTableRow__EXPERIMENTAL(after); } catch { /* cursor isn't inside a table */ }
+  });
+  const insertTableColumn = (after: boolean) => editor.update(() => {
+    try { $insertTableColumn__EXPERIMENTAL(after); } catch { /* cursor isn't inside a table */ }
+  });
+  const deleteTableRow = () => editor.update(() => {
+    try { $deleteTableRow__EXPERIMENTAL(); } catch { /* cursor isn't inside a table */ }
+  });
+  const deleteTableColumn = () => editor.update(() => {
+    try { $deleteTableColumn__EXPERIMENTAL(); } catch { /* cursor isn't inside a table */ }
+  });
+  const deleteTable = () => editor.update(() => {
+    const selection = $getSelection();
+    if (!$isRangeSelection(selection)) return;
+    const tableNode = $getNearestNodeOfType(selection.anchor.getNode(), TableNode);
+    if (tableNode) tableNode.remove();
+  });
+  const adjustCellWidth = (delta: number) => editor.update(() => {
+    const selection = $getSelection();
+    if (!$isRangeSelection(selection)) return;
+    let node: any = selection.anchor.getNode();
+    while (node != null && !$isTableCellNode(node)) node = node.getParent();
+    if (node && $isTableCellNode(node)) {
+      const current = node.getWidth() || 120;
+      node.setWidth(Math.max(40, current + delta));
+    }
+  });
+  const adjustRowHeight = (delta: number) => editor.update(() => {
+    const selection = $getSelection();
+    if (!$isRangeSelection(selection)) return;
+    let cellNode: any = selection.anchor.getNode();
+    while (cellNode != null && !$isTableCellNode(cellNode)) cellNode = cellNode.getParent();
+    if (!cellNode) return;
+    const rowNode = cellNode.getParent();
+    if (rowNode && typeof rowNode.setHeight === "function") {
+      const current = (rowNode.getHeight && rowNode.getHeight()) || 30;
+      rowNode.setHeight(Math.max(20, current + delta));
+    }
   });
 
   const upload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -439,6 +629,20 @@ function Toolbar() {
             ))}
             <div style={{ ...menuItem, borderBottom: "none", color: "#dc2626" }} onMouseDown={e => { e.preventDefault(); removeList(); setShowList(false); }}>Remove list</div>
           </Dropdown>
+
+          <Dropdown label="⇕ Line Height" open={showLineHeight} setOpen={setShowLineHeight} width={140}>
+            {LINE_HEIGHTS.map(v => (
+              <div key={v} style={menuItem} onMouseDown={e => { e.preventDefault(); setLineHeight(v); setShowLineHeight(false); }}>{v}</div>
+            ))}
+          </Dropdown>
+
+          <Dropdown label="¶ Paragraph" open={showParagraph} setOpen={setShowParagraph} width={210}>
+            <div style={menuItem} onMouseDown={e => { e.preventDefault(); setParagraphSpacing({ marginTop: "12px" }); setShowParagraph(false); }}>Add space before</div>
+            <div style={menuItem} onMouseDown={e => { e.preventDefault(); setParagraphSpacing({ marginTop: "0px" }); setShowParagraph(false); }}>Remove space before</div>
+            <div style={menuItem} onMouseDown={e => { e.preventDefault(); setParagraphSpacing({ marginBottom: "12px" }); setShowParagraph(false); }}>Add space after</div>
+            <div style={menuItem} onMouseDown={e => { e.preventDefault(); setParagraphSpacing({ marginBottom: "0px" }); setShowParagraph(false); }}>Remove space after</div>
+            <div style={{ ...menuItem, borderBottom: "none" }} onMouseDown={e => { e.preventDefault(); setParagraphSpacing({ marginTop: "0px", marginBottom: "0px" }); setShowParagraph(false); }}>No spacing</div>
+          </Dropdown>
         </div>
       ) : (
         <div style={{ display: "flex", gap: 12, padding: 8, background: "white", position: "relative", alignItems: "center" }}>
@@ -453,6 +657,22 @@ function Toolbar() {
               ))}
             </div>
             <div style={{ padding: "0 10px 10px", fontSize: 11, color: "#6b7280" }}>Click inside a table cell first, then pick a color.</div>
+          </Dropdown>
+
+          <Dropdown label="⚙ Table tools" open={showTableTools} setOpen={setShowTableTools} width={230}>
+            <div style={menuLabel}>Rows &amp; Columns</div>
+            <div style={menuItem} onMouseDown={e => { e.preventDefault(); insertTableRow(false); setShowTableTools(false); }}>Insert row above</div>
+            <div style={menuItem} onMouseDown={e => { e.preventDefault(); insertTableRow(true); setShowTableTools(false); }}>Insert row below</div>
+            <div style={menuItem} onMouseDown={e => { e.preventDefault(); insertTableColumn(false); setShowTableTools(false); }}>Insert column left</div>
+            <div style={menuItem} onMouseDown={e => { e.preventDefault(); insertTableColumn(true); setShowTableTools(false); }}>Insert column right</div>
+            <div style={menuItemDanger} onMouseDown={e => { e.preventDefault(); deleteTableRow(); setShowTableTools(false); }}>Delete row</div>
+            <div style={menuItemDanger} onMouseDown={e => { e.preventDefault(); deleteTableColumn(); setShowTableTools(false); }}>Delete column</div>
+            <div style={menuLabel}>Resize</div>
+            <div style={menuItem} onMouseDown={e => { e.preventDefault(); adjustCellWidth(20); setShowTableTools(false); }}>Widen column</div>
+            <div style={menuItem} onMouseDown={e => { e.preventDefault(); adjustCellWidth(-20); setShowTableTools(false); }}>Narrow column</div>
+            <div style={menuItem} onMouseDown={e => { e.preventDefault(); adjustRowHeight(10); setShowTableTools(false); }}>Increase row height</div>
+            <div style={menuItem} onMouseDown={e => { e.preventDefault(); adjustRowHeight(-10); setShowTableTools(false); }}>Decrease row height</div>
+            <div style={{ ...menuItemDanger, borderBottom: "none", fontWeight: 600 }} onMouseDown={e => { e.preventDefault(); deleteTable(); setShowTableTools(false); }}>Delete table</div>
           </Dropdown>
 
           <button onClick={() => fileRef.current?.click()} style={btn}>🖼️ Picture</button>
@@ -476,7 +696,11 @@ export default function RichTextEditor({ value, onChange, placeholder }: RichTex
       tableCell: "my-cell",
       tableCellHeader: "my-cell-header",
     },
-    nodes: [HeadingNode, ListNode, ListItemNode, TableNode, TableRowNode, TableCellNode, CustomImageNode],
+    nodes: [
+      { replace: ParagraphNode, with: () => new StyledParagraphNode(), withKlass: StyledParagraphNode },
+      { replace: HeadingNode, with: (node: HeadingNode) => new StyledHeadingNode(node.getTag()), withKlass: StyledHeadingNode },
+      ListNode, ListItemNode, TableNode, TableRowNode, TableCellNode, CustomImageNode,
+    ],
     onError: (e: Error) => console.error(e),
   };
   return (
