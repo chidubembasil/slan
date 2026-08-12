@@ -16,13 +16,12 @@ import {
   $createParagraphNode,
   $getNodeByKey,
   DecoratorNode,
-  ParagraphNode,
   FORMAT_ELEMENT_COMMAND,
   FORMAT_TEXT_COMMAND,
   PASTE_COMMAND,
   COMMAND_PRIORITY_HIGH,
 } from "lexical";
-import type { NodeKey, ElementFormatType, LexicalNode } from "lexical";
+import type { NodeKey, ElementFormatType } from "lexical";
 import { $setBlocksType } from "@lexical/selection";
 import { $patchStyleText } from "@lexical/selection";
 import { HeadingNode, $createHeadingNode } from "@lexical/rich-text";
@@ -126,103 +125,6 @@ function ImageRenderer({ src, nodeKey }: { src: string, nodeKey: NodeKey }) {
       </div>}
     </span>
   );
-}
-
-// --- Custom Paragraph / Heading nodes with persisted block-level style ---
-// (line-height, space-before, space-after). Lexical's built-in Paragraph/Heading
-// nodes don't carry arbitrary CSS, so we subclass them and register them as
-// drop-in replacements. Because they extend the originals, every existing
-// Lexical API ($createParagraphNode, $createHeadingNode, paste import, the
-// initial empty document, etc.) keeps working exactly as before — Lexical's
-// node-replacement config transparently swaps in these classes everywhere.
-type BlockStyle = { lineHeight?: string; marginTop?: string; marginBottom?: string };
-
-function styleToCss(s: BlockStyle): string {
-  const parts: string[] = [];
-  if (s.lineHeight) parts.push(`line-height: ${s.lineHeight}`);
-  if (s.marginTop !== undefined) parts.push(`margin-top: ${s.marginTop}`);
-  if (s.marginBottom !== undefined) parts.push(`margin-bottom: ${s.marginBottom}`);
-  return parts.join("; ");
-}
-
-class StyledParagraphNode extends ParagraphNode {
-  __blockStyle: BlockStyle = {};
-  static getType() { return "styled-paragraph"; }
-  static clone(node: StyledParagraphNode): StyledParagraphNode {
-    const n = new StyledParagraphNode(node.__key);
-    n.__blockStyle = { ...node.__blockStyle };
-    return n;
-  }
-  static importJSON(json: any): StyledParagraphNode {
-    const node = new StyledParagraphNode();
-    node.__blockStyle = json.blockStyle || {};
-    if (json.format !== undefined) node.setFormat(json.format);
-    if (json.indent !== undefined) node.setIndent(json.indent);
-    if (json.direction !== undefined) node.setDirection(json.direction);
-    return node;
-  }
-  exportJSON(): any {
-    return { ...super.exportJSON(), type: "styled-paragraph", version: 1, blockStyle: this.__blockStyle };
-  }
-  createDOM(config: any): HTMLElement {
-    const dom = super.createDOM(config);
-    dom.style.cssText = styleToCss(this.__blockStyle);
-    return dom;
-  }
-  updateDOM(prevNode: any, dom: HTMLElement, config: any): boolean {
-    const changed = super.updateDOM(prevNode, dom, config);
-    dom.style.cssText = styleToCss(this.__blockStyle);
-    return changed;
-  }
-  setBlockStyle(patch: BlockStyle) {
-    const self = this.getWritable();
-    self.__blockStyle = { ...self.__blockStyle, ...patch };
-  }
-  getBlockStyle(): BlockStyle {
-    return this.getLatest().__blockStyle;
-  }
-}
-
-class StyledHeadingNode extends HeadingNode {
-  __blockStyle: BlockStyle = {};
-  static getType() { return "styled-heading"; }
-  static clone(node: StyledHeadingNode): StyledHeadingNode {
-    const n = new StyledHeadingNode(node.__tag, node.__key);
-    n.__blockStyle = { ...node.__blockStyle };
-    return n;
-  }
-  static importJSON(json: any): StyledHeadingNode {
-    const node = new StyledHeadingNode(json.tag);
-    node.__blockStyle = json.blockStyle || {};
-    if (json.format !== undefined) node.setFormat(json.format);
-    if (json.indent !== undefined) node.setIndent(json.indent);
-    if (json.direction !== undefined) node.setDirection(json.direction);
-    return node;
-  }
-  exportJSON(): any {
-    return { ...super.exportJSON(), type: "styled-heading", version: 1, blockStyle: this.__blockStyle };
-  }
-  createDOM(config: any): HTMLElement {
-    const dom = super.createDOM(config);
-    dom.style.cssText = styleToCss(this.__blockStyle);
-    return dom;
-  }
-  updateDOM(prevNode: any, dom: HTMLElement, config: any): boolean {
-    const changed = super.updateDOM(prevNode, dom, config);
-    dom.style.cssText = styleToCss(this.__blockStyle);
-    return changed;
-  }
-  setBlockStyle(patch: BlockStyle) {
-    const self = this.getWritable();
-    self.__blockStyle = { ...self.__blockStyle, ...patch };
-  }
-  getBlockStyle(): BlockStyle {
-    return this.getLatest().__blockStyle;
-  }
-}
-
-function isStyledBlock(node: LexicalNode | null | undefined): node is StyledParagraphNode | StyledHeadingNode {
-  return node instanceof StyledParagraphNode || node instanceof StyledHeadingNode;
 }
 
 // --- Paste cleanup ---
@@ -471,31 +373,44 @@ function Toolbar() {
     if (node && $isTableCellNode(node)) node.setBackgroundColor(color);
   });
 
-  // --- Line height (applies to every top-level block touched by the selection) ---
-  const setLineHeight = (value: string) => editor.update(() => {
+  // --- Line height & paragraph spacing ---
+  // Applied the same way the lettered/roman list numbering above is applied:
+  // stamp the CSS directly onto the block's DOM node after the update, rather
+  // than touching Lexical's Paragraph/Heading node classes. Subclassing those
+  // core nodes sits on the path of every keystroke and paste, so it's too
+  // risky to do just for a style tweak — this DOM-side-effect approach is
+  // exactly as safe as the numbering trick already used in this file.
+  const getSelectedBlockKeys = (): string[] => {
     const selection = $getSelection();
-    if (!$isRangeSelection(selection)) return;
-    const seen = new Set<string>();
-    selection.getNodes().forEach(n => {
-      const top = n.getTopLevelElementOrThrow();
-      if (seen.has(top.getKey())) return;
-      seen.add(top.getKey());
-      if (isStyledBlock(top)) top.setBlockStyle({ lineHeight: value });
-    });
-  });
+    if (!$isRangeSelection(selection)) return [];
+    const keys = new Set<string>();
+    selection.getNodes().forEach(n => { keys.add(n.getTopLevelElementOrThrow().getKey()); });
+    return Array.from(keys);
+  };
 
-  // --- Paragraph spacing (space before / space after) ---
-  const setParagraphSpacing = (patch: BlockStyle) => editor.update(() => {
-    const selection = $getSelection();
-    if (!$isRangeSelection(selection)) return;
-    const seen = new Set<string>();
-    selection.getNodes().forEach(n => {
-      const top = n.getTopLevelElementOrThrow();
-      if (seen.has(top.getKey())) return;
-      seen.add(top.getKey());
-      if (isStyledBlock(top)) top.setBlockStyle(patch);
-    });
-  });
+  const setLineHeight = (value: string) => {
+    let keys: string[] = [];
+    editor.getEditorState().read(() => { keys = getSelectedBlockKeys(); });
+    setTimeout(() => {
+      keys.forEach(k => {
+        const dom = editor.getElementByKey(k);
+        if (dom) dom.style.lineHeight = value;
+      });
+    }, 0);
+  };
+
+  const setParagraphSpacing = (patch: { marginTop?: string; marginBottom?: string }) => {
+    let keys: string[] = [];
+    editor.getEditorState().read(() => { keys = getSelectedBlockKeys(); });
+    setTimeout(() => {
+      keys.forEach(k => {
+        const dom = editor.getElementByKey(k);
+        if (!dom) return;
+        if (patch.marginTop !== undefined) dom.style.marginTop = patch.marginTop;
+        if (patch.marginBottom !== undefined) dom.style.marginBottom = patch.marginBottom;
+      });
+    }, 0);
+  };
 
   // --- Table editing ---
   const insertTableRow = (after: boolean) => editor.update(() => {
@@ -696,11 +611,7 @@ export default function RichTextEditor({ value, onChange, placeholder }: RichTex
       tableCell: "my-cell",
       tableCellHeader: "my-cell-header",
     },
-    nodes: [
-      { replace: ParagraphNode, with: () => new StyledParagraphNode(), withKlass: StyledParagraphNode },
-      { replace: HeadingNode, with: (node: HeadingNode) => new StyledHeadingNode(node.getTag()), withKlass: StyledHeadingNode },
-      ListNode, ListItemNode, TableNode, TableRowNode, TableCellNode, CustomImageNode,
-    ],
+    nodes: [HeadingNode, ListNode, ListItemNode, TableNode, TableRowNode, TableCellNode, CustomImageNode],
     onError: (e: Error) => console.error(e),
   };
   return (
