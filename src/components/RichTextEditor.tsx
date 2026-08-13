@@ -126,6 +126,32 @@ class CustomImageNode extends DecoratorNode<ReactNode> {
   createDOM() { const d = document.createElement("span"); d.style.display = "inline-block"; return d; }
   updateDOM() { return false; }
   decorate() { return <ImageRenderer src={this.__src} nodeKey={this.getKey()} />; }
+
+  // Because this is a DecoratorNode, it only ever renders through React
+  // (decorate() above) inside the live editor. $generateHtmlFromNodes has no
+  // idea how to turn that into markup unless the node tells it explicitly —
+  // without this, the node exports as an empty wrapper and the image is
+  // simply missing from the HTML that gets saved and shown on the output
+  // page, even though it displays fine here in the editor.
+  exportDOM(): { element: HTMLElement } {
+    const img = document.createElement("img");
+    img.setAttribute("src", this.__src);
+    img.setAttribute("style", "max-width:400px;border:1px solid #ccc;border-radius:4px;");
+    return { element: img };
+  }
+
+  static importDOM() {
+    return {
+      img: () => ({
+        conversion: (domNode: HTMLElement) => {
+          const src = (domNode as HTMLImageElement).getAttribute("src");
+          if (!src) return null;
+          return { node: new CustomImageNode(src) };
+        },
+        priority: 1 as const,
+      }),
+    };
+  }
 }
 function ImageRenderer({ src, nodeKey }: { src: string, nodeKey: NodeKey }) {
   const [editor] = useLexicalComposerContext();
