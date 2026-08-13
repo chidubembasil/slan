@@ -135,7 +135,7 @@ function ImageRenderer({ src, nodeKey }: { src: string, nodeKey: NodeKey }) {
     <span onContextMenu={e => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY }); }} style={{ position: "relative", display: "inline-block", margin: 8 }}>
       <img src={src} alt="" style={{ maxWidth: 400, border: "1px solid #ccc", borderRadius: 4 }} />
       {menu && <div style={{ position: "fixed", left: menu.x, top: menu.y, background: "white", border: "1px solid #ddd", borderRadius: 6, padding: 4, zIndex: 9999 }}>
-        <button onMouseDown={e => { e.preventDefault(); e.stopPropagation(); editor.update(() => { $getNodeByKey(nodeKey)?.remove(); }); }} style={{ background: "#dc2626", color: "white", border: 0, padding: "6px 14px", borderRadius: 4, cursor: "pointer" }}>Delete</button>
+        <button type="button" onMouseDown={e => { e.preventDefault(); e.stopPropagation(); editor.update(() => { $getNodeByKey(nodeKey)?.remove(); }); }} style={{ background: "#dc2626", color: "white", border: 0, padding: "6px 14px", borderRadius: 4, cursor: "pointer" }}>Delete</button>
       </div>}
     </span>
   );
@@ -386,7 +386,7 @@ function TableGridPicker({ onSelect, onClose }: { onSelect: (r: number, c: numbe
 function Dropdown({ label, open, setOpen, children, width = 180 }: { label: ReactNode; open: boolean; setOpen: (v: boolean) => void; children: ReactNode; width?: number }) {
   return (
     <div style={{ position: "relative" }}>
-      <button onClick={() => setOpen(!open)} style={{ border: "1px solid #e5e7eb", background: "white", padding: "4px 8px", borderRadius: 4, cursor: "pointer", fontSize: 13, display: "flex", alignItems: "center", gap: 4 }}>
+      <button type="button" onClick={() => setOpen(!open)} style={{ border: "1px solid #e5e7eb", background: "white", padding: "4px 8px", borderRadius: 4, cursor: "pointer", fontSize: 13, display: "flex", alignItems: "center", gap: 4 }}>
         {label} <span style={{ fontSize: 10 }}>▼</span>
       </button>
       {open && (
@@ -694,14 +694,14 @@ function Toolbar() {
           </Dropdown>
 
           <div style={{ display: "flex", alignItems: "center", border: "1px solid #e5e7eb", borderRadius: 4 }}>
-            <button onClick={() => setFontSize(fontSizeIdx - 1)} style={{ ...btn, border: "none", borderRight: "1px solid #e5e7eb" }} title="Decrease font size">A-</button>
+            <button type="button" onClick={() => setFontSize(fontSizeIdx - 1)} style={{ ...btn, border: "none", borderRight: "1px solid #e5e7eb" }} title="Decrease font size">A-</button>
             <span style={{ padding: "0 8px", fontSize: 13, minWidth: 24, textAlign: "center" }}>{FONT_SIZES[fontSizeIdx]}</span>
-            <button onClick={() => setFontSize(fontSizeIdx + 1)} style={{ ...btn, border: "none", borderLeft: "1px solid #e5e7eb" }} title="Increase font size">A+</button>
+            <button type="button" onClick={() => setFontSize(fontSizeIdx + 1)} style={{ ...btn, border: "none", borderLeft: "1px solid #e5e7eb" }} title="Increase font size">A+</button>
           </div>
 
-          <button onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "bold")} style={btn}><b>B</b></button>
-          <button onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "italic")} style={btn}><i>I</i></button>
-          <button onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "underline")} style={btn}><u>U</u></button>
+          <button type="button" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "bold")} style={btn}><b>B</b></button>
+          <button type="button" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "italic")} style={btn}><i>I</i></button>
+          <button type="button" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "underline")} style={btn}><u>U</u></button>
 
           <Dropdown label={<span style={{ borderBottom: "3px solid #dc2626" }}>A</span>} open={showFontColor} setOpen={setShowFontColor} width={170}>
             <div style={{ padding: 10, display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 6 }}>
@@ -774,7 +774,7 @@ function Toolbar() {
             <div style={{ ...menuItemDanger, borderBottom: "none", fontWeight: 600 }} onMouseDown={e => { e.preventDefault(); deleteTable(); setShowTableTools(false); }}>Delete table</div>
           </Dropdown>
 
-          <button onClick={() => fileRef.current?.click()} style={btn}>🖼️ Picture</button>
+          <button type="button" onClick={() => fileRef.current?.click()} style={btn}>🖼️ Picture</button>
           <input ref={fileRef} type="file" accept="image/*" hidden onChange={upload} />
         </div>
       )}
@@ -1040,16 +1040,16 @@ function TableHoverControlsPlugin() {
 
   return (
     <>
-      <button title="Insert row above" onMouseEnter={keepVisible} onMouseLeave={scheduleHide}
+      <button type="button" title="Insert row above" onMouseEnter={keepVisible} onMouseLeave={scheduleHide}
         onMouseDown={e => { e.preventDefault(); e.stopPropagation(); addRowAbove(); }}
         style={{ ...base, left: rect.left + rect.width / 2 - 9, top: rect.top - 9 }}>+</button>
-      <button title="Insert row below" onMouseEnter={keepVisible} onMouseLeave={scheduleHide}
+      <button type="button" title="Insert row below" onMouseEnter={keepVisible} onMouseLeave={scheduleHide}
         onMouseDown={e => { e.preventDefault(); e.stopPropagation(); addRowBelow(); }}
         style={{ ...base, left: rect.left + rect.width / 2 - 9, top: rect.bottom - 9 }}>+</button>
-      <button title="Insert column left" onMouseEnter={keepVisible} onMouseLeave={scheduleHide}
+      <button type="button" title="Insert column left" onMouseEnter={keepVisible} onMouseLeave={scheduleHide}
         onMouseDown={e => { e.preventDefault(); e.stopPropagation(); addColumnLeft(); }}
         style={{ ...base, left: rect.left - 9, top: rect.top + rect.height / 2 - 9 }}>+</button>
-      <button title="Insert column right" onMouseEnter={keepVisible} onMouseLeave={scheduleHide}
+      <button type="button" title="Insert column right" onMouseEnter={keepVisible} onMouseLeave={scheduleHide}
         onMouseDown={e => { e.preventDefault(); e.stopPropagation(); addColumnRight(); }}
         style={{ ...base, left: rect.right - 9, top: rect.top + rect.height / 2 - 9 }}>+</button>
     </>
