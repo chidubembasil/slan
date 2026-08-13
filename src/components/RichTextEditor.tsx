@@ -6,6 +6,7 @@ import { ContentEditable } from "@lexical/react/LexicalContentEditable";
 import { HistoryPlugin } from "@lexical/react/LexicalHistoryPlugin";
 import { ListPlugin } from "@lexical/react/LexicalListPlugin";
 import { TablePlugin } from "@lexical/react/LexicalTablePlugin";
+// import { TableCellResizerPlugin } from "@lexical/react/LexicalTableCellResizerPlugin";
 import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
@@ -134,7 +135,7 @@ function ImageRenderer({ src, nodeKey }: { src: string, nodeKey: NodeKey }) {
     <span onContextMenu={e => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY }); }} style={{ position: "relative", display: "inline-block", margin: 8 }}>
       <img src={src} alt="" style={{ maxWidth: 400, border: "1px solid #ccc", borderRadius: 4 }} />
       {menu && <div style={{ position: "fixed", left: menu.x, top: menu.y, background: "white", border: "1px solid #ddd", borderRadius: 6, padding: 4, zIndex: 9999 }}>
-        <button onMouseDown={e => { e.preventDefault(); editor.update(() => { $getNodeByKey(nodeKey)?.remove(); }); }} style={{ background: "#dc2626", color: "white", border: 0, padding: "6px 14px", borderRadius: 4, cursor: "pointer" }}>Delete</button>
+        <button onMouseDown={e => { e.preventDefault(); e.stopPropagation(); editor.update(() => { $getNodeByKey(nodeKey)?.remove(); }); }} style={{ background: "#dc2626", color: "white", border: 0, padding: "6px 14px", borderRadius: 4, cursor: "pointer" }}>Delete</button>
       </div>}
     </span>
   );
@@ -266,6 +267,12 @@ function PasteCleanupPlugin() {
         if (!html && !text) return false;
 
         event.preventDefault();
+        // Stop the native paste event here — otherwise it keeps bubbling up
+        // past the editor into whatever page/form this editor is mounted
+        // inside, and some host forms treat any bubbled input/paste event
+        // as "something changed, save/submit now." Saving should only ever
+        // happen when the host page's own Save button is clicked.
+        event.stopPropagation();
         editor.update(() => {
           const selection = $getSelection();
           if (!$isRangeSelection(selection)) return;
@@ -334,12 +341,20 @@ function inlineTableStyles(html: string): string {
 }
 
 // Load initial HTML value
-function InitialHtmlPlugin({ value }: { value: string }) {
+function InitialHtmlPlugin({ value, skipNextChangeRef }: { value: string; skipNextChangeRef: React.MutableRefObject<boolean> }) {
   const [editor] = useLexicalComposerContext();
   const didInit = useRef(false);
   useEffect(() => {
     if (didInit.current || !value) return;
     didInit.current = true;
+    // This is a programmatic hydration of existing content on mount, not a
+    // user edit. It still runs through editor.update() (as it must, to
+    // actually populate the editor), which still fires OnChangePlugin —
+    // so without this flag, simply opening a page with existing content
+    // calls onChange() straight back at the host before the user has
+    // touched anything, which a host page reasonably reads as "the user
+    // changed something, save it."
+    skipNextChangeRef.current = true;
     editor.update(() => {
       const parser = new DOMParser();
       const dom = parser.parseFromString(value, "text/html");
@@ -347,7 +362,7 @@ function InitialHtmlPlugin({ value }: { value: string }) {
       $getRoot().clear();
       $getRoot().append(...nodes);
     });
-  }, [editor, value]);
+  }, [editor, value, skipNextChangeRef]);
   return null;
 }
 
@@ -645,7 +660,18 @@ function Toolbar() {
   ];
 
   return (
-    <div style={{ borderBottom: "1px solid #d1d5db" }}>
+    <div
+      style={{ borderBottom: "1px solid #d1d5db" }}
+      // Every click/mousedown in this toolbar (including the paragraph
+      // spacing menu items) is contained here. Without this, clicking any
+      // toolbar button still bubbles as a native DOM event straight out of
+      // this component into the host page — and if that page has any
+      // "click outside the field" or "click after an edit" autosave/submit
+      // listener, that stray bubble is what was triggering it, not our
+      // onChange prop itself.
+      onMouseDown={e => e.stopPropagation()}
+      onClick={e => e.stopPropagation()}
+    >
       <EditorStyles />
       <div style={{ display: "flex", background: "#f1f1f1", fontSize: 13 }}>
         {["Home", "Insert"].map(t => (
@@ -872,7 +898,7 @@ function TableActionMenuPlugin() {
   const subBox: React.CSSProperties = { position: "absolute", left: "100%", top: 0, background: "white", border: "1px solid #e5e7eb", borderRadius: 6, boxShadow: "0 10px 30px rgba(0,0,0,.15)", minWidth: 180, padding: "4px 0" };
 
   return (
-    <div style={menuBox} onClick={e => e.stopPropagation()}>
+    <div style={menuBox} onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
       <div style={{ position: "relative" }} onMouseEnter={() => setShowInsertSub(true)} onMouseLeave={() => setShowInsertSub(false)}>
         <div style={item}>Insert <span>›</span></div>
         {showInsertSub && (
@@ -1015,22 +1041,27 @@ function TableHoverControlsPlugin() {
   return (
     <>
       <button title="Insert row above" onMouseEnter={keepVisible} onMouseLeave={scheduleHide}
-        onMouseDown={e => { e.preventDefault(); addRowAbove(); }}
+        onMouseDown={e => { e.preventDefault(); e.stopPropagation(); addRowAbove(); }}
         style={{ ...base, left: rect.left + rect.width / 2 - 9, top: rect.top - 9 }}>+</button>
       <button title="Insert row below" onMouseEnter={keepVisible} onMouseLeave={scheduleHide}
-        onMouseDown={e => { e.preventDefault(); addRowBelow(); }}
+        onMouseDown={e => { e.preventDefault(); e.stopPropagation(); addRowBelow(); }}
         style={{ ...base, left: rect.left + rect.width / 2 - 9, top: rect.bottom - 9 }}>+</button>
       <button title="Insert column left" onMouseEnter={keepVisible} onMouseLeave={scheduleHide}
-        onMouseDown={e => { e.preventDefault(); addColumnLeft(); }}
+        onMouseDown={e => { e.preventDefault(); e.stopPropagation(); addColumnLeft(); }}
         style={{ ...base, left: rect.left - 9, top: rect.top + rect.height / 2 - 9 }}>+</button>
       <button title="Insert column right" onMouseEnter={keepVisible} onMouseLeave={scheduleHide}
-        onMouseDown={e => { e.preventDefault(); addColumnRight(); }}
+        onMouseDown={e => { e.preventDefault(); e.stopPropagation(); addColumnRight(); }}
         style={{ ...base, left: rect.right - 9, top: rect.top + rect.height / 2 - 9 }}>+</button>
     </>
   );
 }
 
 export default function RichTextEditor({ value, onChange, placeholder }: RichTextEditorProps) {
+  // Shared between InitialHtmlPlugin (which sets it) and OnChangePlugin's
+  // callback below (which reads and clears it), so the one editor.update()
+  // that hydrates existing content on mount doesn't get reported to the
+  // host as a user edit.
+  const skipNextChangeRef = useRef(false);
   const config = {
     namespace: "SLANEditor",
     theme: {
@@ -1053,10 +1084,25 @@ export default function RichTextEditor({ value, onChange, placeholder }: RichTex
         <div style={{ position: "relative" }}>
           <RichTextPlugin contentEditable={<ContentEditable style={{ minHeight: 300, padding: 20, outline: "none" }} />} placeholder={<div style={{ position: "absolute", top: 20, left: 20, color: "#999", pointerEvents: "none" }}>{placeholder || "Write content..."}</div>} ErrorBoundary={LexicalErrorBoundary} />
           <HistoryPlugin /><ListPlugin /><TablePlugin /><PasteCleanupPlugin />
+          {/* <TableCellResizerPlugin /> */}
           <TableActionMenuPlugin />
           <TableHoverControlsPlugin />
-          <InitialHtmlPlugin value={value} />
-          <OnChangePlugin onChange={(editorState, editor) => { editorState.read(() => { const html = $generateHtmlFromNodes(editor, null); onChange(inlineTableStyles(html)); }); }} />
+          <InitialHtmlPlugin value={value} skipNextChangeRef={skipNextChangeRef} />
+          <OnChangePlugin
+            ignoreSelectionChange
+            onChange={(editorState, editor) => {
+              // Skip the one firing caused by InitialHtmlPlugin loading
+              // existing content on mount — that's not a user edit.
+              if (skipNextChangeRef.current) {
+                skipNextChangeRef.current = false;
+                return;
+              }
+              editorState.read(() => {
+                const html = $generateHtmlFromNodes(editor, null);
+                onChange(inlineTableStyles(html));
+              });
+            }}
+          />
         </div>
       </div>
     </LexicalComposer>
