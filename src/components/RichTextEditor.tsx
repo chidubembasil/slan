@@ -14,6 +14,9 @@ import {
   $getSelection,
   $isRangeSelection,
   $createParagraphNode,
+  $isParagraphNode,
+  $createLineBreakNode,
+  $isLineBreakNode,
   $getNodeByKey,
   $getNearestNodeFromDOMNode,
   DecoratorNode,
@@ -452,18 +455,72 @@ function Toolbar() {
     }, 0);
   };
 
-  const setParagraphSpacing = (patch: { marginTop?: string; marginBottom?: string }) => {
-    let keys: string[] = [];
-    editor.getEditorState().read(() => { keys = getSelectedBlockKeys(); });
-    setTimeout(() => {
-      keys.forEach(k => {
-        const dom = editor.getElementByKey(k);
-        if (!dom) return;
-        if (patch.marginTop !== undefined) dom.style.marginTop = patch.marginTop;
-        if (patch.marginBottom !== undefined) dom.style.marginBottom = patch.marginBottom;
-      });
-    }, 0);
+  // --- Paragraph spacing ---
+  // "Add space before/after" no longer stamps a CSS margin — it inserts a
+  // real spacer paragraph made of two <br> line breaks (<p><br><br></p>)
+  // directly before/after the selected block. That way the spacing is part
+  // of the actual content, so it survives export and shows up exactly the
+  // same everywhere the saved HTML is rendered, not just inside this editor.
+  const isSpacerParagraph = (node: any): boolean => {
+    if (!node || !$isParagraphNode(node)) return false;
+    const children = node.getChildren();
+    return children.length === 2 && children.every((c: any) => $isLineBreakNode(c));
   };
+
+  const makeSpacerParagraph = () => {
+    const spacer = $createParagraphNode();
+    spacer.append($createLineBreakNode(), $createLineBreakNode());
+    return spacer;
+  };
+
+  const addSpaceBefore = () => editor.update(() => {
+    getSelectedBlockKeys().forEach(k => {
+      const node = $getNodeByKey(k);
+      if (!node) return;
+      const prev = node.getPreviousSibling();
+      if (isSpacerParagraph(prev)) return; // already has one
+      node.insertBefore(makeSpacerParagraph());
+    });
+  });
+
+  const addSpaceAfter = () => editor.update(() => {
+    getSelectedBlockKeys().forEach(k => {
+      const node = $getNodeByKey(k);
+      if (!node) return;
+      const next = node.getNextSibling();
+      if (isSpacerParagraph(next)) return; // already has one
+      node.insertAfter(makeSpacerParagraph());
+    });
+  });
+
+  const removeSpaceBefore = () => editor.update(() => {
+    getSelectedBlockKeys().forEach(k => {
+      const node = $getNodeByKey(k);
+      if (!node) return;
+      const prev = node.getPreviousSibling();
+      if (isSpacerParagraph(prev)) (prev as any).remove();
+    });
+  });
+
+  const removeSpaceAfter = () => editor.update(() => {
+    getSelectedBlockKeys().forEach(k => {
+      const node = $getNodeByKey(k);
+      if (!node) return;
+      const next = node.getNextSibling();
+      if (isSpacerParagraph(next)) (next as any).remove();
+    });
+  });
+
+  const removeAllSpacing = () => editor.update(() => {
+    getSelectedBlockKeys().forEach(k => {
+      const node = $getNodeByKey(k);
+      if (!node) return;
+      const prev = node.getPreviousSibling();
+      if (isSpacerParagraph(prev)) (prev as any).remove();
+      const next = node.getNextSibling();
+      if (isSpacerParagraph(next)) (next as any).remove();
+    });
+  });
 
   // --- Table editing ---
   const insertTableRow = (after: boolean) => editor.update(() => {
@@ -605,11 +662,11 @@ function Toolbar() {
           </Dropdown>
 
           <Dropdown label="¶ Paragraph" open={showParagraph} setOpen={setShowParagraph} width={210}>
-            <div style={menuItem} onMouseDown={e => { e.preventDefault(); setParagraphSpacing({ marginTop: "1.5em" }); setShowParagraph(false); }}>Add space before</div>
-            <div style={menuItem} onMouseDown={e => { e.preventDefault(); setParagraphSpacing({ marginTop: "0px" }); setShowParagraph(false); }}>Remove space before</div>
-            <div style={menuItem} onMouseDown={e => { e.preventDefault(); setParagraphSpacing({ marginBottom: "1.5em" }); setShowParagraph(false); }}>Add space after</div>
-            <div style={menuItem} onMouseDown={e => { e.preventDefault(); setParagraphSpacing({ marginBottom: "0px" }); setShowParagraph(false); }}>Remove space after</div>
-            <div style={{ ...menuItem, borderBottom: "none" }} onMouseDown={e => { e.preventDefault(); setParagraphSpacing({ marginTop: "0px", marginBottom: "0px" }); setShowParagraph(false); }}>No spacing</div>
+            <div style={menuItem} onMouseDown={e => { e.preventDefault(); addSpaceBefore(); setShowParagraph(false); }}>Add space before</div>
+            <div style={menuItem} onMouseDown={e => { e.preventDefault(); removeSpaceBefore(); setShowParagraph(false); }}>Remove space before</div>
+            <div style={menuItem} onMouseDown={e => { e.preventDefault(); addSpaceAfter(); setShowParagraph(false); }}>Add space after</div>
+            <div style={menuItem} onMouseDown={e => { e.preventDefault(); removeSpaceAfter(); setShowParagraph(false); }}>Remove space after</div>
+            <div style={{ ...menuItem, borderBottom: "none" }} onMouseDown={e => { e.preventDefault(); removeAllSpacing(); setShowParagraph(false); }}>No spacing</div>
           </Dropdown>
         </div>
       ) : (
