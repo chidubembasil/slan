@@ -95,7 +95,7 @@ function EditorStyles() {
       .my-li { margin: 2px 0; }
       .my-nested-li { list-style-type: none; }
 
-      .my-table { border-collapse: collapse; margin: 10px 0; table-layout: fixed; }
+      .my-table { border-collapse: collapse; margin: 10px 0; table-layout: auto; max-width: 100%; }
       .my-row { }
       .my-cell {
         border: 1px solid #9ca3af;
@@ -237,6 +237,49 @@ function PasteCleanupPlugin() {
     );
   }, [editor]);
   return null;
+}
+
+// --- Export styling ---
+// $generateHtmlFromNodes only emits our editor's class names (my-table,
+// my-cell, my-cell-header...). Those classes are defined in <EditorStyles/>,
+// which only exists inside this editor's DOM — so HTML saved from here and
+// rendered on any other page (a course viewer, an email, etc.) has no CSS
+// backing those classes at all, which is exactly the squished/unstyled
+// table you get today. This walks the exported table markup and writes the
+// same rules directly onto each element as inline styles, so the saved
+// HTML looks the same everywhere it's viewed — matching what was pasted in
+// and what's shown in the editor — without touching how tables render
+// inside this editor itself.
+function inlineTableStyles(html: string): string {
+  if (!html.includes("<table")) return html;
+  const doc = new DOMParser().parseFromString(html, "text/html");
+
+  const mergeStyle = (el: HTMLElement, rules: Record<string, string>) => {
+    Object.entries(rules).forEach(([prop, value]) => {
+      if (!el.style.getPropertyValue(prop)) el.style.setProperty(prop, value);
+    });
+  };
+
+  doc.querySelectorAll("table").forEach(table => {
+    mergeStyle(table as HTMLElement, {
+      "border-collapse": "collapse",
+      "table-layout": "auto",
+      "margin": "10px 0",
+      "max-width": "100%",
+    });
+    table.querySelectorAll("th, td").forEach(cell => {
+      const isHeader = cell.tagName === "TH" || cell.classList.contains("my-cell-header");
+      mergeStyle(cell as HTMLElement, {
+        "border": "1px solid #9ca3af",
+        "padding": "6px 10px",
+        "min-width": "60px",
+        "vertical-align": "top",
+        ...(isHeader ? { "background": "#f3f4f6", "font-weight": "600" } : {}),
+      });
+    });
+  });
+
+  return doc.body.innerHTML;
 }
 
 // Load initial HTML value
@@ -562,9 +605,9 @@ function Toolbar() {
           </Dropdown>
 
           <Dropdown label="¶ Paragraph" open={showParagraph} setOpen={setShowParagraph} width={210}>
-            <div style={menuItem} onMouseDown={e => { e.preventDefault(); setParagraphSpacing({ marginTop: "12px" }); setShowParagraph(false); }}>Add space before</div>
+            <div style={menuItem} onMouseDown={e => { e.preventDefault(); setParagraphSpacing({ marginTop: "1.5em" }); setShowParagraph(false); }}>Add space before</div>
             <div style={menuItem} onMouseDown={e => { e.preventDefault(); setParagraphSpacing({ marginTop: "0px" }); setShowParagraph(false); }}>Remove space before</div>
-            <div style={menuItem} onMouseDown={e => { e.preventDefault(); setParagraphSpacing({ marginBottom: "12px" }); setShowParagraph(false); }}>Add space after</div>
+            <div style={menuItem} onMouseDown={e => { e.preventDefault(); setParagraphSpacing({ marginBottom: "1.5em" }); setShowParagraph(false); }}>Add space after</div>
             <div style={menuItem} onMouseDown={e => { e.preventDefault(); setParagraphSpacing({ marginBottom: "0px" }); setShowParagraph(false); }}>Remove space after</div>
             <div style={{ ...menuItem, borderBottom: "none" }} onMouseDown={e => { e.preventDefault(); setParagraphSpacing({ marginTop: "0px", marginBottom: "0px" }); setShowParagraph(false); }}>No spacing</div>
           </Dropdown>
@@ -908,7 +951,7 @@ export default function RichTextEditor({ value, onChange, placeholder }: RichTex
           <TableActionMenuPlugin />
           <TableHoverControlsPlugin />
           <InitialHtmlPlugin value={value} />
-          <OnChangePlugin onChange={(editorState, editor) => { editorState.read(() => { const html = $generateHtmlFromNodes(editor, null); onChange(html); }); }} />
+          <OnChangePlugin onChange={(editorState, editor) => { editorState.read(() => { const html = $generateHtmlFromNodes(editor, null); onChange(inlineTableStyles(html)); }); }} />
         </div>
       </div>
     </LexicalComposer>
