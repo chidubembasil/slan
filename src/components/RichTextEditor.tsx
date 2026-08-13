@@ -160,6 +160,40 @@ const PASTE_BLOCKED_TAGS = new Set(["script", "style", "meta", "link", "head", "
 const TABLE_TAGS = new Set(["table", "thead", "tbody", "tfoot", "tr", "td", "th", "colgroup", "col"]);
 const TABLE_ATTRS_TO_KEEP = ["colspan", "rowspan", "width", "height", "bgcolor", "align", "valign", "border", "cellpadding", "cellspacing", "span"];
 
+// A pasted paragraph/heading with an inline top/bottom margin clearly larger
+// than the editor's own default spacing gets that gap preserved as a real
+// spacer paragraph (<p><br><br></p>) — the same mechanism the toolbar's
+// "Add space before/after" produces — so intentional spacing brought in
+// from Word/Google Docs survives the paste instead of being stripped along
+// with the rest of the source's inline styling. Every paragraph's own
+// default margin (~8-10px) sits under this threshold so normal paragraphs
+// aren't affected, only ones with deliberately added extra spacing.
+const SPACING_TAGS = new Set(["p", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote"]);
+const SPACING_THRESHOLD_PX = 16;
+
+function cssLengthToPx(value: string | null | undefined): number {
+  const match = /^(-?[\d.]+)\s*(px|pt|em|rem|in|cm|mm)?$/.exec((value || "").trim());
+  if (!match) return 0;
+  const num = parseFloat(match[1]);
+  if (Number.isNaN(num)) return 0;
+  switch (match[2]) {
+    case "pt": return num * (96 / 72);
+    case "em":
+    case "rem": return num * 16;
+    case "in": return num * 96;
+    case "cm": return num * 37.8;
+    case "mm": return num * 3.78;
+    default: return num; // px, or unitless treated as px
+  }
+}
+
+function makePasteSpacer(outDoc: Document): HTMLElement {
+  const p = outDoc.createElement("p");
+  p.appendChild(outDoc.createElement("br"));
+  p.appendChild(outDoc.createElement("br"));
+  return p;
+}
+
 function cleanPastedNode(outDoc: Document, node: Node): Node[] {
   if (node.nodeType === Node.TEXT_NODE) {
     return [outDoc.createTextNode(node.textContent || "")];
@@ -189,6 +223,20 @@ function cleanPastedNode(outDoc: Document, node: Node): Node[] {
       });
     }
     children.forEach(c => clean.appendChild(c));
+
+    // Retain any deliberate paragraph spacing from the source document by
+    // surrounding this block with spacer paragraphs, instead of dropping it
+    // along with the rest of the stripped inline styling.
+    if (SPACING_TAGS.has(tag)) {
+      const marginTopPx = cssLengthToPx(el.style.marginTop);
+      const marginBottomPx = cssLengthToPx(el.style.marginBottom);
+      const result: Node[] = [];
+      if (marginTopPx >= SPACING_THRESHOLD_PX) result.push(makePasteSpacer(outDoc));
+      result.push(clean);
+      if (marginBottomPx >= SPACING_THRESHOLD_PX) result.push(makePasteSpacer(outDoc));
+      return result;
+    }
+
     return [clean];
   }
   // unwrap disallowed wrapper tags (span, font, div, section...) and keep their content
