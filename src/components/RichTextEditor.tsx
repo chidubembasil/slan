@@ -1105,9 +1105,29 @@ export default function RichTextEditor({ value, onChange, placeholder }: RichTex
   };
   return (
     <LexicalComposer initialConfig={config as any}>
-      <div style={{ border: "1px solid #d1d5db", borderRadius: 8, overflow: "hidden", background: "white" }}>
-        <Toolbar />
-        <div style={{ position: "relative" }}>
+      {/* Fixed-height editor shell: the toolbar (and every dropdown/select
+          inside it — Heading, Font, Align, List, Line Height, Paragraph
+          spacing, Table tools) stays pinned via `position: sticky` at the
+          top of this box, while the document content scrolls internally
+          below it. That way the toolbar is always reachable no matter how
+          far down you've scrolled in the document — no more scrolling up
+          to open "Paragraph spacing", picking an option, then scrolling
+          back down to see it applied. */}
+      <div
+        style={{
+          border: "1px solid #d1d5db",
+          borderRadius: 8,
+          overflow: "hidden",
+          background: "white",
+          display: "flex",
+          flexDirection: "column",
+          maxHeight: "85vh",
+        }}
+      >
+        <div style={{ position: "sticky", top: 0, zIndex: 40, background: "white", flexShrink: 0 }}>
+          <Toolbar />
+        </div>
+        <div style={{ position: "relative", overflowY: "auto", flex: 1 }}>
           <RichTextPlugin contentEditable={<ContentEditable style={{ minHeight: 300, padding: 20, outline: "none" }} />} placeholder={<div style={{ position: "absolute", top: 20, left: 20, color: "#999", pointerEvents: "none" }}>{placeholder || "Write content..."}</div>} ErrorBoundary={LexicalErrorBoundary} />
           <HistoryPlugin /><ListPlugin /><TablePlugin /><PasteCleanupPlugin />
           {/* <TableCellResizerPlugin /> */}
