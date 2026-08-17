@@ -274,8 +274,8 @@ function EditUnitForm({
     setLoading(true);
 
     
-    let videoUrl = existingVideoUrl || null;
-    let pdfUrl = existingPdfUrl || null;
+    let videoUrl = existingVideoUrl || "";
+    let pdfUrl = existingPdfUrl || "";
 
     try {
       if (videoFile) {
