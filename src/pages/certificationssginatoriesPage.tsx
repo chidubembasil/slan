@@ -1,1115 +1,913 @@
-import React, { useEffect, useState, useCallback, useRef } from "react";
+import React, { useEffect, useState, useCallback } from "react";
+import {
+  Plus,
+  Pencil,
+  Trash2,
+  Download,
+  Search,
+  Upload,
+  X,
+} from "lucide-react";
 
+/* ------------------------------------------------------------------ */
+/*  Config                                                             */
+/* ------------------------------------------------------------------ */
 
-const API_BASE = import.meta.env.VITE_API_KEY;
+const API_BASE = "https://slan-backend-brrk.onrender.com/api";
 
-function authHeaders(extra: Record<string, string> = {}) {
-  const token =
-    typeof window !== "undefined" ? localStorage.getItem("token") : null;
-  return {
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...extra,
-  };
-}
-
-async function apiFetch<T>(
-  path: string,
-  options: RequestInit = {}
-): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...options,
-    headers: {
-      ...authHeaders(),
-      ...(options.headers || {}),
-    },
-  });
-
-  if (!res.ok) {
-    let message = `Request failed (${res.status})`;
-    try {
-      const body = await res.json();
-      message = body?.message || body?.error || message;
-    } catch {
-      /* ignore */
-    }
-    throw new Error(message);
-  }
-
-  const contentType = res.headers.get("content-type") || "";
-  if (contentType.includes("application/json")) {
-    return res.json();
-  }
-  return (undefined as unknown) as T;
-}
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-type CertType = "course" | "track";
-
-interface UserLite {
-  id: number;
-  name: string;
-  email: string;
-}
-
-// Raw shape as it might come back from /admin/users — normalized into
-// UserLite immediately after fetching.
-interface RawUser {
-  id: number;
-  fullName?: string;
-  name?: string;
-  email: string;
-}
-
-interface ReferenceLite {
-  id: number;
-  title: string;
-}
-
-interface Certificate {
-  id: number;
-  userId: number;
-  certType: CertType;
-  referenceId: number;
-  issuedAt?: string;
-  userName?: string;
-}
+/* ------------------------------------------------------------------ */
+/*  Types                                                              */
+/* ------------------------------------------------------------------ */
 
 interface Signatory {
   id: number;
   name: string;
   title: string;
+  signatureImagePath: string;
   isActive: boolean;
   displayOrder: number;
-  signatureImageUrl?: string;
 }
 
-// ---------------------------------------------------------------------------
-// Small shared UI bits
-// ---------------------------------------------------------------------------
+interface CertificateRecord {
+  id: number;
+  userId: number;
+  certType: string;
+  referenceId: number;
+  issuedAt?: string;
+  [key: string]: unknown;
+}
 
-function SectionCard({
-  title,
-  subtitle,
+type CertType = "topic" | "course" | "track" | "field";
+
+/* ------------------------------------------------------------------ */
+/*  Small shared UI bits                                               */
+/* ------------------------------------------------------------------ */
+
+function TabButton({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`pb-3 px-1 text-sm border-b-2 -mb-px transition-colors ${
+        active
+          ? "border-[#2c5015] text-[#173208] font-semibold"
+          : "border-transparent text-gray-400 hover:text-gray-600"
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
+function Field({
+  label,
+  required,
   children,
 }: {
-  title: string;
-  subtitle?: string;
+  label: string;
+  required?: boolean;
   children: React.ReactNode;
 }) {
   return (
-    <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-6">
-      <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
-      {subtitle && <p className="text-sm text-gray-500 mt-1">{subtitle}</p>}
-      <div className="mt-4">{children}</div>
-    </div>
+    <label className="block mb-4">
+      <span className="block text-sm font-medium text-gray-700 mb-1.5">
+        {label}
+        {required && <span className="text-red-500 ml-0.5">*</span>}
+      </span>
+      {children}
+    </label>
   );
 }
 
-function Toast({
+const inputClass =
+  "w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#2c5015] focus:border-[#2c5015]";
+
+function PrimaryButton({
+  children,
+  onClick,
+  disabled,
+  type = "button",
+}: {
+  children: React.ReactNode;
+  onClick?: () => void;
+  disabled?: boolean;
+  type?: "button" | "submit";
+}) {
+  return (
+    <button
+      type={type}
+      onClick={onClick}
+      disabled={disabled}
+      className="inline-flex items-center gap-2 bg-[#2c5015] hover:bg-[#234110] disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium px-4 py-2 rounded-md transition-colors"
+    >
+      {children}
+    </button>
+  );
+}
+
+function Banner({
+  kind,
   message,
-  type,
   onClose,
 }: {
+  kind: "success" | "error";
   message: string;
-  type: "success" | "error";
   onClose: () => void;
 }) {
-  useEffect(() => {
-    const t = setTimeout(onClose, 4000);
-    return () => clearTimeout(t);
-  }, [onClose]);
-
+  const styles =
+    kind === "success"
+      ? "bg-green-50 text-green-800 border-green-200"
+      : "bg-red-50 text-red-700 border-red-200";
   return (
     <div
-      className={`fixed bottom-6 right-6 z-50 rounded-md px-4 py-3 text-sm shadow-lg text-white ${
-        type === "success" ? "bg-green-700" : "bg-red-600"
-      }`}
+      className={`flex items-start justify-between gap-3 border rounded-md px-4 py-3 text-sm mb-5 ${styles}`}
     >
-      {message}
+      <span>{message}</span>
+      <button onClick={onClose} className="opacity-60 hover:opacity-100">
+        <X size={15} />
+      </button>
     </div>
   );
 }
 
-function Spinner({ className = "" }: { className?: string }) {
-  return (
-    <svg
-      className={`animate-spin h-4 w-4 ${className}`}
-      viewBox="0 0 24 24"
-      fill="none"
-    >
-      <circle
-        className="opacity-25"
-        cx="12"
-        cy="12"
-        r="10"
-        stroke="currentColor"
-        strokeWidth="4"
-      />
-      <path
-        className="opacity-75"
-        fill="currentColor"
-        d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
-      />
-    </svg>
-  );
-}
+/* ------------------------------------------------------------------ */
+/*  Manage Signatories                                                 */
+/* ------------------------------------------------------------------ */
 
-function normalizeUser(u: RawUser): UserLite {
-  return {
-    id: u.id,
-    name: u.fullName || u.name || "Unnamed user",
-    email: u.email,
-  };
-}
+function useSignatories() {
+  const [signatories, setSignatories] = useState<Signatory[]>([]);
+  const [loading, setLoading] = useState(true);
 
-// ---------------------------------------------------------------------------
-// User search / select (feeds userId into the Issue Certificate form)
-// ---------------------------------------------------------------------------
-
-function UserSearchSelect({
-  value,
-  onChange,
-}: {
-  value: UserLite | null;
-  onChange: (user: UserLite | null) => void;
-}) {
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState<UserLite[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [open, setOpen] = useState(false);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (
-        containerRef.current &&
-        !containerRef.current.contains(e.target as Node)
-      ) {
-        setOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  const runSearch = useCallback(async (q: string) => {
-    if (!q.trim()) {
-      setResults([]);
-      return;
-    }
+  const fetchSignatories = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await apiFetch<
-        RawUser[] | { users: RawUser[] } | { data: RawUser[] }
-      >(
-        `/admin/users?search=${encodeURIComponent(q)}&limit=20&offset=0`
-      );
-      const list = Array.isArray(data)
-        ? data
-        : (data as { users?: RawUser[] }).users ||
-          (data as { data?: RawUser[] }).data ||
-          [];
-      setResults(list.map(normalizeUser));
-    } catch (err) {
-      setResults([]);
+      const res = await fetch(`${API_BASE}/admin/signatories`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem("token") ?? ""}` },
+      });
+      if (!res.ok) throw new Error("Failed to load signatories");
+      const data = await res.json();
+      setSignatories(data);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  function handleInputChange(v: string) {
-    setQuery(v);
-    setOpen(true);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => runSearch(v), 350);
-  }
-
-  return (
-    <div className="relative" ref={containerRef}>
-      <label className="block text-sm font-medium text-gray-700 mb-1">
-        User <span className="text-red-500">*</span>
-      </label>
-
-      {value ? (
-        <div className="flex items-center justify-between border border-gray-300 rounded-md px-3 py-2 bg-gray-50">
-          <div>
-            <p className="text-sm font-medium text-gray-900">{value.name}</p>
-            <p className="text-xs text-gray-500">
-              {value.email} · ID {value.id}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              onChange(null);
-              setQuery("");
-            }}
-            className="text-xs text-red-600 hover:underline"
-          >
-            Change
-          </button>
-        </div>
-      ) : (
-        <>
-          <input
-            type="text"
-            value={query}
-            onFocus={() => setOpen(true)}
-            onChange={(e) => handleInputChange(e.target.value)}
-            placeholder="Search by name or email..."
-            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-600"
-          />
-          {open && query.trim() && (
-            <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-56 overflow-y-auto">
-              {loading && (
-                <div className="flex items-center gap-2 px-3 py-2 text-sm text-gray-500">
-                  <Spinner /> Searching...
-                </div>
-              )}
-              {!loading && results.length === 0 && (
-                <div className="px-3 py-2 text-sm text-gray-400">
-                  No users found.
-                </div>
-              )}
-              {!loading &&
-                results.map((u) => (
-                  <button
-                    key={u.id}
-                    type="button"
-                    onClick={() => {
-                      onChange(u);
-                      setOpen(false);
-                    }}
-                    className="w-full text-left px-3 py-2 text-sm hover:bg-green-50"
-                  >
-                    <p className="font-medium text-gray-900">{u.name}</p>
-                    <p className="text-xs text-gray-500">{u.email}</p>
-                  </button>
-                ))}
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Reference search / select — picks a course or a track depending on
-// whichever certType is currently selected. Fetches the full list once
-// per certType (cached), filters client-side as the admin types.
-// ---------------------------------------------------------------------------
-
-const REFERENCE_ENDPOINT: Record<CertType, string> = {
-  course: "/admin/courses",
-  track: "/admin/tracks",
-};
-
-function ReferenceSearchSelect({
-  certType,
-  value,
-  onChange,
-}: {
-  certType: CertType;
-  value: ReferenceLite | null;
-  onChange: (ref: ReferenceLite | null) => void;
-}) {
-  const [query, setQuery] = useState("");
-  const [allItems, setAllItems] = useState<ReferenceLite[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [open, setOpen] = useState(false);
-  const [loadError, setLoadError] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const cacheRef = useRef<Map<CertType, ReferenceLite[]>>(new Map());
-
   useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (
-        containerRef.current &&
-        !containerRef.current.contains(e.target as Node)
-      ) {
-        setOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+    fetchSignatories();
+  }, [fetchSignatories]);
 
-  // Reset selection + query whenever the cert type changes, then load
-  // (or reuse cached) list for the new type.
-  useEffect(() => {
-    onChange(null);
-    setQuery("");
-    setLoadError(false);
-
-    const cached = cacheRef.current.get(certType);
-    if (cached) {
-      setAllItems(cached);
-      return;
-    }
-
-    let cancelled = false;
-    setLoading(true);
-    apiFetch<ReferenceLite[] | { data: ReferenceLite[] }>(
-      REFERENCE_ENDPOINT[certType]
-    )
-      .then((data) => {
-        if (cancelled) return;
-        const list = Array.isArray(data) ? data : data.data || [];
-        cacheRef.current.set(certType, list);
-        setAllItems(list);
-      })
-      .catch(() => {
-        if (!cancelled) setLoadError(true);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [certType]);
-
-  const filtered = query.trim()
-    ? allItems.filter((item) =>
-        item.title.toLowerCase().includes(query.trim().toLowerCase())
-      )
-    : allItems;
-
-  const typeLabel = certType === "course" ? "course" : "track";
-
-  return (
-    <div className="relative" ref={containerRef}>
-      <label className="block text-sm font-medium text-gray-700 mb-1">
-        {certType === "course" ? "Course" : "Track"}{" "}
-        <span className="text-red-500">*</span>
-      </label>
-
-      {value ? (
-        <div className="flex items-center justify-between border border-gray-300 rounded-md px-3 py-2 bg-gray-50">
-          <div>
-            <p className="text-sm font-medium text-gray-900">{value.title}</p>
-            <p className="text-xs text-gray-500">ID {value.id}</p>
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              onChange(null);
-              setQuery("");
-            }}
-            className="text-xs text-red-600 hover:underline"
-          >
-            Change
-          </button>
-        </div>
-      ) : (
-        <>
-          <input
-            type="text"
-            value={query}
-            onFocus={() => setOpen(true)}
-            onChange={(e) => {
-              setQuery(e.target.value);
-              setOpen(true);
-            }}
-            placeholder={`Search ${typeLabel}s by title...`}
-            disabled={loading}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-600 disabled:bg-gray-50"
-          />
-          {open && (
-            <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-56 overflow-y-auto">
-              {loading && (
-                <div className="flex items-center gap-2 px-3 py-2 text-sm text-gray-500">
-                  <Spinner /> Loading {typeLabel}s...
-                </div>
-              )}
-              {!loading && loadError && (
-                <div className="px-3 py-2 text-sm text-red-500">
-                  Couldn't load {typeLabel}s. Try again.
-                </div>
-              )}
-              {!loading && !loadError && filtered.length === 0 && (
-                <div className="px-3 py-2 text-sm text-gray-400">
-                  No {typeLabel}s found.
-                </div>
-              )}
-              {!loading &&
-                !loadError &&
-                filtered.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => {
-                      onChange(item);
-                      setOpen(false);
-                    }}
-                    className="w-full text-left px-3 py-2 text-sm hover:bg-green-50"
-                  >
-                    <p className="font-medium text-gray-900">{item.title}</p>
-                    <p className="text-xs text-gray-500">ID {item.id}</p>
-                  </button>
-                ))}
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  );
+  return { signatories, loading, refetch: fetchSignatories };
 }
 
-// ---------------------------------------------------------------------------
-// Certifications tab
-// ---------------------------------------------------------------------------
+/* ---------------------------- Create Signatory ---------------------------- */
 
-const CERT_TYPES: { value: CertType; label: string }[] = [
-  { value: "course", label: "Course" },
-  { value: "track", label: "Track" },
-];
-
-function CertificationsTab({
-  showToast,
-}: {
-  showToast: (msg: string, type: "success" | "error") => void;
-}) {
-  const [selectedUser, setSelectedUser] = useState<UserLite | null>(null);
-  const [certType, setCertType] = useState<CertType>("course");
-  const [selectedReference, setSelectedReference] =
-    useState<ReferenceLite | null>(null);
-  const [issuing, setIssuing] = useState(false);
-
-  const [lookupId, setLookupId] = useState("");
-  const [lookupLoading, setLookupLoading] = useState(false);
-  const [lookedUpCert, setLookedUpCert] = useState<Certificate | null>(null);
-
-  async function handleIssue(e: React.FormEvent) {
-    e.preventDefault();
-    if (!selectedUser) {
-      showToast("Select a user before issuing a certificate.", "error");
-      return;
-    }
-    if (!selectedReference) {
-      showToast(
-        `Select the ${certType} being certified.`,
-        "error"
-      );
-      return;
-    }
-
-    setIssuing(true);
-    try {
-      await apiFetch<Certificate>("/admin/certifications/issue", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userId: selectedUser.id,
-          certType,
-          referenceId: selectedReference.id,
-        }),
-      });
-      showToast(`Certificate issued to ${selectedUser.name}.`, "success");
-      setSelectedUser(null);
-      setSelectedReference(null);
-      setCertType("course");
-    } catch (err: any) {
-      showToast(err.message || "Failed to issue certificate.", "error");
-    } finally {
-      setIssuing(false);
-    }
-  }
-
-  async function handleLookup() {
-    if (!lookupId) return;
-    setLookupLoading(true);
-    setLookedUpCert(null);
-    try {
-      const cert = await apiFetch<Certificate>(
-        `/admin/certifications/${lookupId}`
-      );
-      setLookedUpCert(cert);
-    } catch (err: any) {
-      showToast(err.message || "Certificate not found.", "error");
-    } finally {
-      setLookupLoading(false);
-    }
-  }
-
-  async function handleDownload() {
-    if (!lookedUpCert) return;
-    try {
-      const res = await fetch(
-        `${API_BASE}/admin/certifications/${lookedUpCert.id}/download`,
-        { headers: authHeaders() }
-      );
-      if (!res.ok) throw new Error("Download failed.");
-      const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `certificate-${lookedUpCert.id}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(url);
-    } catch (err: any) {
-      showToast(err.message || "Could not download certificate.", "error");
-    }
-  }
-
-  return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      <SectionCard
-        title="Issue a certificate"
-        subtitle="Find the user, pick what they're being certified for, and confirm."
-      >
-        <form onSubmit={handleIssue} className="space-y-4">
-          <UserSearchSelect value={selectedUser} onChange={setSelectedUser} />
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Certificate type <span className="text-red-500">*</span>
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              {CERT_TYPES.map((ct) => (
-                <button
-                  type="button"
-                  key={ct.value}
-                  onClick={() => setCertType(ct.value)}
-                  className={`px-3 py-2 text-sm rounded-md border transition ${
-                    certType === ct.value
-                      ? "bg-green-700 text-white border-green-700"
-                      : "bg-white text-gray-700 border-gray-300 hover:border-green-600"
-                  }`}
-                >
-                  {ct.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <ReferenceSearchSelect
-            certType={certType}
-            value={selectedReference}
-            onChange={setSelectedReference}
-          />
-
-          <button
-            type="submit"
-            disabled={issuing}
-            className="w-full flex items-center justify-center gap-2 bg-green-700 hover:bg-green-800 disabled:opacity-60 text-white text-sm font-medium py-2.5 rounded-md transition"
-          >
-            {issuing && <Spinner />}
-            {issuing ? "Issuing..." : "Issue certificate"}
-          </button>
-        </form>
-      </SectionCard>
-
-      <SectionCard
-        title="Find a certificate"
-        subtitle="Look up an already-issued certificate by its ID."
-      >
-        <div className="flex gap-2 mb-4">
-          <input
-            type="number"
-            value={lookupId}
-            onChange={(e) => setLookupId(e.target.value)}
-            placeholder="Certificate ID"
-            className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-600"
-          />
-          <button
-            onClick={handleLookup}
-            disabled={lookupLoading}
-            className="px-4 py-2 text-sm font-medium rounded-md bg-gray-900 text-white hover:bg-gray-800 disabled:opacity-60"
-          >
-            {lookupLoading ? <Spinner /> : "Search"}
-          </button>
-        </div>
-
-        {lookedUpCert ? (
-          <div className="border border-gray-200 rounded-md p-4 space-y-1 text-sm">
-            <p>
-              <span className="text-gray-500">Certificate ID:</span>{" "}
-              <span className="font-medium">{lookedUpCert.id}</span>
-            </p>
-            <p>
-              <span className="text-gray-500">User ID:</span>{" "}
-              <span className="font-medium">{lookedUpCert.userId}</span>
-            </p>
-            <p>
-              <span className="text-gray-500">Type:</span>{" "}
-              <span className="font-medium capitalize">
-                {lookedUpCert.certType}
-              </span>
-            </p>
-            <p>
-              <span className="text-gray-500">Reference ID:</span>{" "}
-              <span className="font-medium">{lookedUpCert.referenceId}</span>
-            </p>
-            {lookedUpCert.issuedAt && (
-              <p>
-                <span className="text-gray-500">Issued:</span>{" "}
-                <span className="font-medium">
-                  {new Date(lookedUpCert.issuedAt).toLocaleDateString()}
-                </span>
-              </p>
-            )}
-            <button
-              onClick={handleDownload}
-              className="mt-3 w-full text-sm font-medium py-2 rounded-md border border-green-700 text-green-700 hover:bg-green-50"
-            >
-              Download as PDF
-            </button>
-          </div>
-        ) : (
-          <p className="text-sm text-gray-400">
-            Enter a certificate ID above to see its details here.
-          </p>
-        )}
-      </SectionCard>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Signatories tab
-// ---------------------------------------------------------------------------
-
-interface SignatoryFormState {
-  id: number | null;
-  name: string;
-  title: string;
-  isActive: boolean;
-  displayOrder: number;
-  signatureImage: File | null;
-}
-
-const EMPTY_SIGNATORY_FORM: SignatoryFormState = {
-  id: null,
-  name: "",
-  title: "",
-  isActive: true,
-  displayOrder: 1,
-  signatureImage: null,
-};
-
-function SignatoryModal({
-  initial,
-  onClose,
-  onSaved,
-  showToast,
-}: {
-  initial: SignatoryFormState;
-  onClose: () => void;
-  onSaved: () => void;
-  showToast: (msg: string, type: "success" | "error") => void;
-}) {
-  const [form, setForm] = useState<SignatoryFormState>(initial);
+function CreateSignatoryTab({ onCreated }: { onCreated: () => void }) {
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
-  const isEdit = form.id !== null;
+  const [notice, setNotice] = useState<
+    { kind: "success" | "error"; message: string } | null
+  >(null);
 
-  async function handleSubmit(e: React.FormEvent) {
+  const [name, setName] = useState("");
+  const [title, setTitle] = useState("");
+  const [isActive, setIsActive] = useState(true);
+  const [displayOrder, setDisplayOrder] = useState(1);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+
+  const resetForm = () => {
+    setName("");
+    setTitle("");
+    setIsActive(true);
+    setDisplayOrder(1);
+    setImageFile(null);
+    setImagePreview(null);
+    setEditingId(null);
+  };
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] ?? null;
+    setImageFile(file);
+    setImagePreview(file ? URL.createObjectURL(file) : null);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.name.trim() || !form.title.trim()) {
-      showToast("Name and title are required.", "error");
-      return;
-    }
-
-    const fd = new FormData();
-    fd.append("name", form.name);
-    fd.append("title", form.title);
-    fd.append("isActive", String(form.isActive));
-    fd.append("displayOrder", String(form.displayOrder));
-    if (form.signatureImage) fd.append("signatureImage", form.signatureImage);
-
     setSaving(true);
+    setNotice(null);
     try {
-      if (isEdit) {
-        await apiFetch(`/admin/signatories/${form.id}`, {
-          method: "PUT",
-          body: fd,
-        });
-        showToast("Signatory updated.", "success");
-      } else {
-        await apiFetch("/admin/signatories", {
-          method: "POST",
-          body: fd,
-        });
-        showToast("Signatory created.", "success");
-      }
-      onSaved();
-      onClose();
-    } catch (err: any) {
-      showToast(err.message || "Failed to save signatory.", "error");
+      const formData = new FormData();
+      formData.append("name", name);
+      formData.append("title", title);
+      formData.append("isActive", String(isActive));
+      formData.append("displayOrder", String(displayOrder));
+      if (imageFile) formData.append("signatureImage", imageFile);
+
+      const url = editingId
+        ? `${API_BASE}/admin/signatories/${editingId}`
+        : `${API_BASE}/admin/signatories`;
+      const method = editingId ? "PUT" : "POST";
+
+      const res = await fetch(url, {
+        method,
+        headers: { Authorization: `Bearer ${localStorage.getItem("token") ?? ""}` },
+        body: formData,
+      });
+      if (!res.ok) throw new Error("Signatory could not be saved");
+
+      setNotice({
+        kind: "success",
+        message: editingId ? "Signatory updated." : "Signatory created.",
+      });
+      resetForm();
+      onCreated();
+    } catch (err) {
+      setNotice({
+        kind: "error",
+        message: err instanceof Error ? err.message : "Something went wrong",
+      });
     } finally {
       setSaving(false);
     }
-  }
+  };
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-gray-900">
-            {isEdit ? "Edit signatory" : "Add signatory"}
-          </h3>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 text-xl leading-none"
-          >
-            &times;
-          </button>
+    <div>
+      <h2 className="text-lg font-semibold text-gray-900 mb-1">
+        Create a Signatory
+      </h2>
+      <p className="text-sm text-gray-500 mb-5">
+        Maximum 2 active signatories appear on certificates. Display order 1
+        = left, 2 = right.
+      </p>
+
+      {notice && (
+        <Banner
+          kind={notice.kind}
+          message={notice.message}
+          onClose={() => setNotice(null)}
+        />
+      )}
+
+      <form
+        onSubmit={handleSubmit}
+        className="border border-gray-200 rounded-lg p-5 bg-gray-50 max-w-2xl"
+      >
+        <div className="grid grid-cols-2 gap-x-6">
+          <Field label="Name" required>
+            <input
+              className={inputClass}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Dr. Ngozi Adeyemi"
+              required
+            />
+          </Field>
+          <Field label="Title" required>
+            <input
+              className={inputClass}
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Executive Director, SLAN"
+              required
+            />
+          </Field>
+          <Field label="Display Order">
+            <input
+              type="number"
+              min={1}
+              max={2}
+              className={inputClass}
+              value={displayOrder}
+              onChange={(e) => setDisplayOrder(Number(e.target.value))}
+            />
+          </Field>
+          <Field label="Status">
+            <label className="flex items-center gap-2 text-sm text-gray-700 pt-2">
+              <input
+                type="checkbox"
+                checked={isActive}
+                onChange={(e) => setIsActive(e.target.checked)}
+                className="accent-[#2c5015] w-4 h-4"
+              />
+              Active
+            </label>
+          </Field>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Name <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-600"
-              placeholder="e.g. Basil Adeyemi"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Title <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              value={form.title}
-              onChange={(e) => setForm({ ...form, title: e.target.value })}
-              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-600"
-              placeholder="e.g. Founder & CEO"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Display order
-              </label>
-              <select
-                value={form.displayOrder}
-                onChange={(e) =>
-                  setForm({ ...form, displayOrder: Number(e.target.value) })
-                }
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-600"
-              >
-                <option value={1}>1 — Left</option>
-                <option value={2}>2 — Right</option>
-              </select>
-              <p className="text-xs text-gray-400 mt-1">
-                Max 2 active signatories appear on certificates.
-              </p>
-            </div>
-
-            <div className="flex items-end">
-              <label className="flex items-center gap-2 text-sm text-gray-700 pb-2">
-                <input
-                  type="checkbox"
-                  checked={form.isActive}
-                  onChange={(e) =>
-                    setForm({ ...form, isActive: e.target.checked })
-                  }
-                  className="h-4 w-4 rounded border-gray-300 text-green-700 focus:ring-green-600"
-                />
-                Active
-              </label>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Signature image
-            </label>
+        <Field label="Signature Image (PNG/JPEG/SVG/WEBP — max 2MB)">
+          <label className="flex items-center gap-3 border border-dashed border-gray-300 rounded-md px-4 py-4 cursor-pointer hover:border-[#2c5015] transition-colors bg-white">
+            <Upload size={18} className="text-gray-400" />
+            <span className="text-sm text-gray-500">
+              {imageFile ? imageFile.name : "Click to upload signature image"}
+            </span>
             <input
               type="file"
               accept=".png,.jpg,.jpeg,.svg,.webp"
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  signatureImage: e.target.files?.[0] || null,
-                })
-              }
-              className="w-full text-sm text-gray-600 file:mr-3 file:py-2 file:px-3 file:rounded-md file:border-0 file:bg-green-50 file:text-green-700 file:text-sm hover:file:bg-green-100"
+              onChange={handleImageChange}
+              className="hidden"
             />
-            <p className="text-xs text-gray-400 mt-1">
-              PNG/JPEG/SVG/WEBP — max 2 MB
-              {isEdit ? ". Leave empty to keep the current image." : ""}
-            </p>
-          </div>
+          </label>
+          {imagePreview && (
+            <img
+              src={imagePreview}
+              alt="Signature preview"
+              className="h-14 mt-3 object-contain"
+            />
+          )}
+        </Field>
 
-          <div className="flex gap-3 pt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 py-2 text-sm font-medium rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="flex-1 flex items-center justify-center gap-2 py-2 text-sm font-medium rounded-md bg-green-700 text-white hover:bg-green-800 disabled:opacity-60"
-            >
-              {saving && <Spinner />}
-              {saving ? "Saving..." : isEdit ? "Save changes" : "Create"}
-            </button>
-          </div>
-        </form>
-      </div>
+        <div className="flex gap-3 mt-2">
+          <PrimaryButton type="submit" disabled={saving}>
+            <Plus size={16} />
+            {saving ? "Saving..." : "Create Signatory"}
+          </PrimaryButton>
+          <button
+            type="button"
+            onClick={resetForm}
+            className="text-sm text-gray-500 hover:text-gray-700 px-4 py-2"
+          >
+            Reset
+          </button>
+        </div>
+      </form>
     </div>
   );
 }
 
-function SignatoriesTab({
-  showToast,
+/* ---------------------------- Manage Signatories ---------------------------- */
+
+function ManageSignatoriesTab({
+  signatories,
+  loading,
+  onChanged,
 }: {
-  showToast: (msg: string, type: "success" | "error") => void;
+  signatories: Signatory[];
+  loading: boolean;
+  onChanged: () => void;
 }) {
-  const [signatories, setSignatories] = useState<Signatory[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [modalInitial, setModalInitial] = useState<SignatoryFormState>(
-    EMPTY_SIGNATORY_FORM
-  );
-  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [notice, setNotice] = useState<
+    { kind: "success" | "error"; message: string } | null
+  >(null);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [name, setName] = useState("");
+  const [title, setTitle] = useState("");
+  const [isActive, setIsActive] = useState(true);
+  const [displayOrder, setDisplayOrder] = useState(1);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [saving, setSaving] = useState(false);
 
-  const loadSignatories = useCallback(async () => {
-    setLoading(true);
+  const startEdit = (s: Signatory) => {
+    setEditingId(s.id);
+    setName(s.name);
+    setTitle(s.title);
+    setIsActive(s.isActive);
+    setDisplayOrder(s.displayOrder);
+    setImageFile(null);
+  };
+
+  const cancelEdit = () => setEditingId(null);
+
+  const handleUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingId) return;
+    setSaving(true);
+    setNotice(null);
     try {
-      const data = await apiFetch<Signatory[] | { signatories: Signatory[] }>(
-        "/admin/signatories"
-      );
-      const list = Array.isArray(data) ? data : data.signatories || [];
-      setSignatories(list);
-    } catch (err: any) {
-      showToast(err.message || "Failed to load signatories.", "error");
+      const formData = new FormData();
+      formData.append("name", name);
+      formData.append("title", title);
+      formData.append("isActive", String(isActive));
+      formData.append("displayOrder", String(displayOrder));
+      if (imageFile) formData.append("signatureImage", imageFile);
+
+      const res = await fetch(`${API_BASE}/admin/signatories/${editingId}`, {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${localStorage.getItem("token") ?? ""}` },
+        body: formData,
+      });
+      if (!res.ok) throw new Error("Signatory could not be updated");
+
+      setNotice({ kind: "success", message: "Signatory updated." });
+      setEditingId(null);
+      onChanged();
+    } catch (err) {
+      setNotice({
+        kind: "error",
+        message: err instanceof Error ? err.message : "Something went wrong",
+      });
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
-  }, [showToast]);
+  };
 
-  useEffect(() => {
-    loadSignatories();
-  }, [loadSignatories]);
-
-  function openCreate() {
-    setModalInitial(EMPTY_SIGNATORY_FORM);
-    setModalOpen(true);
-  }
-
-  function openEdit(s: Signatory) {
-    setModalInitial({
-      id: s.id,
-      name: s.name,
-      title: s.title,
-      isActive: s.isActive,
-      displayOrder: s.displayOrder,
-      signatureImage: null,
-    });
-    setModalOpen(true);
-  }
-
-  async function handleDelete(id: number) {
+  const handleDelete = async (id: number) => {
     if (!confirm("Delete this signatory? This cannot be undone.")) return;
-    setDeletingId(id);
     try {
-      await apiFetch(`/admin/signatories/${id}`, { method: "DELETE" });
-      showToast("Signatory deleted.", "success");
-      setSignatories((prev) => prev.filter((s) => s.id !== id));
-    } catch (err: any) {
-      showToast(err.message || "Failed to delete signatory.", "error");
-    } finally {
-      setDeletingId(null);
+      const res = await fetch(`${API_BASE}/admin/signatories/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${localStorage.getItem("token") ?? ""}` },
+      });
+      if (!res.ok) throw new Error("Failed to delete signatory");
+      setNotice({ kind: "success", message: "Signatory deleted." });
+      onChanged();
+    } catch (err) {
+      setNotice({
+        kind: "error",
+        message: err instanceof Error ? err.message : "Failed to delete signatory",
+      });
     }
-  }
+  };
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h3 className="text-lg font-semibold text-gray-900">Signatories</h3>
-          <p className="text-sm text-gray-500">
-            Manage the names and signature images shown on certificates.
-          </p>
-        </div>
-        <button
-          onClick={openCreate}
-          className="px-4 py-2 text-sm font-medium rounded-md bg-green-700 text-white hover:bg-green-800"
-        >
-          + Add signatory
-        </button>
-      </div>
+      <h2 className="text-lg font-semibold text-gray-900 mb-1">
+        Manage Signatories
+      </h2>
+      <p className="text-sm text-gray-500 mb-5">
+        GET /admin/signatories · PUT /admin/signatories/&#123;id&#125; · DELETE
+        /admin/signatories/&#123;id&#125;
+      </p>
 
-      <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+      {notice && (
+        <Banner
+          kind={notice.kind}
+          message={notice.message}
+          onClose={() => setNotice(null)}
+        />
+      )}
+
+      {editingId && (
+        <form
+          onSubmit={handleUpdate}
+          className="border border-gray-200 rounded-lg p-5 mb-6 bg-gray-50 max-w-2xl"
+        >
+          <h3 className="text-sm font-semibold text-gray-700 mb-4">
+            Editing Signatory #{editingId}
+          </h3>
+          <div className="grid grid-cols-2 gap-x-6">
+            <Field label="Name" required>
+              <input
+                className={inputClass}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+              />
+            </Field>
+            <Field label="Title" required>
+              <input
+                className={inputClass}
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                required
+              />
+            </Field>
+            <Field label="Display Order">
+              <input
+                type="number"
+                min={1}
+                max={2}
+                className={inputClass}
+                value={displayOrder}
+                onChange={(e) => setDisplayOrder(Number(e.target.value))}
+              />
+            </Field>
+            <Field label="Status">
+              <label className="flex items-center gap-2 text-sm text-gray-700 pt-2">
+                <input
+                  type="checkbox"
+                  checked={isActive}
+                  onChange={(e) => setIsActive(e.target.checked)}
+                  className="accent-[#2c5015] w-4 h-4"
+                />
+                Active
+              </label>
+            </Field>
+          </div>
+          <Field label="Replace Signature Image (optional)">
+            <label className="flex items-center gap-3 border border-dashed border-gray-300 rounded-md px-4 py-4 cursor-pointer hover:border-[#2c5015] transition-colors bg-white">
+              <Upload size={18} className="text-gray-400" />
+              <span className="text-sm text-gray-500">
+                {imageFile ? imageFile.name : "Click to upload a new image"}
+              </span>
+              <input
+                type="file"
+                accept=".png,.jpg,.jpeg,.svg,.webp"
+                onChange={(e) => setImageFile(e.target.files?.[0] ?? null)}
+                className="hidden"
+              />
+            </label>
+          </Field>
+          <div className="flex gap-3 mt-2">
+            <PrimaryButton type="submit" disabled={saving}>
+              {saving ? "Saving..." : "Update Signatory"}
+            </PrimaryButton>
+            <button
+              type="button"
+              onClick={cancelEdit}
+              className="text-sm text-gray-500 hover:text-gray-700 px-4 py-2"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
+
+      <div className="border border-gray-200 rounded-lg overflow-hidden">
         <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-gray-50 text-gray-500 text-left">
-              <th className="px-4 py-3 font-medium">Signature</th>
-              <th className="px-4 py-3 font-medium">Name</th>
-              <th className="px-4 py-3 font-medium">Title</th>
-              <th className="px-4 py-3 font-medium">Order</th>
-              <th className="px-4 py-3 font-medium">Status</th>
-              <th className="px-4 py-3 font-medium text-right">Actions</th>
+          <thead className="bg-gray-50 text-gray-500 text-xs uppercase tracking-wide">
+            <tr>
+              <th className="text-left px-4 py-3 font-medium">Signature</th>
+              <th className="text-left px-4 py-3 font-medium">Name</th>
+              <th className="text-left px-4 py-3 font-medium">Title</th>
+              <th className="text-left px-4 py-3 font-medium">Order</th>
+              <th className="text-left px-4 py-3 font-medium">Status</th>
+              <th className="text-right px-4 py-3 font-medium">Actions</th>
             </tr>
           </thead>
           <tbody>
             {loading && (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-gray-400">
-                  <Spinner className="mx-auto" />
+                <td colSpan={6} className="text-center py-10 text-gray-400">
+                  Loading signatories...
                 </td>
               </tr>
             )}
-
             {!loading && signatories.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-gray-400">
-                  No signatories yet. Add one to get started.
+                <td colSpan={6} className="text-center py-10 text-gray-400">
+                  No signatories yet. Use the "Create Signatory" tab to add one.
                 </td>
               </tr>
             )}
-
             {!loading &&
               signatories.map((s) => (
                 <tr key={s.id} className="border-t border-gray-100">
                   <td className="px-4 py-3">
-                    {s.signatureImageUrl ? (
-                      <img
-                        src={s.signatureImageUrl}
-                        alt={s.name}
-                        className="h-8 object-contain"
-                      />
-                    ) : (
-                      <span className="text-gray-300">—</span>
-                    )}
+                    <div className="h-8 w-16 bg-gray-50 rounded flex items-center justify-center overflow-hidden border border-gray-100">
+                      {s.signatureImagePath ? (
+                        <img
+                          src={s.signatureImagePath}
+                          alt={s.name}
+                          className="h-full object-contain"
+                        />
+                      ) : (
+                        <span className="text-[10px] text-gray-300">—</span>
+                      )}
+                    </div>
                   </td>
-                  <td className="px-4 py-3 font-medium text-gray-900">
-                    {s.name}
-                  </td>
-                  <td className="px-4 py-3 text-gray-600">{s.title}</td>
-                  <td className="px-4 py-3 text-gray-600">
-                    {s.displayOrder === 1 ? "1 — Left" : "2 — Right"}
-                  </td>
+                  <td className="px-4 py-3 font-medium text-gray-800">{s.name}</td>
+                  <td className="px-4 py-3 text-gray-500">{s.title}</td>
+                  <td className="px-4 py-3 text-gray-500">{s.displayOrder}</td>
                   <td className="px-4 py-3">
                     <span
-                      className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                      className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
                         s.isActive
-                          ? "bg-green-100 text-green-700"
+                          ? "bg-green-50 text-green-700"
                           : "bg-gray-100 text-gray-500"
                       }`}
                     >
                       {s.isActive ? "Active" : "Inactive"}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-right space-x-3">
-                    <button
-                      onClick={() => openEdit(s)}
-                      className="text-gray-500 hover:text-green-700"
-                      title="Edit"
-                    >
-                      ✏️
-                    </button>
-                    <button
-                      onClick={() => handleDelete(s.id)}
-                      disabled={deletingId === s.id}
-                      className="text-gray-500 hover:text-red-600 disabled:opacity-50"
-                      title="Delete"
-                    >
-                      {deletingId === s.id ? <Spinner /> : "🗑️"}
-                    </button>
+                  <td className="px-4 py-3">
+                    <div className="flex justify-end gap-2">
+                      <button
+                        onClick={() => startEdit(s)}
+                        className="p-1.5 rounded hover:bg-gray-100 text-gray-500"
+                      >
+                        <Pencil size={15} />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(s.id)}
+                        className="p-1.5 rounded hover:bg-red-50 text-red-500"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
 
-      {modalOpen && (
-        <SignatoryModal
-          initial={modalInitial}
-          onClose={() => setModalOpen(false)}
-          onSaved={loadSignatories}
-          showToast={showToast}
+/* ------------------------------------------------------------------ */
+/*  Issue Certificate                                                  */
+/* ------------------------------------------------------------------ */
+
+function IssueCertificateTab() {
+  const [userId, setUserId] = useState("");
+  const [certType, setCertType] = useState<CertType>("track");
+  const [referenceId, setReferenceId] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState<
+    { kind: "success" | "error"; message: string } | null
+  >(null);
+  const [issued, setIssued] = useState<CertificateRecord | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    setNotice(null);
+    setIssued(null);
+    try {
+      const res = await fetch(`${API_BASE}/admin/certifications/issue`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("token") ?? ""}`,
+        },
+        body: JSON.stringify({
+          userId: Number(userId),
+          certType,
+          referenceId: Number(referenceId),
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to issue certificate");
+      const data = await res.json();
+      setIssued(data);
+      setNotice({ kind: "success", message: "Certificate issued successfully." });
+    } catch (err) {
+      setNotice({
+        kind: "error",
+        message: err instanceof Error ? err.message : "Failed to issue certificate",
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div>
+      <h2 className="text-lg font-semibold text-gray-900 mb-1">
+        Manually Issue a Certificate
+      </h2>
+      <p className="text-sm text-gray-500 mb-5">
+        POST /admin/certifications/issue
+      </p>
+
+      {notice && (
+        <Banner
+          kind={notice.kind}
+          message={notice.message}
+          onClose={() => setNotice(null)}
         />
+      )}
+
+      <form
+        onSubmit={handleSubmit}
+        className="border border-gray-200 rounded-lg p-5 bg-gray-50 max-w-lg"
+      >
+        <Field label="User ID" required>
+          <input
+            type="number"
+            className={inputClass}
+            value={userId}
+            onChange={(e) => setUserId(e.target.value)}
+            required
+          />
+        </Field>
+        <Field label="Certificate Type" required>
+          <select
+            className={inputClass}
+            value={certType}
+            onChange={(e) => setCertType(e.target.value as CertType)}
+          >
+            <option value="topic">Topic</option>
+            <option value="course">Course</option>
+            <option value="track">Track</option>
+            <option value="field">Field</option>
+          </select>
+        </Field>
+        <Field label="Reference ID" required>
+          <input
+            type="number"
+            className={inputClass}
+            value={referenceId}
+            onChange={(e) => setReferenceId(e.target.value)}
+            required
+          />
+        </Field>
+        <PrimaryButton type="submit" disabled={saving}>
+          {saving ? "Issuing..." : "Issue Certificate"}
+        </PrimaryButton>
+      </form>
+
+      {issued && (
+        <div className="mt-6 max-w-lg border border-gray-200 rounded-lg p-5">
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">
+            Issued Certificate
+          </h3>
+          <pre className="text-xs bg-gray-900 text-green-300 rounded-md p-4 overflow-x-auto">
+            {JSON.stringify(issued, null, 2)}
+          </pre>
+        </div>
       )}
     </div>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Page shell — tab view
-// ---------------------------------------------------------------------------
+/* ------------------------------------------------------------------ */
+/*  Lookup / Download Certificate                                      */
+/* ------------------------------------------------------------------ */
 
-type TabKey = "certifications" | "signatories";
+function LookupCertificateTab() {
+  const [certId, setCertId] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [notice, setNotice] = useState<
+    { kind: "success" | "error"; message: string } | null
+  >(null);
+  const [record, setRecord] = useState<CertificateRecord | null>(null);
 
-export default function CertificationsSignatoriesPage() {
-  const [tab, setTab] = useState<TabKey>("certifications");
-  const [toast, setToast] = useState<{
-    message: string;
-    type: "success" | "error";
-  } | null>(null);
+  const handleLookup = async () => {
+    if (!certId) return;
+    setLoading(true);
+    setNotice(null);
+    setRecord(null);
+    try {
+      const res = await fetch(`${API_BASE}/admin/certifications/${certId}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem("token") ?? ""}` },
+      });
+      if (!res.ok) throw new Error("Certificate not found");
+      const data = await res.json();
+      setRecord(data);
+    } catch (err) {
+      setNotice({
+        kind: "error",
+        message: err instanceof Error ? err.message : "Certificate not found",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  const showToast = useCallback(
-    (message: string, type: "success" | "error") => {
-      setToast({ message, type });
-    },
-    []
-  );
-
-  const tabs: { key: TabKey; label: string }[] = [
-    { key: "certifications", label: "Certifications" },
-    { key: "signatories", label: "Signatories" },
-  ];
+  const handleDownload = async () => {
+    try {
+      const res = await fetch(
+        `${API_BASE}/admin/certifications/${certId}/download`,
+        { headers: { Authorization: `Bearer ${localStorage.getItem("token") ?? ""}` } }
+      );
+      if (!res.ok) throw new Error("Failed to download certificate");
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `certificate-${certId}.pdf`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      setNotice({
+        kind: "error",
+        message: err instanceof Error ? err.message : "Failed to download certificate",
+      });
+    }
+  };
 
   return (
-    <div className="p-8 max-w-6xl mx-auto">
-      <h1 className="text-2xl font-bold text-gray-900">Certifications</h1>
-      <p className="text-sm text-gray-500 mt-1">
-        Issue and view certificates, and manage the signatories that appear on
-        them.
+    <div>
+      <h2 className="text-lg font-semibold text-gray-900 mb-1">
+        Look Up a Certificate
+      </h2>
+      <p className="text-sm text-gray-500 mb-5">
+        GET /admin/certifications/&#123;id&#125; · GET /admin/certifications/&#123;id&#125;/download
       </p>
 
-      <div className="border-b border-gray-200 mt-6 mb-6">
-        <nav className="flex gap-8">
-          {tabs.map((t) => (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              className={`pb-3 text-sm font-medium border-b-2 transition ${
-                tab === t.key
-                  ? "border-green-700 text-green-700"
-                  : "border-transparent text-gray-500 hover:text-gray-700"
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </nav>
-      </div>
-
-      {tab === "certifications" && (
-        <CertificationsTab showToast={showToast} />
-      )}
-      {tab === "signatories" && <SignatoriesTab showToast={showToast} />}
-
-      {toast && (
-        <Toast
-          message={toast.message}
-          type={toast.type}
-          onClose={() => setToast(null)}
+      {notice && (
+        <Banner
+          kind={notice.kind}
+          message={notice.message}
+          onClose={() => setNotice(null)}
         />
       )}
+
+      <div className="flex gap-3 max-w-lg mb-6">
+        <input
+          className={inputClass}
+          placeholder="Certificate ID"
+          value={certId}
+          onChange={(e) => setCertId(e.target.value)}
+        />
+        <PrimaryButton onClick={handleLookup} disabled={loading}>
+          <Search size={15} />
+          {loading ? "Searching..." : "Search"}
+        </PrimaryButton>
+      </div>
+
+      {record && (
+        <div className="max-w-lg border border-gray-200 rounded-lg p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-semibold text-gray-700">
+              Certificate #{record.id}
+            </h3>
+            <button
+              onClick={handleDownload}
+              className="inline-flex items-center gap-1.5 text-sm text-[#2c5015] hover:underline font-medium"
+            >
+              <Download size={15} />
+              Download PDF
+            </button>
+          </div>
+          <pre className="text-xs bg-gray-900 text-green-300 rounded-md p-4 overflow-x-auto">
+            {JSON.stringify(record, null, 2)}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Page                                                               */
+/* ------------------------------------------------------------------ */
+
+type TabKey = "signatories" | "issue" | "lookup";
+
+function SignatoriesTab() {
+  const { signatories, loading, refetch } = useSignatories();
+  const [subTab, setSubTab] = useState<"manage" | "create">("manage");
+
+  return (
+    <div>
+      <div className="flex gap-6 border-b border-gray-200 mb-6">
+        <TabButton
+          label="Manage Signatories"
+          active={subTab === "manage"}
+          onClick={() => setSubTab("manage")}
+        />
+
+        <TabButton
+          label="Create Signatory"
+          active={subTab === "create"}
+          onClick={() => setSubTab("create")}
+        />
+      </div>
+
+      {subTab === "manage" && (
+        <ManageSignatoriesTab
+          signatories={signatories}
+          loading={loading}
+          onChanged={refetch}
+        />
+      )}
+
+      {subTab === "create" && (
+        <CreateSignatoryTab
+          onCreated={() => {
+            refetch();
+            setSubTab("manage");
+          }}
+        />
+      )}
+    </div>
+  );
+}
+export default function CertificatesPage() {
+  const [tab, setTab] = useState<TabKey>("signatories");
+
+  return (
+    <div className="min-h-screen bg-gray-50 px-10 py-8">
+      <div className="flex items-center justify-between mb-1">
+        <h1 className="text-2xl font-bold text-gray-900">Certificate Page</h1>
+      </div>
+      <p className="text-sm text-gray-500 mb-6">
+        Issue and view certificates, and manage the signatories that appear
+        on them.
+      </p>
+
+      <div className="flex gap-8 border-b border-gray-200 mb-8">
+        <TabButton
+          label="Manage Signatories"
+          active={tab === "signatories"}
+          onClick={() => setTab("signatories")}
+        />
+        <TabButton
+          label="Issue Certificate"
+          active={tab === "issue"}
+          onClick={() => setTab("issue")}
+        />
+        <TabButton
+          label="Lookup / Download"
+          active={tab === "lookup"}
+          onClick={() => setTab("lookup")}
+        />
+      </div>
+
+      <div className="bg-white rounded-lg">
+        {tab === "signatories" && <SignatoriesTab />}
+        {tab === "issue" && <IssueCertificateTab />}
+        {tab === "lookup" && <LookupCertificateTab />}
+      </div>
     </div>
   );
 }
