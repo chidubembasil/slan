@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from "react";
+import { useAuthGuard } from "../hooks/useAuthGuard"
 import {
   Plus,
   Pencil,
@@ -873,6 +874,7 @@ function SignatoriesTab() {
   );
 }
 export default function CertificatesPage() {
+  useAuthGuard();
   const [tab, setTab] = useState<TabKey>("signatories");
 
   return (
