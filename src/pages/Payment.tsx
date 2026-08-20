@@ -97,19 +97,23 @@ export default function Payment() {
   ], [stats])
 
   return (
-    <div className="w-full">
-      {/* Page Title - matches your screenshot */}
+    <div className="w-full animate-fade-in">
+      {/* Page Title */}
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-xl font-semibold text-slate-800">Payments & Invoices</h1>
+        <h1 className="text-xl font-semibold text-slate-800 tracking-tight">Payments & Invoices</h1>
       </div>
 
-      {/* STATS CARDS - hand coded */}
+      {/* STATS CARDS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        {cards.map((c) => (
-          <div key={c.label} className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
-            <c.icon className={`w-5 h-5 mb-3 ${c.color}`} />
+        {cards.map((c, index) => (
+          <div
+            key={c.label}
+            className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 cursor-default"
+            style={{ animationDelay: `${index * 0.08}s` }}
+          >
+            <c.icon className={`w-5 h-5 mb-3 ${c.color} transition-transform duration-300 hover:scale-110`} />
             <div className="text-2xl font-bold text-slate-800">{c.value}</div>
-            <div className="text-sm text-slate-500 mt-1">{c.label}</div>
+            <div className="text-sm text-slate-500 mt-1 font-medium">{c.label}</div>
           </div>
         ))}
       </div>
@@ -122,13 +126,13 @@ export default function Payment() {
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(1) }}
             placeholder="Search by learner or invoice ID..."
-            className="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+            className="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all duration-200 hover:border-slate-300"
           />
         </div>
         <select
           value={status}
           onChange={(e) => { setStatus(e.target.value); setPage(1) }}
-          className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm"
+          className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 transition-all duration-200"
           title="select"
         >
           <option value="all">All Status</option>
@@ -138,7 +142,7 @@ export default function Payment() {
         </select>
         <button
           onClick={handleExport}
-          className="flex items-center gap-2 px-4 py-2.5 bg-[#004900] text-white rounded-xl text-sm hover:bg-[#004900]"
+          className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-[#004900] to-[#005c00] text-white rounded-xl text-sm hover:from-[#005c00] hover:to-[#004900] transition-all duration-300 shadow-sm hover:shadow-md active:scale-[0.98]"
         >
           <Download size={16} /> Export
         </button>
@@ -149,24 +153,29 @@ export default function Payment() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-slate-100 text-slate-600">
-                <th className="text-left px-6 py-4 font-medium">Invoice ID</th>
-                <th className="text-left px-6 py-4 font-medium">Learner</th>
-                <th className="text-left px-6 py-4 font-medium">Amount</th>
-                <th className="text-left px-6 py-4 font-medium">Method</th>
-                <th className="text-left px-6 py-4 font-medium">Date</th>
-                <th className="text-left px-6 py-4 font-medium">Status</th>
-                <th className="text-left px-6 py-4 font-medium">Actions</th>
+              <tr className="border-b border-slate-100 text-slate-500">
+                <th className="text-left px-6 py-4 font-semibold text-xs uppercase tracking-wider">Invoice ID</th>
+                <th className="text-left px-6 py-4 font-semibold text-xs uppercase tracking-wider">Learner</th>
+                <th className="text-left px-6 py-4 font-semibold text-xs uppercase tracking-wider">Amount</th>
+                <th className="text-left px-6 py-4 font-semibold text-xs uppercase tracking-wider">Method</th>
+                <th className="text-left px-6 py-4 font-semibold text-xs uppercase tracking-wider">Date</th>
+                <th className="text-left px-6 py-4 font-semibold text-xs uppercase tracking-wider">Status</th>
+                <th className="text-left px-6 py-4 font-semibold text-xs uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody>
               {loading? (
-                <tr><td colSpan={7} className="px-6 py-10 text-center text-slate-500">Loading...</td></tr>
+                <tr><td colSpan={7} className="px-6 py-10 text-center text-slate-500">
+                  <div className="inline-flex items-center gap-2">
+                    <div className="w-4 h-4 border-2 border-gray-300 border-t-[#004900] rounded-full animate-spin"></div>
+                    Loading...
+                  </div>
+                </td></tr>
               ) : invoices.length === 0? (
                 <tr><td colSpan={7} className="px-6 py-10 text-center text-slate-500">No invoices found</td></tr>
               ) : (
                 invoices.map((inv) => (
-                  <tr key={inv._id} className="border-b border-slate-50 hover:bg-slate-50/50">
+                  <tr key={inv._id} className="border-b border-slate-50 hover:bg-[#004900]/[0.02] transition-colors duration-200">
                     <td className="px-6 py-4 font-medium text-slate-800">{inv.invoiceId}</td>
                     <td className="px-6 py-4 text-slate-700">{inv.learnerName}</td>
                     <td className="px-6 py-4 font-semibold text-slate-800">{formatNaira(inv.amount)}</td>
@@ -174,9 +183,9 @@ export default function Payment() {
                     <td className="px-6 py-4 text-slate-500">{new Date(inv.date).toISOString().split('T')[0]}</td>
                     <td className="px-6 py-4"><span className={statusBadge(inv.status)}>{inv.status}</span></td>
                     <td className="px-6 py-4">
-                      <div className="flex items-center gap-3 text-slate-500">
-                        <button title="View"><Eye size={16} /></button>
-                        <button title="Download"><Download size={16} /></button>
+                      <div className="flex items-center gap-2 text-slate-400">
+                        <button title="View" className="p-1.5 rounded-lg hover:bg-gray-100 hover:text-[#004900] transition-all duration-200"><Eye size={16} /></button>
+                        <button title="Download" className="p-1.5 rounded-lg hover:bg-gray-100 hover:text-[#004900] transition-all duration-200"><Download size={16} /></button>
                       </div>
                     </td>
                   </tr>
@@ -191,11 +200,11 @@ export default function Payment() {
           <p className="text-xs text-slate-500">
             Showing {(page-1)*limit + 1} - {Math.min(page*limit, total)} of {total}
           </p>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <button
               disabled={page === 1}
               onClick={() => setPage(p => p - 1)}
-              className="px-3 py-1.5 text-sm border rounded-lg disabled:opacity-40"
+              className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg disabled:opacity-40 hover:bg-gray-50 transition-all duration-200"
             >
               Prev
             </button>
@@ -205,7 +214,7 @@ export default function Payment() {
                 <button
                   key={p}
                   onClick={() => setPage(p)}
-                  className={`w-8 h-8 text-sm rounded-lg ${p === page? "bg-[#004900] text-white" : "border"}`}
+                  className={`w-8 h-8 text-sm rounded-lg transition-all duration-200 ${p === page? "bg-[#004900] text-white shadow-sm" : "border border-slate-200 hover:bg-gray-50"}`}
                 >
                   {p}
                 </button>
@@ -214,7 +223,7 @@ export default function Payment() {
             <button
               disabled={page === totalPages}
               onClick={() => setPage(p => p + 1)}
-              className="px-3 py-1.5 text-sm border rounded-lg disabled:opacity-40"
+              className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg disabled:opacity-40 hover:bg-gray-50 transition-all duration-200"
             >
               Next
             </button>

@@ -11,116 +11,41 @@ export default function Course() {
   const [activeTab, setActiveTab] = useState("manage");
 
   return (
-    <div className="w-[95%] flex flex-col gap-3">
-      <ul className="w-full flex flex-row gap-5 border-b pt-2 pl-2 overflow-x-auto">
-        <li>
-          <button
-            type="button"
-            onClick={() => setActiveTab("upload")}
-            className={`w-fit h-15 px-3 transition whitespace-nowrap
-            ${
-              activeTab === "upload"
-                ? "border-b-2 border-[#004900] text-[#004900] font-semibold"
-                : "text-gray-500"
-            }`}
-          >
-            Create Course
-          </button>
-        </li>
-
-        <li>
-          <button
-            type="button"
-            onClick={() => setActiveTab("manage")}
-            className={`w-fit h-15 px-3 transition whitespace-nowrap
-            ${
-              activeTab === "manage"
-                ? "border-b-2 border-[#004900] text-[#004900] font-semibold"
-                : "text-gray-500"
-            }`}
-          >
-            Manage Courses
-          </button>
-        </li>
-
-        <li>
-          <button
-            type="button"
-            onClick={() => setActiveTab("tracks")}
-            className={`w-fit h-15 px-3 transition whitespace-nowrap
-            ${
-              activeTab === "tracks"
-                ? "border-b-2 border-[#004900] text-[#004900] font-semibold"
-                : "text-gray-500"
-            }`}
-          >
-            Manage Tracks
-          </button>
-        </li>
-
-        <li>
-          <button
-            type="button"
-            onClick={() => setActiveTab("modules")}
-            className={`w-fit h-15 px-3 transition whitespace-nowrap
-            ${
-              activeTab === "modules"
-                ? "border-b-2 border-[#004900] text-[#004900] font-semibold"
-                : "text-gray-500"
-            }`}
-          >
-            Manage Modules
-          </button>
-        </li>
-
-        <li>
-          <button
-            type="button"
-            onClick={() => setActiveTab("units")}
-            className={`w-fit h-15 px-3 transition whitespace-nowrap
-            ${
-              activeTab === "units"
-                ? "border-b-2 border-[#004900] text-[#004900] font-semibold"
-                : "text-gray-500"
-            }`}
-          >
-            Manage Units
-          </button>
-        </li>
-       
+    <div className="w-[95%] flex flex-col gap-4 animate-fade-in">
+      <ul className="w-full flex flex-row gap-1 border-b border-gray-200 pt-2 pl-2 overflow-x-auto">
+        {[
+          { key: "upload", label: "Create Course" },
+          { key: "manage", label: "Manage Courses" },
+          { key: "tracks", label: "Manage Tracks" },
+          { key: "modules", label: "Manage Modules" },
+          { key: "units", label: "Manage Units" },
+        ].map((tab) => (
+          <li key={tab.key}>
+            <button
+              type="button"
+              onClick={() => setActiveTab(tab.key)}
+              className={`w-fit h-15 px-4 transition-all duration-300 whitespace-nowrap relative
+              ${
+                activeTab === tab.key
+                  ? "text-[#004900] font-semibold"
+                  : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              {tab.label}
+              {activeTab === tab.key && (
+                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#004900] rounded-full" />
+              )}
+            </button>
+          </li>
+        ))}
       </ul>
 
-      <div>
-        {activeTab === "manage" && (
-          <div>
-            <Manage />
-          </div>
-        )}
-
-        {activeTab === "upload" && (
-          <div>
-            <Upload onComplete={() => setActiveTab("manage")} />
-          </div>
-        )}
-
-        {activeTab === "tracks" && (
-          <div>
-            <ManageTracks />
-          </div>
-        )}
-
-        {activeTab === "modules" && (
-          <div>
-            <ManageModules />
-          </div>
-        )}
-
-        {activeTab === "units" && (
-          <div>
-            <ManageUnits />
-          </div>
-        )}
-        
+      <div className="animate-slide-up">
+        {activeTab === "manage" && <Manage />}
+        {activeTab === "upload" && <Upload onComplete={() => setActiveTab("manage")} />}
+        {activeTab === "tracks" && <ManageTracks />}
+        {activeTab === "modules" && <ManageModules />}
+        {activeTab === "units" && <ManageUnits />}
       </div>
     </div>
   );

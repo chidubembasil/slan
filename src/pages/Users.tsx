@@ -193,10 +193,10 @@ export default function Users() {
   };
 
   return (
-    <div className="bg-white p-6 shadow-sm rounded-xl w-full border border-gray-100">
+    <div className="bg-white p-6 shadow-sm rounded-2xl w-full border border-gray-200/60 animate-fade-in">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-semibold text-slate-900">Users Management</h1>
-        <span className="text-sm text-gray-500">
+        <h1 className="text-2xl font-semibold text-slate-900 tracking-tight">Users Management</h1>
+        <span className="text-sm text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
           {filteredUsers.length} of {users.length} users
         </span>
       </div>
@@ -210,13 +210,13 @@ export default function Users() {
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            className="w-full pl-10 pr-4 h-11 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900]"
+            className="w-full pl-10 pr-4 h-11 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all duration-200 hover:border-gray-300"
           />
         </div>
 
         <button
           onClick={handleSearch}
-          className="bg-[#004900] hover:bg-[#003600] text-white px-5 h-11 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 whitespace-nowrap"
+          className="bg-gradient-to-r from-[#004900] to-[#005c00] hover:from-[#005c00] hover:to-[#004900] text-white px-5 h-11 rounded-xl text-sm font-medium transition-all duration-300 flex items-center gap-2 whitespace-nowrap shadow-sm hover:shadow-md active:scale-[0.98]"
         >
           <Search size={16} />
           Search
@@ -225,9 +225,9 @@ export default function Users() {
 
       {/* Active filters */}
       {searchQuery && (
-        <div className="flex items-center gap-2 mb-4 text-xs">
+        <div className="flex items-center gap-2 mb-4 text-xs animate-slide-down">
           <span className="text-gray-500">Filters:</span>
-          <span className="inline-flex items-center gap-1 bg-[#004900]/10 text-[#004900] px-2.5 py-1 rounded-md">
+          <span className="inline-flex items-center gap-1 bg-[#004900]/10 text-[#004900] px-3 py-1.5 rounded-lg font-medium">
             "{searchQuery}"
             <button
               onClick={() => {
@@ -235,7 +235,7 @@ export default function Users() {
                 setSearchQuery("");
                 setCurrentPage(1);
               }}
-              className="hover:text-[#003600]"
+              className="hover:text-[#003600] ml-1 transition-colors"
             >
               ×
             </button>
@@ -244,27 +244,27 @@ export default function Users() {
       )}
 
       {error && (
-        <div className="mb-4 text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-4 py-2">
+        <div className="mb-4 text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-4 py-3 animate-slide-down">
           {error}
         </div>
       )}
 
       {/* TABLE */}
-      <div className="overflow-x-auto border border-gray-200 rounded-lg">
+      <div className="overflow-x-auto border border-gray-200/60 rounded-xl">
         <table className="w-full">
-          <thead className="bg-gray-50 border-b border-gray-200">
+          <thead className="bg-gray-50/80 border-b border-gray-200/60">
             <tr>
               {COLUMNS.map((col) => (
                 <th
                   key={col.key}
-                  className="text-left py-3.5 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider"
+                  className="text-left py-3.5 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider"
                 >
                   {col.label}
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100 bg-white">
+          <tbody className="divide-y divide-gray-50 bg-white">
             {loading ? (
               <tr>
                 <td colSpan={COLUMNS.length} className="py-16 text-center">
@@ -285,7 +285,7 @@ export default function Users() {
               </tr>
             ) : (
               paginatedUsers.map((user) => (
-                <tr key={user.id} className="hover:bg-gray-50/50 transition-colors">
+                <tr key={user.id} className="hover:bg-[#004900]/[0.02] transition-colors duration-200 group">
                   {COLUMNS.map((col) => (
                     <td key={col.key} className="py-3.5 px-4 align-middle">
                       {renderCell(user, col.key)}
@@ -308,7 +308,7 @@ export default function Users() {
             <button
               onClick={() => goToPage(safePage - 1)}
               disabled={safePage === 1}
-              className="p-1.5 border border-gray-300 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 transition"
+              className="p-1.5 border border-gray-200 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 hover:border-gray-300 transition-all duration-200"
               title="Previous page"
             >
               <ChevronLeft size={16} className="text-gray-600" />
@@ -337,10 +337,10 @@ export default function Users() {
                   <button
                     key={page}
                     onClick={() => goToPage(page)}
-                    className={`min-w-8 h-8 px-2 rounded-lg text-sm font-medium transition ${
+                    className={`min-w-8 h-8 px-2 rounded-lg text-sm font-medium transition-all duration-200 ${
                       page === safePage
-                        ? "bg-[#004900] text-white"
-                        : "border border-gray-300 text-gray-700 hover:bg-gray-50"
+                        ? "bg-[#004900] text-white shadow-sm"
+                        : "border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300"
                     }`}
                   >
                     {page}
@@ -351,7 +351,7 @@ export default function Users() {
             <button
               onClick={() => goToPage(safePage + 1)}
               disabled={safePage === totalPages}
-              className="p-1.5 border border-gray-300 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 transition"
+              className="p-1.5 border border-gray-200 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 hover:border-gray-300 transition-all duration-200"
               title="Next page"
             >
               <ChevronRight size={16} className="text-gray-600" />

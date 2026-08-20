@@ -161,20 +161,41 @@ export default function AdminLogin() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-5xl grid lg:grid-cols-2 bg-white rounded-2xl shadow-xl overflow-hidden">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-[#004900]/5 flex items-center justify-center p-4">
+      <div className="w-full max-w-5xl grid lg:grid-cols-2 bg-white rounded-3xl shadow-2xl overflow-hidden animate-scale-in">
         {/* Left panel */}
-        <div className="bg-[#004900] p-10 lg:p-12 text-white flex flex-col justify-between">
-          <div>
-            <p className="font-bold text-sm tracking-widest uppercase mb-10 lg:mb-20 opacity-80">SLAN ADMIN</p>
-            <h1 className="text-3xl lg:text-5xl font-bold leading-tight">Secure<br/>Administrator<br/>Access</h1>
-            <p className="text-white/70 mt-3 text-sm lg:text-base">Institutional gateway for state TSCs and Academy facilitators.</p>
+        <div className="bg-gradient-to-br from-[#004900] via-[#003d00] to-[#002a00] p-10 lg:p-12 text-white flex flex-col justify-between relative overflow-hidden">
+          {/* Decorative elements */}
+          <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/2" />
+          <div className="absolute bottom-0 left-0 w-48 h-48 bg-white/5 rounded-full translate-y-1/2 -translate-x-1/2" />
+          <div className="absolute top-1/2 left-1/2 w-32 h-32 bg-white/5 rounded-full -translate-x-1/2 -translate-y-1/2 animate-pulse-soft" />
+
+          <div className="relative z-10">
+            <div className="flex items-center gap-2 mb-10 lg:mb-20">
+              <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center">
+                <span className="text-white font-bold text-lg">S</span>
+              </div>
+              <p className="font-bold text-sm tracking-widest uppercase opacity-90">SLAN ADMIN</p>
+            </div>
+            <h1 className="text-3xl lg:text-5xl font-bold leading-tight animate-slide-up">
+              Secure<br/>Administrator<br/>Access
+            </h1>
+            <p className="text-white/60 mt-4 text-sm lg:text-base animate-slide-up stagger-2">
+              Institutional gateway for state TSCs and Academy facilitators.
+            </p>
+          </div>
+
+          {/* Bottom decorative dots */}
+          <div className="relative z-10 flex gap-1.5 mt-8">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className={`w-2 h-2 rounded-full ${i === 0 ? 'bg-white' : 'bg-white/30'}`} />
+            ))}
           </div>
         </div>
 
         {/* Right panel */}
-        <div className="p-8 lg:p-12 flex flex-col justify-center">
-          <h2 className="text-2xl font-semibold mb-1">Authorize Access</h2>
+        <div className="p-8 lg:p-12 flex flex-col justify-center animate-fade-in">
+          <h2 className="text-2xl font-semibold mb-1 text-gray-900">Authorize Access</h2>
           <p className="text-sm text-gray-500 mb-7">
             {step === 'credentials' ? 'Enter your credentials to continue.' : 'Enter the 6-digit code sent to your email.'}
           </p>
@@ -240,7 +261,7 @@ export default function AdminLogin() {
                   type="button"
                   onClick={handleCredentialsNext}
                   disabled={otpSending}
-                  className="w-full bg-[#004900] text-white py-2.5 rounded-lg font-medium text-sm disabled:opacity-60 hover:bg-[#005c00] transition-colors mt-2"
+                  className="w-full bg-gradient-to-r from-[#004900] to-[#005c00] text-white py-3 rounded-xl font-medium text-sm disabled:opacity-60 hover:from-[#005c00] hover:to-[#004900] hover:shadow-lg hover:shadow-[#004900]/25 active:scale-[0.98] transition-all duration-300 mt-2"
                 >
                   {otpSending ? "Sending OTP…" : "Login →"}
                 </button>
@@ -291,7 +312,7 @@ export default function AdminLogin() {
                           pasted.split("").forEach((ch, idx) => { if (idx < 6) newOtp[idx] = ch; });
                           setOtp(newOtp);
                         }}
-                        className={`flex-1 min-w-0 h-12 text-center text-xl font-semibold border-2 rounded-lg focus:outline-none focus:ring-2 transition-colors ${digit ? "border-[#004900] focus:ring-[#004900]/20" : "border-gray-300 focus:border-[#004900] focus:ring-[#004900]/20"}`}
+                        className={`flex-1 min-w-0 h-12 text-center text-xl font-semibold border-2 rounded-xl focus:outline-none focus:ring-2 transition-all duration-300 ${digit ? "border-[#004900] focus:ring-[#004900]/20 bg-[#004900]/5" : "border-gray-200 focus:border-[#004900] focus:ring-[#004900]/20 hover:border-gray-300"}`}
                         aria-label="input"
                       />
                     ))}
@@ -309,7 +330,7 @@ export default function AdminLogin() {
                   type="button"
                   onClick={() => handleSubmit()}
                   disabled={loading || otp.join("").length !== 6}
-                  className="w-full bg-[#004900] text-white py-2.5 rounded-lg font-medium text-sm disabled:opacity-60 hover:bg-[#005c00] transition-colors mt-2"
+                  className="w-full bg-gradient-to-r from-[#004900] to-[#005c00] text-white py-3 rounded-xl font-medium text-sm disabled:opacity-60 hover:from-[#005c00] hover:to-[#004900] hover:shadow-lg hover:shadow-[#004900]/25 active:scale-[0.98] transition-all duration-300 mt-2"
                 >
                   {loading ? "Authorizing…" : "Submit →"}
                 </button>

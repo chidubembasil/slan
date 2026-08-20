@@ -93,22 +93,19 @@ const AddAdmin: React.FC = () => {
   };
 
   return (
-    <div className="p-8 max-w-5xl mx-auto">
+    <div className="p-8 max-w-5xl mx-auto animate-fade-in">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">Add Admin</h1>
+        <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Add Admin</h1>
         <p className="text-gray-500 mt-1">Invite a new administrator to SLAN Admin</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
         {/* Invite form card */}
         <div className="lg:col-span-2">
-          <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-6">
+          <div className="bg-white border border-gray-200/60 rounded-2xl shadow-sm p-6 hover:shadow-md transition-shadow duration-300">
             <div className="flex items-center gap-2 mb-5">
-              <div
-                className="w-9 h-9 rounded-lg flex items-center justify-center"
-                style={{ backgroundColor: "#0049001A" }}
-              >
+              <div className="w-10 h-10 rounded-xl bg-[#004900]/10 flex items-center justify-center">
                 <ShieldCheck size={18} style={{ color: "#004900" }} />
               </div>
               <h2 className="text-lg font-semibold text-gray-900">Invite Administrator</h2>
@@ -129,11 +126,8 @@ const AddAdmin: React.FC = () => {
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
                     placeholder="e.g. Mesioye Johnson"
-                    className="w-full pl-9 pr-3 py-2.5 border border-gray-300 rounded-lg text-sm
-                      focus:outline-none focus:ring-2 focus:ring-offset-0"
-                    style={{ boxShadow: "none" }}
-                    onFocus={(e) => (e.currentTarget.style.boxShadow = "0 0 0 2px #00490033")}
-                    onBlur={(e) => (e.currentTarget.style.boxShadow = "none")}
+                    className="w-full pl-9 pr-3 py-2.5 border border-gray-200 rounded-xl text-sm
+                      focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all duration-200 hover:border-gray-300"
                     disabled={loading}
                   />
                 </div>
@@ -153,17 +147,15 @@ const AddAdmin: React.FC = () => {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="e.g. johnsonmesh20@gmail.com"
-                    className="w-full pl-9 pr-3 py-2.5 border border-gray-300 rounded-lg text-sm
-                      focus:outline-none"
-                    onFocus={(e) => (e.currentTarget.style.boxShadow = "0 0 0 2px #00490033")}
-                    onBlur={(e) => (e.currentTarget.style.boxShadow = "none")}
+                    className="w-full pl-9 pr-3 py-2.5 border border-gray-200 rounded-xl text-sm
+                      focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all duration-200 hover:border-gray-300"
                     disabled={loading}
                   />
                 </div>
               </div>
 
               {formError && (
-                <div className="flex items-start gap-2 text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+                <div className="flex items-start gap-2 text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2 animate-slide-down">
                   <XCircle size={16} className="mt-0.5 shrink-0" />
                   <span>{formError}</span>
                 </div>
@@ -173,8 +165,7 @@ const AddAdmin: React.FC = () => {
                 type="submit"
                 disabled={loading}
                 className="w-full flex items-center justify-center gap-2 text-white font-medium
-                  py-2.5 rounded-lg transition-opacity disabled:opacity-70"
-                style={{ backgroundColor: "#004900" }}
+                  py-2.5 rounded-xl transition-all duration-300 bg-gradient-to-r from-[#004900] to-[#005c00] hover:from-[#005c00] hover:to-[#004900] hover:shadow-lg hover:shadow-[#004900]/25 active:scale-[0.98] disabled:opacity-70"
               >
                 {loading ? (
                   <>
@@ -199,7 +190,7 @@ const AddAdmin: React.FC = () => {
 
         {/* Recently invited list */}
         <div className="lg:col-span-3">
-          <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+          <div className="bg-white border border-gray-200/60 rounded-2xl shadow-sm overflow-hidden hover:shadow-md transition-shadow duration-300">
             <div className="px-6 py-4 border-b border-gray-100">
               <h2 className="text-lg font-semibold text-gray-900">Recent Invites</h2>
               <p className="text-sm text-gray-500 mt-0.5">This session only</p>
@@ -213,27 +204,24 @@ const AddAdmin: React.FC = () => {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-gray-500 border-b border-gray-100">
-                    <th className="px-6 py-3 font-medium">Name</th>
-                    <th className="px-6 py-3 font-medium">Email</th>
-                    <th className="px-6 py-3 font-medium">Status</th>
+                    <th className="px-6 py-3 font-semibold text-xs uppercase tracking-wider">Name</th>
+                    <th className="px-6 py-3 font-semibold text-xs uppercase tracking-wider">Email</th>
+                    <th className="px-6 py-3 font-semibold text-xs uppercase tracking-wider">Status</th>
                   </tr>
                 </thead>
                 <tbody>
                   {invitedList.map((admin, idx) => (
-                    <tr key={idx} className="border-b border-gray-50 last:border-0">
+                    <tr key={idx} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition-colors duration-200">
                       <td className="px-6 py-3.5 font-medium text-gray-900">{admin.fullName}</td>
                       <td className="px-6 py-3.5 text-gray-600">{admin.email}</td>
                       <td className="px-6 py-3.5">
                         {admin.status === "success" ? (
-                          <span
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium"
-                            style={{ backgroundColor: "#0049001A", color: "#004900" }}
-                          >
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-[#004900]/10 text-[#004900]">
                             <CheckCircle2 size={12} />
                             {admin.message}
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-red-50 text-red-600">
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-red-50 text-red-600">
                             <XCircle size={12} />
                             {admin.message}
                           </span>

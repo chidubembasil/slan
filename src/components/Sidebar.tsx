@@ -49,42 +49,50 @@ export default function SideBar({ isOpen, onClose }: Props) {
       )}
 
       <div className={`
-        fixed top-0 left-0 h-screen w-60 bg-[#004900] flex flex-col z-40
-        transform transition-transform duration-300 ease-in-out
+        fixed top-0 left-0 h-screen w-60 bg-gradient-to-b from-[#004900] via-[#003d00] to-[#002a00] flex flex-col z-40
+        transform transition-transform duration-300 ease-in-out shadow-2xl
         ${isOpen? "translate-x-0" : "-translate-x-full"}
         md:translate-x-0
       `}>
-        <div className="h-16 flex items-center justify-between px-4 shrink-0">
-          <p className="text-2xl text-white">SLAN ADMIN</p>
-          <button className="md:hidden text-white p-1" onClick={onClose} aria-label="Close menu">
+        <div className="h-16 flex items-center justify-between px-4 shrink-0 border-b border-white/10">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-white/20 backdrop-blur-sm flex items-center justify-center">
+              <span className="text-white font-bold text-sm">S</span>
+            </div>
+            <p className="text-xl text-white font-semibold tracking-tight">SLAN ADMIN</p>
+          </div>
+          <button className="md:hidden text-white/80 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-all duration-200" onClick={onClose} aria-label="Close menu">
             <X size={20} />
           </button>
         </div>
 
-        <nav className="flex-1 overflow-y-auto px-2 py-2">
-          {navItems.map((item) => (
+        <nav className="flex-1 overflow-y-auto px-2 py-3 space-y-1">
+          {navItems.map((item, index) => (
             <NavLink
               key={item.path}
               to={item.path}
               onClick={onClose}
               className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 text-sm rounded
-                 ${isActive? "bg-[rgba(255,255,255,0.1)] text-white font-bold border-l-4 border-[#FACC15]" : "text-white/80 hover:bg-[#005A00] hover:text-white"}`
+                `flex items-center gap-3 px-3 py-2.5 text-sm rounded-xl transition-all duration-200 group
+                 ${isActive
+                   ? "bg-white/15 text-white font-semibold shadow-lg shadow-black/10 border-l-4 border-[#FACC15] backdrop-blur-sm"
+                   : "text-white/70 hover:bg-white/10 hover:text-white hover:translate-x-1"}`
               }
+              style={{ animationDelay: `${index * 0.05}s` }}
             >
-              <item.icon size={20} />
-              {item.name}
+              <item.icon size={20} className="shrink-0 transition-transform duration-200 group-hover:scale-110" />
+              <span>{item.name}</span>
             </NavLink>
           ))}
         </nav>
 
-        <div className="h-14 border-t border-[#3f4864] flex items-center px-3">
-          {/* <Link to="/AdminUsers" className="flex flex-row gap-2.5">
-            <Share2 className="w-4 h-4" color="white" size={20} />
-            <p>Share</p>
-          </Link> */}
-          <button onClick={handleLogout} className="flex items-center gap-3 text-white/80 hover:text-white text-sm w-full">
-            <LogOut size={20} /> Logout
+        <div className="p-3 border-t border-white/10">
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-3 text-white/60 hover:text-white hover:bg-white/10 text-sm w-full px-3 py-2.5 rounded-xl transition-all duration-200"
+          >
+            <LogOut size={20} className="transition-transform duration-200 hover:-translate-x-1" />
+            Logout
           </button>
         </div>
       </div>
