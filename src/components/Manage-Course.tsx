@@ -788,7 +788,7 @@ export default function ManageCourses() {
               <select
                 value={selectedCourseId}
                 onChange={(e) => setSelectedCourseId(e.target.value === "all" ? "all" : Number(e.target.value))}
-                className="px-3.5 py-2 border border-gray-200 rounded-lg text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900]"
+                className="px-3.5 py-2 border border-gray-200 rounded-xl text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all shadow-sm"
                 aria-label="Filter by course"
               >
                 <option value="all">All courses</option>
@@ -807,21 +807,33 @@ export default function ManageCourses() {
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
 
           {loading && (
-            <div className="flex items-center justify-center py-20 text-gray-400 text-sm">
-              Loading courses…
+            <div className="flex flex-col items-center justify-center py-20 gap-3 text-gray-400 text-sm">
+              <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center animate-pulse">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+              </div>
+              Loading courses...
             </div>
           )}
 
           {!loading && fetchError && (
             <div className="flex flex-col items-center justify-center py-20 gap-3">
+              <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+              </div>
               <p className="text-sm text-red-600">{fetchError}</p>
               <button onClick={fetchCourses} className="text-sm text-[#004900] underline">Retry</button>
             </div>
           )}
 
           {!loading && !fetchError && filteredCourses.length === 0 && (
-            <div className="flex items-center justify-center py-20 text-gray-400 text-sm">
-              {courses.length === 0 ? "No courses found." : "No course matches this selection."}
+            <div className="flex flex-col items-center justify-center py-20 gap-3">
+              <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+              </div>
+              <div className="text-center">
+                <p className="text-sm font-medium text-gray-500">{courses.length === 0 ? "No courses found" : "No course matches this selection"}</p>
+                <p className="text-xs text-gray-400 mt-1">{courses.length === 0 ? "Create your first course to get started." : "Try changing the filter."}</p>
+              </div>
             </div>
           )}
 

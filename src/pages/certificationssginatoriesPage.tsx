@@ -88,7 +88,7 @@ function Field({
 }
 
 const inputClass =
-  "w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#2c5015] focus:border-[#2c5015]";
+  "w-full rounded-xl border border-gray-200 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#2c5015]/20 focus:border-[#2c5015] transition-all shadow-sm bg-white";
 
 function PrimaryButton({
   children,
@@ -106,7 +106,7 @@ function PrimaryButton({
       type={type}
       onClick={onClick}
       disabled={disabled}
-      className="inline-flex items-center gap-2 bg-[#2c5015] hover:bg-[#234110] disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium px-4 py-2 rounded-md transition-colors"
+      className="inline-flex items-center gap-2 bg-[#2c5015] hover:bg-[#234110] disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium px-4 py-2.5 rounded-xl transition-all shadow-sm shadow-[#2c5015]/20"
     >
       {children}
     </button>
@@ -128,7 +128,7 @@ function Banner({
       : "bg-red-50 text-red-700 border-red-200";
   return (
     <div
-      className={`flex items-start justify-between gap-3 border rounded-md px-4 py-3 text-sm mb-5 ${styles}`}
+      className={`flex items-start justify-between gap-3 border rounded-xl px-4 py-3 text-sm mb-5 ${styles}`}
     >
       <span>{message}</span>
       <button onClick={onClose} className="opacity-60 hover:opacity-100">
@@ -259,7 +259,7 @@ function CreateSignatoryTab({ onCreated }: { onCreated: () => void }) {
 
       <form
         onSubmit={handleSubmit}
-        className="border border-gray-200 rounded-lg p-5 bg-gray-50 max-w-2xl"
+        className="border border-gray-200/80 rounded-2xl p-6 bg-gray-50/50 max-w-2xl shadow-sm"
       >
         <div className="grid grid-cols-2 gap-x-6">
           <Field label="Name" required>
@@ -304,18 +304,18 @@ function CreateSignatoryTab({ onCreated }: { onCreated: () => void }) {
         </div>
 
         <Field label="Signature Image (PNG/JPEG/SVG/WEBP — max 2MB)">
-          <label className="flex items-center gap-3 border border-dashed border-gray-300 rounded-md px-4 py-4 cursor-pointer hover:border-[#2c5015] transition-colors bg-white">
-            <Upload size={18} className="text-gray-400" />
-            <span className="text-sm text-gray-500">
-              {imageFile ? imageFile.name : "Click to upload signature image"}
-            </span>
-            <input
-              type="file"
-              accept=".png,.jpg,.jpeg,.svg,.webp"
-              onChange={handleImageChange}
-              className="hidden"
-            />
-          </label>
+            <label className="flex items-center gap-3 border border-dashed border-gray-300 rounded-xl px-4 py-4 cursor-pointer hover:border-[#2c5015] transition-colors bg-white">
+              <Upload size={18} className="text-gray-400" />
+              <span className="text-sm text-gray-500">
+                {imageFile ? imageFile.name : "Click to upload signature image"}
+              </span>
+              <input
+                type="file"
+                accept=".png,.jpg,.jpeg,.svg,.webp"
+                onChange={handleImageChange}
+                className="hidden"
+              />
+            </label>
           {imagePreview && (
             <img
               src={imagePreview}
@@ -448,7 +448,7 @@ function ManageSignatoriesTab({
       {editingId && (
         <form
           onSubmit={handleUpdate}
-          className="border border-gray-200 rounded-lg p-5 mb-6 bg-gray-50 max-w-2xl"
+          className="border border-gray-200/80 rounded-2xl p-6 mb-6 bg-gray-50/50 max-w-2xl shadow-sm"
         >
           <h3 className="text-sm font-semibold text-gray-700 mb-4">
             Editing Signatory #{editingId}
@@ -493,7 +493,7 @@ function ManageSignatoriesTab({
             </Field>
           </div>
           <Field label="Replace Signature Image (optional)">
-            <label className="flex items-center gap-3 border border-dashed border-gray-300 rounded-md px-4 py-4 cursor-pointer hover:border-[#2c5015] transition-colors bg-white">
+            <label className="flex items-center gap-3 border border-dashed border-gray-300 rounded-xl px-4 py-4 cursor-pointer hover:border-[#2c5015] transition-colors bg-white">
               <Upload size={18} className="text-gray-400" />
               <span className="text-sm text-gray-500">
                 {imageFile ? imageFile.name : "Click to upload a new image"}
@@ -521,38 +521,51 @@ function ManageSignatoriesTab({
         </form>
       )}
 
-      <div className="border border-gray-200 rounded-lg overflow-hidden">
+      <div className="border border-gray-200/80 rounded-2xl overflow-hidden shadow-sm">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50 text-gray-500 text-xs uppercase tracking-wide">
+          <thead className="bg-gray-50/80 text-gray-500 text-xs uppercase tracking-wide border-b border-gray-200/80">
             <tr>
-              <th className="text-left px-4 py-3 font-medium">Signature</th>
-              <th className="text-left px-4 py-3 font-medium">Name</th>
-              <th className="text-left px-4 py-3 font-medium">Title</th>
-              <th className="text-left px-4 py-3 font-medium">Order</th>
-              <th className="text-left px-4 py-3 font-medium">Status</th>
-              <th className="text-right px-4 py-3 font-medium">Actions</th>
+              <th className="text-left px-5 py-3.5 font-semibold">Signature</th>
+              <th className="text-left px-5 py-3.5 font-semibold">Name</th>
+              <th className="text-left px-5 py-3.5 font-semibold">Title</th>
+              <th className="text-left px-5 py-3.5 font-semibold">Order</th>
+              <th className="text-left px-5 py-3.5 font-semibold">Status</th>
+              <th className="text-right px-5 py-3.5 font-semibold">Actions</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="divide-y divide-gray-100">
             {loading && (
               <tr>
-                <td colSpan={6} className="text-center py-10 text-gray-400">
-                  Loading signatories...
+                <td colSpan={6} className="text-center py-16">
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center animate-pulse">
+                      <Search className="w-4 h-4 text-gray-400" />
+                    </div>
+                    <p className="text-sm text-gray-400">Loading signatories...</p>
+                  </div>
                 </td>
               </tr>
             )}
             {!loading && signatories.length === 0 && (
               <tr>
-                <td colSpan={6} className="text-center py-10 text-gray-400">
-                  No signatories yet. Use the "Create Signatory" tab to add one.
+                <td colSpan={6} className="text-center py-16">
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-500">No signatories yet</p>
+                      <p className="text-xs text-gray-400 mt-1">Use the "Create Signatory" tab to add one.</p>
+                    </div>
+                  </div>
                 </td>
               </tr>
             )}
             {!loading &&
               signatories.map((s) => (
-                <tr key={s.id} className="border-t border-gray-100">
-                  <td className="px-4 py-3">
-                    <div className="h-8 w-16 bg-gray-50 rounded flex items-center justify-center overflow-hidden border border-gray-100">
+                <tr key={s.id} className="hover:bg-gray-50/60 transition-colors">
+                  <td className="px-5 py-3.5">
+                    <div className="h-8 w-16 bg-gray-50 rounded-lg flex items-center justify-center overflow-hidden border border-gray-100">
                       {s.signatureImagePath ? (
                         <img
                           src={s.signatureImagePath}
@@ -564,31 +577,31 @@ function ManageSignatoriesTab({
                       )}
                     </div>
                   </td>
-                  <td className="px-4 py-3 font-medium text-gray-800">{s.name}</td>
-                  <td className="px-4 py-3 text-gray-500">{s.title}</td>
-                  <td className="px-4 py-3 text-gray-500">{s.displayOrder}</td>
-                  <td className="px-4 py-3">
+                  <td className="px-5 py-3.5 font-medium text-gray-900">{s.name}</td>
+                  <td className="px-5 py-3.5 text-gray-600">{s.title}</td>
+                  <td className="px-5 py-3.5 text-gray-500">{s.displayOrder}</td>
+                  <td className="px-5 py-3.5">
                     <span
-                      className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
+                      className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${
                         s.isActive
-                          ? "bg-green-50 text-green-700"
+                          ? "bg-emerald-50 text-emerald-700 border border-emerald-200/60"
                           : "bg-gray-100 text-gray-500"
                       }`}
                     >
                       {s.isActive ? "Active" : "Inactive"}
                     </span>
                   </td>
-                  <td className="px-4 py-3">
-                    <div className="flex justify-end gap-2">
+                  <td className="px-5 py-3.5">
+                    <div className="flex justify-end gap-1">
                       <button
                         onClick={() => startEdit(s)}
-                        className="p-1.5 rounded hover:bg-gray-100 text-gray-500"
+                        className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
                       >
                         <Pencil size={15} />
                       </button>
                       <button
                         onClick={() => handleDelete(s.id)}
-                        className="p-1.5 rounded hover:bg-red-50 text-red-500"
+                        className="p-2 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
                       >
                         <Trash2 size={15} />
                       </button>
@@ -668,7 +681,7 @@ function IssueCertificateTab() {
 
       <form
         onSubmit={handleSubmit}
-        className="border border-gray-200 rounded-lg p-5 bg-gray-50 max-w-lg"
+        className="border border-gray-200/80 rounded-2xl p-6 bg-gray-50/50 max-w-lg shadow-sm"
       >
         <Field label="User ID" required>
           <input
@@ -706,11 +719,11 @@ function IssueCertificateTab() {
       </form>
 
       {issued && (
-        <div className="mt-6 max-w-lg border border-gray-200 rounded-lg p-5">
+        <div className="mt-6 max-w-lg border border-gray-200/80 rounded-2xl p-6 shadow-sm">
           <h3 className="text-sm font-semibold text-gray-700 mb-3">
             Issued Certificate
           </h3>
-          <pre className="text-xs bg-gray-900 text-green-300 rounded-md p-4 overflow-x-auto">
+          <pre className="text-xs bg-gray-900 text-green-300 rounded-xl p-4 overflow-x-auto">
             {JSON.stringify(issued, null, 2)}
           </pre>
         </div>
@@ -806,7 +819,7 @@ function LookupCertificateTab() {
       </div>
 
       {record && (
-        <div className="max-w-lg border border-gray-200 rounded-lg p-5">
+        <div className="max-w-lg border border-gray-200/80 rounded-2xl p-6 shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-semibold text-gray-700">
               Certificate #{record.id}
@@ -819,7 +832,7 @@ function LookupCertificateTab() {
               Download PDF
             </button>
           </div>
-          <pre className="text-xs bg-gray-900 text-green-300 rounded-md p-4 overflow-x-auto">
+          <pre className="text-xs bg-gray-900 text-green-300 rounded-xl p-4 overflow-x-auto">
             {JSON.stringify(record, null, 2)}
           </pre>
         </div>
@@ -880,12 +893,18 @@ export default function CertificatesPage() {
   return (
     <div className="min-h-screen bg-gray-50 px-10 py-8">
       <div className="flex items-center justify-between mb-1">
-        <h1 className="text-2xl font-bold text-gray-900">Certificate Page</h1>
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-[#2c5015]/10 flex items-center justify-center">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2c5015" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M12 18v-6"/><path d="m9 15 3 3 3-3"/></svg>
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Certificate Page</h1>
+            <p className="text-sm text-gray-500 mt-0.5">
+              Issue and view certificates, and manage the signatories that appear on them.
+            </p>
+          </div>
+        </div>
       </div>
-      <p className="text-sm text-gray-500 mb-6">
-        Issue and view certificates, and manage the signatories that appear
-        on them.
-      </p>
 
       <div className="flex gap-8 border-b border-gray-200 mb-8">
         <TabButton
@@ -905,7 +924,7 @@ export default function CertificatesPage() {
         />
       </div>
 
-      <div className="bg-white rounded-lg">
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-200/80 p-6">
         {tab === "signatories" && <SignatoriesTab />}
         {tab === "issue" && <IssueCertificateTab />}
         {tab === "lookup" && <LookupCertificateTab />}

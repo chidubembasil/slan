@@ -983,13 +983,13 @@ export default function ModuleAssessments() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search by title, module or question type..."
-            className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#004900]/30 focus:border-[#004900]"
+            className="w-full pl-10 pr-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all bg-white shadow-sm"
           />
         </div>
         <select
           value={selectedTrackId}
           onChange={(e) => setSelectedTrackId(e.target.value)}
-          className="px-3 py-2 text-sm border border-gray-200 rounded-lg text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#004900]/30 focus:border-[#004900]"
+          className="px-4 py-2.5 text-sm border border-gray-200 rounded-xl text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all"
           title="Filter by track"
         >
           <option value="">All Tracks</option>
@@ -1001,94 +1001,114 @@ export default function ModuleAssessments() {
         </select>
         <button
           onClick={openArchive}
-          className="inline-flex items-center gap-2 px-3 py-2 text-sm border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50"
+          className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium border border-gray-200 rounded-xl text-gray-600 hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm"
           title="View archive"
         >
           <Archive className="w-4 h-4" />
           Archive
           {(archivedRows.length > 0 || archivedQuestions.length > 0) && (
-            <span className="inline-flex items-center justify-center min-w-4.5 h-4.5 px-1 text-[11px] rounded-full bg-gray-200 text-gray-700">
+            <span className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 text-[11px] font-semibold rounded-full bg-[#004900]/10 text-[#004900]">
               {archivedRows.length + archivedQuestions.length}
             </span>
           )}
         </button>
       </div>
 
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+      <div className="bg-white border border-gray-200/80 rounded-2xl shadow-sm overflow-hidden">
         <table className="w-full text-sm">
           <thead>
-            <tr className="bg-gray-50 border-b border-gray-200 text-left text-gray-500">
-              <th className="px-4 py-3 font-medium">ID</th>
-              <th className="px-4 py-3 font-medium">Title</th>
-              <th className="px-4 py-3 font-medium">Module Name</th>
-              <th className="px-4 py-3 font-medium">Track</th>
-              <th className="px-4 py-3 font-medium">Question Type</th>
-              <th className="px-4 py-3 font-medium text-right">Actions</th>
+            <tr className="bg-gray-50/80 border-b border-gray-200/80 text-left text-gray-500">
+              <th className="px-5 py-3.5 text-xs font-semibold uppercase tracking-wider">ID</th>
+              <th className="px-5 py-3.5 text-xs font-semibold uppercase tracking-wider">Title</th>
+              <th className="px-5 py-3.5 text-xs font-semibold uppercase tracking-wider">Module Name</th>
+              <th className="px-5 py-3.5 text-xs font-semibold uppercase tracking-wider">Track</th>
+              <th className="px-5 py-3.5 text-xs font-semibold uppercase tracking-wider">Question Type</th>
+              <th className="px-5 py-3.5 text-xs font-semibold uppercase tracking-wider text-right">Actions</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="divide-y divide-gray-100">
             {loading && (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-gray-400">
-                  Loading module assessments...
+                <td colSpan={6} className="px-5 py-16 text-center">
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center animate-pulse">
+                      <Search className="w-4 h-4 text-gray-400" />
+                    </div>
+                    <p className="text-sm text-gray-400">Loading module assessments...</p>
+                  </div>
                 </td>
               </tr>
             )}
             {!loading && error && (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-red-500">
-                  {error}
+                <td colSpan={6} className="px-5 py-16 text-center">
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center">
+                      <X className="w-4 h-4 text-red-400" />
+                    </div>
+                    <p className="text-sm text-red-500">{error}</p>
+                  </div>
                 </td>
               </tr>
             )}
             {!loading && !error && filteredRows.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-gray-400">
-                  No module assessments found.
+                <td colSpan={6} className="px-5 py-16 text-center">
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center">
+                      <ClipboardList className="w-5 h-5 text-gray-400" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-500">No module assessments found</p>
+                      <p className="text-xs text-gray-400 mt-1">Try adjusting your search or filters.</p>
+                    </div>
+                  </div>
                 </td>
               </tr>
             )}
             {!loading &&
               !error &&
               filteredRows.map((row) => (
-                <tr key={row.id} className="border-b border-gray-100 hover:bg-gray-50">
-                  <td className="px-4 py-3 text-gray-700">{row.id}</td>
-                  <td className="px-4 py-3 font-medium text-gray-900">{row.title}</td>
-                  <td className="px-4 py-3 text-gray-700">{row.moduleName}</td>
-                  <td className="px-4 py-3 text-gray-700">{row.trackName}</td>
-                  <td className="px-4 py-3">
+                <tr key={row.id} className="hover:bg-gray-50/60 transition-colors">
+                  <td className="px-5 py-3.5 text-gray-500">{row.id}</td>
+                  <td className="px-5 py-3.5 font-medium text-gray-900">{row.title}</td>
+                  <td className="px-5 py-3.5 text-gray-600">{row.moduleName}</td>
+                  <td className="px-5 py-3.5 text-gray-600">{row.trackName}</td>
+                  <td className="px-5 py-3.5">
                     <span
-                      className={`inline-flex px-2 py-0.5 rounded-full text-xs ${
+                      className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${
                         row.displayLabel === "No question yet"
                           ? "bg-gray-100 text-gray-500"
-                          : "bg-purple-50 text-purple-700"
+                          : "bg-purple-50 text-purple-700 border border-purple-200/60"
                       }`}
                     >
                       {row.displayLabel}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={() => openEdit(row)}
-                      className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-gray-500 hover:bg-gray-100 mr-1"
-                      title="Edit"
-                    >
-                      <Pencil className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => openAttempts(row)}
-                      className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-blue-600 hover:bg-blue-50 mr-1"
-                      title="View attempts"
-                    >
-                      <ClipboardList className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleArchive(row)}
-                      className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-red-500 hover:bg-red-50"
-                      title="Move to archive"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                  <td className="px-5 py-3.5 text-right">
+                    <div className="inline-flex items-center gap-1">
+                      <button
+                        onClick={() => openEdit(row)}
+                        className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+                        title="Edit"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => openAttempts(row)}
+                        className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                        title="View attempts"
+                      >
+                        <ClipboardList className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleArchive(row)}
+                        className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                        title="Move to archive"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -1097,77 +1117,77 @@ export default function ModuleAssessments() {
       </div>
 
       {editingRow && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl w-full max-w-2xl p-6 relative max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-2xl p-6 relative max-h-[90vh] overflow-y-auto shadow-2xl">
             <button
               onClick={closeEdit}
-              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-200 transition-colors"
               title="cancel"
             >
-              <X className="w-5 h-5" />
+              <X className="w-4 h-4" />
             </button>
-            <h3 className="text-lg font-semibold mb-1">Edit Module Assessment</h3>
+            <h3 className="text-lg font-semibold mb-1 text-gray-900">Edit Module Assessment</h3>
             <div className="flex items-center gap-2 mb-4">
               <p className="text-sm text-gray-500">{editingRow.moduleName}</p>
-              <span className="inline-flex px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-700">
+              <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
                 {editingRow.displayLabel}
               </span>
             </div>
 
-            <div className="space-y-3">
+            <div className="space-y-4">
               <div>
-                <label className="text-xs font-medium text-gray-600">Title</label>
+                <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Title</label>
                 <input
                   value={editForm.title}
                   onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all"
                   title="title"
                 />
               </div>
               <div>
-                <label className="text-xs font-medium text-gray-600">Description</label>
+                <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Description</label>
                 <textarea
                   value={editForm.description}
                   onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all"
                   rows={2}
                   title="description"
                 />
               </div>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <label className="text-xs font-medium text-gray-600">Pass Mark %</label>
+                  <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Pass Mark %</label>
                   <input
                     type="number"
                     value={editForm.passMarkPercent}
                     onChange={(e) =>
                       setEditForm({ ...editForm, passMarkPercent: Number(e.target.value) })
                     }
-                    className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all"
                     title="pass mark"
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-gray-600">Max Attempts</label>
+                  <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Max Attempts</label>
                   <input
                     type="number"
                     value={editForm.maxAttempts}
                     onChange={(e) =>
                       setEditForm({ ...editForm, maxAttempts: Number(e.target.value) })
                     }
-                    className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all"
                     title="max attempts"
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-gray-600">Time Limit (min)</label>
+                  <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Time Limit (min)</label>
                   <input
                     type="number"
                     value={editForm.timeLimitMinutes}
                     onChange={(e) =>
                       setEditForm({ ...editForm, timeLimitMinutes: Number(e.target.value) })
                     }
-                    className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all"
                     title="time limit"
                   />
                 </div>
@@ -1203,11 +1223,11 @@ export default function ModuleAssessments() {
                   </button>
                 </div>
                 {items.map((item, idx) => (
-                  <div key={item.id ?? `new-${idx}`} className="border border-gray-200 rounded-lg p-3 relative">
+                  <div key={item.id ?? `new-${idx}`} className="border border-gray-200 rounded-xl p-3 relative hover:border-gray-300 transition-colors">
                     {items.length > 1 && (
                       <button
                         onClick={() => removeItem(idx)}
-                        className="absolute top-2 right-2 text-gray-400 hover:text-red-500"
+                        className="absolute top-2 right-2 text-gray-400 hover:text-red-500 transition-colors"
                         title="remove question"
                       >
                         <Trash className="w-3.5 h-3.5" />
@@ -1225,9 +1245,6 @@ export default function ModuleAssessments() {
                   </div>
                 ))}
 
-                {/* CSV/Excel replace is now optional and collapsed by default —
-                    it's a secondary path, not a requirement, for assessments
-                    that originated from a bulk file upload. */}
                 <div className="pt-2 border-t border-gray-100">
                   <button
                     type="button"
@@ -1241,7 +1258,7 @@ export default function ModuleAssessments() {
                   </button>
                   {showCsvReplace && (
                     <div className="mt-3">
-                      <label className="flex items-center gap-2 px-3 py-2 border border-dashed border-gray-300 rounded-lg text-sm text-gray-500 cursor-pointer hover:border-[#004900]">
+                      <label className="flex items-center gap-2 px-3 py-2 border border-dashed border-gray-300 rounded-xl text-sm text-gray-500 cursor-pointer hover:border-[#004900] transition-colors">
                         <Upload className="w-4 h-4" />
                         {uploadFile ? uploadFile.name : "Choose .csv or .xlsx file"}
                         <input
@@ -1271,17 +1288,17 @@ export default function ModuleAssessments() {
               </div>
             )}
 
-            <div className="flex justify-end gap-2 mt-6">
+            <div className="flex justify-end gap-3 mt-6">
               <button
                 onClick={closeEdit}
-                className="px-4 py-2 text-sm rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50"
+                className="px-4 py-2.5 text-sm rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors font-medium"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSaveEdit}
                 disabled={saving || loadingItems}
-                className="px-4 py-2 text-sm rounded-lg bg-[#004900] text-white hover:bg-[#003600] disabled:opacity-50"
+                className="px-4 py-2.5 text-sm rounded-xl bg-[#004900] text-white hover:bg-[#003600] disabled:opacity-50 shadow-sm shadow-[#004900]/20 transition-all font-medium"
               >
                 {saving ? "Saving..." : "Save Changes"}
               </button>
@@ -1291,16 +1308,16 @@ export default function ModuleAssessments() {
       )}
 
       {archiveOpen && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl w-full max-w-4xl p-6 relative max-h-[85vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-4xl p-6 relative max-h-[85vh] overflow-y-auto shadow-2xl">
             <button
               onClick={() => setArchiveOpen(false)}
-              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-200 transition-colors"
               title="close"
             >
-              <X className="w-5 h-5" />
+              <X className="w-4 h-4" />
             </button>
-            <h3 className="text-lg font-semibold mb-1">Assessment Archive</h3>
+            <h3 className="text-lg font-semibold mb-1 text-gray-900">Assessment Archive</h3>
             <p className="text-sm text-gray-500 mb-4">
               Archived module assessments and archived individual questions. Restore either to
               make it active again.

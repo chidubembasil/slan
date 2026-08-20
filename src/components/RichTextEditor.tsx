@@ -412,11 +412,11 @@ function TableGridPicker({ onSelect, onClose }: { onSelect: (r: number, c: numbe
 function Dropdown({ label, open, setOpen, children, width = 180 }: { label: ReactNode; open: boolean; setOpen: (v: boolean) => void; children: ReactNode; width?: number }) {
   return (
     <div style={{ position: "relative" }}>
-      <button type="button" onClick={() => setOpen(!open)} style={{ border: "1px solid #e5e7eb", background: "white", padding: "4px 8px", borderRadius: 4, cursor: "pointer", fontSize: 13, display: "flex", alignItems: "center", gap: 4 }}>
+      <button type="button" onClick={() => setOpen(!open)} style={{ border: "1px solid #e5e7eb", background: "white", padding: "5px 10px", borderRadius: 6, cursor: "pointer", fontSize: 13, display: "flex", alignItems: "center", gap: 4, transition: "all 0.15s ease" }}>
         {label} <span style={{ fontSize: 10 }}>▼</span>
       </button>
       {open && (
-        <div style={{ position: "absolute", top: 32, left: 0, zIndex: 20, background: "white", border: "1px solid #e5e7eb", borderRadius: 6, boxShadow: "0 8px 24px rgba(0,0,0,.12)", width, overflow: "hidden", maxHeight: 320, overflowY: "auto" }}>
+        <div style={{ position: "absolute", top: 34, left: 0, zIndex: 20, background: "white", border: "1px solid #e5e7eb", borderRadius: 10, boxShadow: "0 10px 25px rgba(0,0,0,0.1), 0 4px 10px rgba(0,0,0,0.05)", width, overflow: "hidden", maxHeight: 320, overflowY: "auto" }}>
           {children}
         </div>
       )}
@@ -454,8 +454,8 @@ function Toolbar() {
   const [showTableTools, setShowTableTools] = useState(false);
   const [fontSizeIdx, setFontSizeIdx] = useState(3); // 16px default
   const fileRef = useRef<HTMLInputElement>(null);
-  const btn: React.CSSProperties = { border: "1px solid #e5e7eb", background: "white", padding: "4px 8px", borderRadius: 4, cursor: "pointer", fontSize: 13 };
-  const menuItem: React.CSSProperties = { padding: "8px 12px", cursor: "pointer", fontSize: 13, borderBottom: "1px solid #f3f4f6" };
+  const btn: React.CSSProperties = { border: "1px solid #e5e7eb", background: "white", padding: "5px 10px", borderRadius: 6, cursor: "pointer", fontSize: 13, transition: "all 0.15s ease" };
+  const menuItem: React.CSSProperties = { padding: "8px 12px", cursor: "pointer", fontSize: 13, borderBottom: "1px solid #f3f4f6", borderRadius: 4, transition: "background 0.1s ease" };
   const menuItemDanger: React.CSSProperties = { ...menuItem, color: "#dc2626" };
   const menuLabel: React.CSSProperties = { padding: "6px 12px", fontSize: 11, color: "#9ca3af", textTransform: "uppercase", letterSpacing: 0.4, borderBottom: "1px solid #f3f4f6", background: "#fafafa" };
 
@@ -687,7 +687,7 @@ function Toolbar() {
 
   return (
     <div
-      style={{ borderBottom: "1px solid #d1d5db" }}
+      style={{ borderBottom: "1px solid #e5e7eb" }}
       // Every click/mousedown in this toolbar (including the paragraph
       // spacing menu items) is contained here. Without this, clicking any
       // toolbar button still bubbles as a native DOM event straight out of
@@ -699,9 +699,9 @@ function Toolbar() {
       onClick={e => e.stopPropagation()}
     >
       <EditorStyles />
-      <div style={{ display: "flex", background: "#f1f1f1", fontSize: 13 }}>
+      <div style={{ display: "flex", background: "#f9fafb", fontSize: 13, borderBottom: "1px solid #f3f4f6" }}>
         {["Home", "Insert"].map(t => (
-          <div key={t} onClick={() => setTab(t as any)} style={{ padding: "8px 14px", cursor: "pointer", borderBottom: tab === t ? "2px solid #0b57d0" : "2px solid transparent", fontWeight: tab === t ? 600 : 400 }}>{t}</div>
+          <div key={t} onClick={() => setTab(t as any)} style={{ padding: "9px 16px", cursor: "pointer", borderBottom: tab === t ? "2px solid #004900" : "2px solid transparent", fontWeight: tab === t ? 600 : 400, color: tab === t ? "#004900" : "#6b7280", transition: "all 0.15s ease" }}>{t}</div>
         ))}
       </div>
 
@@ -1115,13 +1115,14 @@ export default function RichTextEditor({ value, onChange, placeholder }: RichTex
           back down to see it applied. */}
       <div
         style={{
-          border: "1px solid #d1d5db",
-          borderRadius: 8,
+          border: "1px solid #e5e7eb",
+          borderRadius: 12,
           overflow: "hidden",
           background: "white",
           display: "flex",
           flexDirection: "column",
           maxHeight: "85vh",
+          boxShadow: "0 1px 3px 0 rgba(0,0,0,0.05), 0 1px 2px -1px rgba(0,0,0,0.05)",
         }}
       >
         <div style={{ position: "sticky", top: 0, zIndex: 40, background: "white", flexShrink: 0 }}>
