@@ -265,7 +265,7 @@ export default function Dashboard() {
                       className="w-9 h-9 rounded-full object-cover shrink-0 ring-2 ring-white shadow-sm"
                       alt=""
                     />
-                    <div className="flex-1 min-w-0">
+                    <div className="flex-1 min-w-0" >
                       <p className="text-sm text-slate-900 font-medium truncate">{user.fullName}</p>
                       <p className="text-xs text-gray-500 truncate">{user.email}</p>
                     </div>
