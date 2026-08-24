@@ -463,10 +463,10 @@ export default function CertificatesPage() {
   const activeCount = signatories.filter((s) => s.isActive).length;
 
   return (
-    <div className="min-h-screen bg-[#f8fafc]">
-      <div className="max-w-[1280px] mx-auto p-4 md:p-6">
+    <div className="min-h-screen bg-[#f8fafc] w-full overflow-hidden">
+      <div className="max-w-[1280px] mx-auto p-3 sm:p-4 md:p-6 w-full">
         {/* header */}
-        <div className="rounded-2xl bg-gradient-to-br from-[#004900] via-[#003d00] to-[#0a5c00] text-white p-6 md:p-8 mb-6 relative overflow-hidden shadow-xl animate-slide-up">
+        <div className="rounded-2xl bg-gradient-to-br from-[#004900] via-[#003d00] to-[#0a5c00] text-white p-4 sm:p-6 md:p-8 mb-4 sm:mb-6 relative overflow-hidden shadow-xl animate-slide-up">
           <div className="absolute inset-0 opacity-10">
             <div className="absolute -top-16 -right-16 w-72 h-72 bg-white rounded-full blur-3xl" />
             <div className="absolute -bottom-16 -left-16 w-64 h-64 bg-amber-400 rounded-full blur-3xl opacity-20" />
@@ -475,27 +475,27 @@ export default function CertificatesPage() {
           <div className="absolute top-10 right-10 w-16 h-16 border border-white/5 rounded-full hidden md:block" />
 
           <div className="relative flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="flex gap-4 items-start">
-              <div className="w-12 h-12 rounded-2xl bg-white/15 backdrop-blur flex items-center justify-center shrink-0 border border-white/10">
-                <Award size={22} className="text-amber-300" />
+            <div className="flex gap-3 sm:gap-4 items-start min-w-0 flex-1">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-white/15 backdrop-blur flex items-center justify-center shrink-0 border border-white/10">
+                <Award size={20} className="text-amber-300 sm:w-[22px] sm:h-[22px]" />
               </div>
-              <div>
-                <h1 className="text-2xl md:text-3xl font-bold tracking-tight flex items-center gap-2">
+              <div className="min-w-0 flex-1">
+                <h1 className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2">
                   Certificates & Signatories <Sparkles size={18} className="text-amber-300 hidden md:inline" />
                 </h1>
-                <p className="text-sm text-white/70 mt-1 max-w-xl">
+                <p className="text-xs sm:text-sm text-white/70 mt-1 max-w-xl leading-relaxed">
                   Issue certificates for courses — and manage the signatories whose signatures appear on them. Max 2 active signatories are rendered on each PDF.
                 </p>
               </div>
             </div>
-            <div className="flex gap-2">
-              <div className="bg-white/10 backdrop-blur border border-white/15 rounded-2xl px-4 py-3 text-center min-w-[110px]">
-                <div className="text-xl font-bold">{sigLoading ? "—" : activeCount}</div>
-                <div className="text-[11px] uppercase tracking-wide text-white/60">Active</div>
+            <div className="flex gap-2 sm:gap-3 w-full md:w-auto shrink-0">
+              <div className="flex-1 md:flex-none bg-white/10 backdrop-blur border border-white/15 rounded-2xl px-3 sm:px-4 py-2.5 sm:py-3 text-center min-w-0">
+                <div className="text-lg sm:text-xl font-bold">{sigLoading ? "—" : activeCount}</div>
+                <div className="text-[10px] sm:text-[11px] uppercase tracking-wide text-white/60">Active</div>
               </div>
-              <div className="bg-white text-[#004900] rounded-2xl px-4 py-3 text-center min-w-[110px] shadow">
-                <div className="text-xl font-bold">{sigLoading ? "—" : signatories.length}</div>
-                <div className="text-[11px] uppercase tracking-wide text-gray-500">Signatories</div>
+              <div className="flex-1 md:flex-none bg-white text-[#004900] rounded-2xl px-3 sm:px-4 py-2.5 sm:py-3 text-center shadow min-w-0">
+                <div className="text-lg sm:text-xl font-bold">{sigLoading ? "—" : signatories.length}</div>
+                <div className="text-[10px] sm:text-[11px] uppercase tracking-wide text-gray-500">Signatories</div>
               </div>
             </div>
           </div>

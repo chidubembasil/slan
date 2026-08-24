@@ -29,10 +29,10 @@ export default function Course() {
   const activeMeta = TABS.find((t) => t.key === activeTab) ?? TABS[0];
 
   return (
-    <div className="min-h-screen bg-gray-50/50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-5 sm:py-8 animate-fade-in">
+    <div className="min-h-screen bg-gray-50/50 w-full overflow-hidden">
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 py-4 sm:py-6 md:py-8 animate-fade-in w-full">
         {/* Header — decorative banner consistent with Dashboard */}
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#004900] via-[#003d00] to-[#005c00] text-white p-6 sm:p-8 mb-6 shadow-xl animate-slide-up">
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#004900] via-[#003d00] to-[#005c00] text-white p-4 sm:p-6 md:p-8 mb-4 sm:mb-6 shadow-xl animate-slide-up">
           {/* subtle image overlay */}
           <div className="absolute inset-0 opacity-[0.07]">
             <img
@@ -78,8 +78,8 @@ export default function Course() {
         </div>
 
         {/* Pill / segmented tab navigation */}
-        <div className="bg-white rounded-2xl border border-gray-200/60 shadow-sm p-1.5 sm:p-2 mb-6 animate-slide-up" style={{ animationDelay: "0.06s" }}>
-          <div className="flex flex-wrap gap-1.5 sm:gap-2">
+        <div className="bg-white rounded-2xl border border-gray-200/60 shadow-sm p-1.5 sm:p-2 mb-4 sm:mb-6 animate-slide-up overflow-hidden" style={{ animationDelay: "0.06s" }}>
+          <div className="flex flex-wrap gap-1.5 sm:gap-2 overflow-x-auto scrollbar-thin">
             {TABS.map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.key;
@@ -111,7 +111,7 @@ export default function Course() {
         </div>
 
         {/* Content card */}
-        <div className="bg-white rounded-2xl border border-gray-200/60 shadow-sm p-4 sm:p-6 animate-slide-up" style={{ animationDelay: "0.12s" }}>
+        <div className="bg-white rounded-2xl border border-gray-200/60 shadow-sm p-3 sm:p-4 md:p-6 animate-slide-up overflow-hidden" style={{ animationDelay: "0.12s" }}>
           <div className="flex items-center gap-2 mb-4 pb-4 border-b border-gray-100">
             <div className="w-8 h-8 rounded-xl bg-[#004900]/10 text-[#004900] flex items-center justify-center">
               <activeMeta.icon size={14} />

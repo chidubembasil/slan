@@ -1,14 +1,14 @@
 import { useLocation } from 'react-router-dom'
 import { Link } from "react-router-dom"
-import { Share } from 'lucide-react'
-
-import {  Menu } from "lucide-react"
+import { Share, PanelLeftClose, PanelLeft, Menu } from 'lucide-react'
 
 type HeaderProps = {
   onMenuClick: () => void
+  collapsed?: boolean
+  onToggleCollapse?: () => void
 }
 
-export default function Header({ onMenuClick }: HeaderProps) {
+export default function Header({ onMenuClick, collapsed, onToggleCollapse }: HeaderProps) {
   const location = useLocation()
 
   // "/admin/courses" → "courses"
@@ -26,6 +26,17 @@ export default function Header({ onMenuClick }: HeaderProps) {
           >
             <Menu size={22} className="sm:w-6 sm:h-6" />
           </button>
+          {/* Desktop collapse / expand button */}
+          {onToggleCollapse && (
+            <button
+              className="hidden md:inline-flex items-center justify-center p-2.5 rounded-xl border border-gray-200 bg-white text-gray-600 hover:text-[#004900] hover:border-[#004900]/20 hover:bg-[#004900]/5 shadow-sm transition-all duration-200 shrink-0"
+              onClick={onToggleCollapse}
+              aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+              title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            >
+              {collapsed ? <PanelLeft size={18} /> : <PanelLeftClose size={18} />}
+            </button>
+          )}
 
           <div className="flex flex-col min-w-0">
             <span className="text-gray-900 capitalize font-bold tracking-tight leading-none truncate text-lg sm:text-xl md:text-2xl lg:text-[26px] animate-slide-right">

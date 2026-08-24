@@ -413,39 +413,39 @@ export default function Discussions() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f8fafc]">
-      <div className="max-w-[1280px] mx-auto">
+    <div className="min-h-screen bg-[#f8fafc] w-full overflow-hidden">
+      <div className="max-w-[1280px] mx-auto px-3 sm:px-4 md:px-0 w-full">
         {/* header */}
-        <div className="rounded-2xl bg-gradient-to-br from-[#004900] via-[#003d00] to-[#0a5c00] text-white p-6 md:p-8 mb-6 relative overflow-hidden shadow-xl animate-slide-up">
+        <div className="rounded-2xl bg-gradient-to-br from-[#004900] via-[#003d00] to-[#0a5c00] text-white p-4 sm:p-6 md:p-8 mb-4 sm:mb-6 relative overflow-hidden shadow-xl animate-slide-up">
           <div className="absolute inset-0 opacity-10">
             <div className="absolute -top-16 -right-16 w-72 h-72 bg-white rounded-full blur-3xl" />
             <div className="absolute -bottom-16 -left-16 w-64 h-64 bg-amber-400 rounded-full blur-3xl opacity-20" />
           </div>
           <div className="absolute top-6 right-6 w-24 h-24 border border-white/10 rounded-full hidden md:block" />
           <div className="relative flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="flex gap-4 items-start">
-              <div className="w-12 h-12 rounded-2xl bg-white/15 backdrop-blur flex items-center justify-center shrink-0 border border-white/10">
-                <MessageSquare size={22} className="text-amber-300" />
+            <div className="flex gap-3 sm:gap-4 items-start min-w-0 flex-1">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-white/15 backdrop-blur flex items-center justify-center shrink-0 border border-white/10">
+                <MessageSquare size={20} className="text-amber-300 sm:w-[22px] sm:h-[22px]" />
               </div>
-              <div>
-                <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Discussions</h1>
-                <p className="text-sm text-white/70 mt-1 max-w-xl">
+              <div className="min-w-0 flex-1">
+                <h1 className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight">Discussions</h1>
+                <p className="text-xs sm:text-sm text-white/70 mt-1 max-w-xl leading-relaxed">
                   Manage community conversations — edit or remove any discussion (author or admin), moderate replies, pin important topics and lock resolved threads.
                 </p>
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-2">
-              <div className="bg-white text-[#004900] rounded-2xl px-4 py-3 text-center min-w-[92px] shadow">
-                <div className="text-xl font-bold">{stats.total}</div>
-                <div className="text-[11px] uppercase tracking-wide text-gray-500">Total</div>
+            <div className="grid grid-cols-3 gap-2 sm:gap-3 w-full md:w-auto shrink-0">
+              <div className="bg-white text-[#004900] rounded-2xl px-2 sm:px-4 py-2.5 sm:py-3 text-center shadow min-w-0">
+                <div className="text-lg sm:text-xl font-bold">{stats.total}</div>
+                <div className="text-[10px] sm:text-[11px] uppercase tracking-wide text-gray-500">Total</div>
               </div>
-              <div className="bg-amber-400 text-[#002a00] rounded-2xl px-4 py-3 text-center min-w-[92px] shadow">
-                <div className="text-xl font-bold flex items-center justify-center gap-1"><Pin size={14} />{stats.pinned}</div>
-                <div className="text-[11px] uppercase tracking-wide opacity-70">Pinned</div>
+              <div className="bg-amber-400 text-[#002a00] rounded-2xl px-2 sm:px-4 py-2.5 sm:py-3 text-center shadow min-w-0">
+                <div className="text-lg sm:text-xl font-bold flex items-center justify-center gap-1"><Pin size={12} className="sm:w-3.5 sm:h-3.5" />{stats.pinned}</div>
+                <div className="text-[10px] sm:text-[11px] uppercase tracking-wide opacity-70">Pinned</div>
               </div>
-              <div className="bg-white/10 backdrop-blur border border-white/15 rounded-2xl px-4 py-3 text-center min-w-[92px]">
-                <div className="text-xl font-bold flex items-center justify-center gap-1"><Lock size={14} />{stats.locked}</div>
-                <div className="text-[11px] uppercase tracking-wide text-white/60">Locked</div>
+              <div className="bg-white/10 backdrop-blur border border-white/15 rounded-2xl px-2 sm:px-4 py-2.5 sm:py-3 text-center min-w-0">
+                <div className="text-lg sm:text-xl font-bold flex items-center justify-center gap-1"><Lock size={12} className="sm:w-3.5 sm:h-3.5" />{stats.locked}</div>
+                <div className="text-[10px] sm:text-[11px] uppercase tracking-wide text-white/60">Locked</div>
               </div>
             </div>
           </div>
@@ -460,7 +460,7 @@ export default function Discussions() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 w-full overflow-hidden">
           {/* list */}
           <div className="lg:col-span-2">
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 mb-4">
@@ -490,7 +490,7 @@ export default function Discussions() {
               </div>
             </div>
 
-            <div className="space-y-3 max-h-[calc(100vh-280px)] overflow-y-auto pr-1">
+            <div className="space-y-3 max-h-[50vh] sm:max-h-[60vh] lg:max-h-[calc(100vh-280px)] overflow-y-auto pr-1">
               {loading ? (
                 <div className="bg-white rounded-2xl border border-gray-200 p-12 text-center">
                   <Loader2 size={20} className="animate-spin mx-auto text-gray-400" />

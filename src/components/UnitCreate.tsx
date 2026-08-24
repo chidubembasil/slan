@@ -292,8 +292,8 @@ export default function UnitCreate({ onComplete }: { onComplete?: () => void }) 
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100/50 -m-4 md:-m-6">
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100/50 -m-3 sm:-m-4 md:-m-6 w-full overflow-hidden">
+      <div className="max-w-5xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-4 sm:py-6 lg:py-8 w-full">
         {/* Page header */}
         <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 mb-6 sm:mb-8">
           <div className="flex items-center gap-3">

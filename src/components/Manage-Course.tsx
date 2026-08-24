@@ -786,8 +786,8 @@ export default function ManageCourses() {
     : courses.filter((c) => c.id === selectedCourseId);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 p-4 sm:p-6 lg:p-8">
-      <div className="max-w-7xl mx-auto">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 p-3 sm:p-4 md:p-6 lg:p-8 w-full overflow-hidden">
+      <div className="max-w-7xl mx-auto w-full">
 
         {/* Header */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-6 lg:p-8 mb-6">

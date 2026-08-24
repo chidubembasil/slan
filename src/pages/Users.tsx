@@ -228,58 +228,58 @@ export default function Users() {
   const verifiedCount = users.filter((u) => u.isEmailVerified).length;
 
   return (
-    <div className="w-full space-y-5 animate-fade-in">
+    <div className="w-full space-y-5 animate-fade-in overflow-hidden">
       {/* Header — gradient + stats bar */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#004900] via-[#006400] to-[#003600] p-6 sm:p-7 shadow-lg">
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#004900] via-[#006400] to-[#003600] p-4 sm:p-6 md:p-7 shadow-lg">
         {/* decorative */}
         <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
         <div className="pointer-events-none absolute -bottom-8 -left-8 h-32 w-32 rounded-full bg-white/5 blur-xl" />
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(255,255,255,0.08),transparent_60%)]" />
 
-        <div className="relative flex flex-col gap-5 md:gap-6 md:flex-row md:items-center md:justify-between lg:gap-6">
-          <div className="flex items-start gap-4">
-            <div className="hidden sm:flex h-12 w-12 items-center justify-center rounded-2xl bg-white/15 backdrop-blur border border-white/20 shadow-sm">
-              <UsersIcon className="h-6 w-6 text-white" />
+        <div className="relative flex flex-col gap-4 sm:gap-5 md:gap-6 md:flex-row md:items-center md:justify-between lg:gap-6">
+          <div className="flex items-start gap-3 sm:gap-4 min-w-0 flex-1">
+            <div className="hidden sm:flex h-11 w-11 md:h-12 md:w-12 items-center justify-center rounded-2xl bg-white/15 backdrop-blur border border-white/20 shadow-sm shrink-0">
+              <UsersIcon className="h-5 w-5 md:h-6 md:w-6 text-white" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white">Users Management</h1>
-                <span className="hidden sm:inline-flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-1 text-xs font-medium text-white backdrop-blur border border-white/10">
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-lg sm:text-xl md:text-2xl font-bold tracking-tight text-white">Users Management</h1>
+                <span className="hidden sm:inline-flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-1 text-xs font-medium text-white backdrop-blur border border-white/10 shrink-0">
                   <Sparkles size={12} /> Admin
                 </span>
               </div>
-              <p className="mt-1 text-sm text-white/80 max-w-xl">
+              <p className="mt-1 text-xs sm:text-sm text-white/80 max-w-xl leading-relaxed">
                 Search, verify and manage all registered users across schools and states.
               </p>
             </div>
           </div>
 
           {/* stats bar */}
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-            <div className="inline-flex items-center gap-2 rounded-2xl bg-white px-4 py-2.5 shadow-sm border border-white/0">
-              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-900 text-white">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3 shrink-0 w-full md:w-auto">
+            <div className="flex-1 sm:flex-none inline-flex items-center gap-2 rounded-2xl bg-white px-3 sm:px-4 py-2.5 shadow-sm border border-white/0 min-w-0">
+              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-900 text-white shrink-0">
                 <UsersIcon size={14} />
               </div>
-              <div className="leading-none">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Total</p>
+              <div className="leading-none min-w-0">
+                <p className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider text-slate-500">Total</p>
                 <p className="text-sm font-bold text-slate-900">{totalCount}</p>
               </div>
             </div>
-            <div className="inline-flex items-center gap-2 rounded-2xl bg-white/95 px-4 py-2.5 shadow-sm border border-white/20 backdrop-blur">
-              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-500 text-white shadow-sm">
+            <div className="flex-1 sm:flex-none inline-flex items-center gap-2 rounded-2xl bg-white/95 px-3 sm:px-4 py-2.5 shadow-sm border border-white/20 backdrop-blur min-w-0">
+              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-500 text-white shadow-sm shrink-0">
                 <Activity size={14} />
               </div>
-              <div className="leading-none">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Active</p>
+              <div className="leading-none min-w-0">
+                <p className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider text-slate-500">Active</p>
                 <p className="text-sm font-bold text-slate-900">{activeCount}</p>
               </div>
             </div>
-            <div className="inline-flex items-center gap-2 rounded-2xl bg-white/95 px-4 py-2.5 shadow-sm border border-white/20 backdrop-blur">
-              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#004900] text-white shadow-sm">
+            <div className="flex-1 sm:flex-none inline-flex items-center gap-2 rounded-2xl bg-white/95 px-3 sm:px-4 py-2.5 shadow-sm border border-white/20 backdrop-blur min-w-0">
+              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#004900] text-white shadow-sm shrink-0">
                 <BadgeCheck size={14} />
               </div>
-              <div className="leading-none">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Verified</p>
+              <div className="leading-none min-w-0">
+                <p className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider text-slate-500">Verified</p>
                 <p className="text-sm font-bold text-slate-900">{verifiedCount}</p>
               </div>
             </div>
@@ -366,9 +366,9 @@ export default function Users() {
           </div>
         )}
 
-        {/* TABLE */}
-        <div className="overflow-x-auto">
-          <table className="w-full">
+        {/* TABLE — desktop/tablet */}
+        <div className="hidden md:block overflow-x-auto">
+          <table className="w-full min-w-[720px]">
             <thead className="bg-slate-50/80 border-y border-slate-100">
               <tr>
                 {COLUMNS.map((col) => (
@@ -437,6 +437,72 @@ export default function Users() {
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* MOBILE CARDS */}
+        <div className="md:hidden divide-y divide-slate-100">
+          {loading ? (
+            <div className="flex flex-col items-center justify-center gap-3 py-12 px-4 text-center">
+              <div className="inline-flex items-center justify-center h-10 w-10 rounded-2xl bg-[#004900]/10 border border-[#004900]/10">
+                <Loader2 className="w-5 h-5 text-[#004900] animate-spin" />
+              </div>
+              <p className="text-sm font-semibold text-slate-700">Loading users...</p>
+              <p className="text-xs text-slate-400">Fetching the latest directory</p>
+            </div>
+          ) : paginatedUsers.length === 0 ? (
+            <div className="flex flex-col items-center justify-center gap-3 py-12 px-6 text-center">
+              <div className="h-12 w-12 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400">
+                <UserX size={20} />
+              </div>
+              <p className="text-sm font-semibold text-slate-700">No users found</p>
+              <p className="text-xs text-slate-400 max-w-sm">
+                {users.length === 0 ? "No data returned from the API. Try refreshing." : "Try adjusting your search or clear the filter to see all users."}
+              </p>
+              {searchQuery && (
+                <button
+                  onClick={() => {
+                    setSearchInput("");
+                    setSearchQuery("");
+                    setCurrentPage(1);
+                  }}
+                  className="mt-1 inline-flex items-center gap-1.5 text-xs font-semibold text-[#004900] bg-[#004900]/10 px-3 py-1.5 rounded-full"
+                >
+                  <X size={12} /> Clear search
+                </button>
+              )}
+            </div>
+          ) : (
+            paginatedUsers.map((user) => (
+              <div key={user.id} className="p-4 space-y-3 hover:bg-slate-50/50 transition-colors">
+                <div className="flex items-start gap-3 min-w-0">
+                  <div className="relative shrink-0">
+                    <img
+                      src={user.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.fullName)}&background=004900&color=fff&bold=true`}
+                      className="w-10 h-10 rounded-full object-cover ring-2 ring-white shadow-sm"
+                      alt=""
+                    />
+                    <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full ring-2 ring-white ${user.isActive ? "bg-emerald-500" : "bg-gray-300"}`} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-sm text-slate-900 truncate">{user.fullName}</p>
+                    <p className="text-xs text-slate-500 flex items-center gap-1 truncate"><Mail size={11} className="shrink-0 opacity-60" />{user.email}</p>
+                    <p className="text-xs text-slate-500 mt-1 truncate">{user.schoolName || "—"} • {user.state || "—"}</p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <span className="inline-flex items-center gap-1 bg-white border border-slate-200 px-2.5 py-1 rounded-full text-xs font-semibold text-slate-700 shadow-sm">
+                    <ShieldCheck size={12} className="text-[#004900]" />{user.role}
+                  </span>
+                  <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border shadow-sm ${user.isEmailVerified ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-amber-50 text-amber-700 border-amber-200"}`}>
+                    <BadgeCheck size={12} className={user.isEmailVerified ? "text-emerald-600" : "text-amber-500"} />{user.isEmailVerified ? "Verified" : "Unverified"}
+                  </span>
+                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border shadow-sm ${user.isActive ? "bg-emerald-500 text-white border-emerald-600" : "bg-white text-slate-600 border-slate-200"}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${user.isActive ? "bg-white" : "bg-slate-400"}`} />{user.isActive ? "Active" : "Inactive"}
+                  </span>
+                </div>
+              </div>
+            ))
+          )}
         </div>
 
         {/* PAGINATION */}

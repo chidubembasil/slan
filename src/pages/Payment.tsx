@@ -105,33 +105,33 @@ export default function Payment() {
   }
 
   return (
-    <div className="w-full space-y-5 animate-fade-in">
+    <div className="w-full space-y-5 animate-fade-in overflow-hidden">
       {/* Header — gradient hero */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#004900] via-[#006400] to-[#003600] p-6 sm:p-7 shadow-lg">
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#004900] via-[#006400] to-[#003600] p-4 sm:p-6 md:p-7 shadow-lg">
         <div className="pointer-events-none absolute -right-12 -top-12 h-44 w-44 rounded-full bg-white/10 blur-2xl" />
         <div className="pointer-events-none absolute -bottom-10 -left-10 h-36 w-36 rounded-full bg-white/5 blur-xl" />
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(255,255,255,0.08),transparent_60%)]" />
         <div className="relative flex flex-col gap-4 md:flex-row md:items-center md:justify-between lg:gap-6">
-          <div className="flex items-start gap-4">
-            <div className="hidden sm:flex h-12 w-12 items-center justify-center rounded-2xl bg-white/15 backdrop-blur border border-white/20 shadow-sm">
-              <Wallet className="h-6 w-6 text-white" />
+          <div className="flex items-start gap-3 sm:gap-4 min-w-0 flex-1">
+            <div className="hidden sm:flex h-11 w-11 md:h-12 md:w-12 items-center justify-center rounded-2xl bg-white/15 backdrop-blur border border-white/20 shadow-sm shrink-0">
+              <Wallet className="h-5 w-5 md:h-6 md:w-6 text-white" />
             </div>
-            <div>
+            <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white">Payments & Invoices</h1>
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-2.5 py-1 text-xs font-medium text-white backdrop-blur border border-white/10">
+                <h1 className="text-lg sm:text-xl md:text-2xl font-bold tracking-tight text-white">Payments & Invoices</h1>
+                <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-white/15 px-2.5 py-1 text-xs font-medium text-white backdrop-blur border border-white/10 shrink-0">
                   <Sparkles size={12} /> Finance
                 </span>
               </div>
-              <p className="mt-1 text-sm text-white/80 max-w-2xl">
+              <p className="mt-1 text-xs sm:text-sm text-white/80 max-w-2xl leading-relaxed">
                 Track revenue, monitor overdue invoices and export transaction reports.
               </p>
               {stats && (
                 <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 font-semibold text-[#004900] shadow-sm">
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 font-semibold text-[#004900] shadow-sm text-[11px] sm:text-xs">
                     <Receipt size={12} /> {stats.transactions} transactions
                   </span>
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1.5 font-medium text-white border border-white/10 backdrop-blur">
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1.5 font-medium text-white border border-white/10 backdrop-blur text-[11px] sm:text-xs">
                     <ArrowUpRight size={12} /> {formatNaira(stats.totalRevenue)} revenue
                   </span>
                 </div>
@@ -140,7 +140,7 @@ export default function Payment() {
           </div>
           <button
             onClick={handleExport}
-            className="inline-flex items-center justify-center gap-2 self-start lg:self-center bg-white text-[#004900] hover:bg-slate-50 px-5 h-11 rounded-2xl text-sm font-semibold shadow-sm hover:shadow-md active:scale-[0.98] transition-all duration-200 whitespace-nowrap"
+            className="inline-flex items-center justify-center gap-2 self-start md:self-center bg-white text-[#004900] hover:bg-slate-50 px-4 sm:px-5 h-10 sm:h-11 rounded-2xl text-xs sm:text-sm font-semibold shadow-sm hover:shadow-md active:scale-[0.98] transition-all duration-200 whitespace-nowrap w-full md:w-auto"
           >
             <Download size={16} /> Export CSV
           </button>
@@ -272,9 +272,9 @@ export default function Payment() {
           </div>
         )}
 
-        {/* TABLE */}
-        <div className="overflow-x-auto border-t border-slate-100">
-          <table className="w-full text-sm">
+        {/* TABLE — desktop */}
+        <div className="hidden md:block overflow-x-auto border-t border-slate-100">
+          <table className="w-full text-sm min-w-[720px]">
             <thead className="bg-slate-50/80">
               <tr className="border-b border-slate-100 text-slate-500">
                 <th className="text-left px-6 py-4 font-bold text-[11px] uppercase tracking-widest">Invoice ID</th>
@@ -356,6 +356,50 @@ export default function Payment() {
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* MOBILE CARDS */}
+        <div className="md:hidden divide-y divide-slate-100 border-t border-slate-100">
+          {loading ? (
+            <div className="flex flex-col items-center justify-center gap-3 py-12 px-4 text-center">
+              <div className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-[#004900]/10 border border-[#004900]/10"><Loader2 className="w-5 h-5 text-[#004900] animate-spin" /></div>
+              <p className="text-sm font-semibold text-slate-700">Loading invoices...</p>
+              <p className="text-xs text-slate-400">Fetching the latest payments</p>
+            </div>
+          ) : invoices.length === 0 ? (
+            <div className="flex flex-col items-center justify-center gap-3 py-12 px-6 text-center">
+              <div className="h-12 w-12 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400"><Receipt size={20} /></div>
+              <p className="text-sm font-semibold text-slate-700">No invoices found</p>
+              <p className="text-xs text-slate-400">Try adjusting search or status filter</p>
+              {(search || status !== "all") && (
+                <button onClick={() => { setSearch(""); setStatus("all"); setPage(1) }} className="mt-1 inline-flex items-center gap-1.5 text-xs font-semibold text-[#004900] bg-[#004900]/10 px-3 py-1.5 rounded-full">Clear filters</button>
+              )}
+            </div>
+          ) : (
+            invoices.map((inv) => (
+              <div key={inv._id} className="p-4 space-y-3 hover:bg-slate-50/50 transition-colors">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <img src={`https://ui-avatars.com/api/?name=${encodeURIComponent(inv.learnerName)}&background=004900&color=fff&bold=true`} alt="" className="w-10 h-10 rounded-full object-cover ring-2 ring-white shadow-sm shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold text-sm text-slate-900 truncate">{inv.learnerName}</p>
+                      <span className="inline-flex items-center gap-1 font-mono text-[11px] font-bold text-slate-700 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded-full mt-1"><FileText size={10} />{inv.invoiceId}</span>
+                    </div>
+                  </div>
+                  <span className={`${statusBadge(inv.status)} border shadow-sm shrink-0 text-[11px] ${inv.status === "Paid" ? "border-green-200" : inv.status === "Pending" ? "border-orange-200" : "border-red-200"}`}>{inv.status}</span>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  <span className="font-bold text-slate-900 bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-full">{formatNaira(inv.amount)}</span>
+                  <span className="inline-flex items-center gap-1 text-slate-600 bg-white border border-slate-200 px-2.5 py-1 rounded-full font-medium"><CreditCard size={11} />{inv.method}</span>
+                  <span className="text-slate-500">{new Date(inv.date).toISOString().split('T')[0]}</span>
+                </div>
+                <div className="flex gap-2">
+                  <button className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 rounded-xl bg-white border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50"><Eye size={14} />View</button>
+                  <button className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 rounded-xl bg-[#004900] text-white text-xs font-semibold hover:bg-[#003d00]"><Download size={14} />Download</button>
+                </div>
+              </div>
+            ))
+          )}
         </div>
 
         {/* PAGINATION */}

@@ -827,24 +827,24 @@ export default function ManageUnits() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100/50 -m-4 md:-m-6">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100/50 -m-3 sm:-m-4 md:-m-6">
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-4 sm:py-6 lg:py-8 w-full overflow-hidden">
 
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 mb-6 sm:mb-8">
-          <div className="flex items-start gap-3 sm:gap-4">
+          <div className="flex items-start gap-3 sm:gap-4 min-w-0 flex-1">
             <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-gradient-to-br from-[#004900] to-[#006400] flex items-center justify-center shadow-sm shrink-0">
               <GraduationCap size={20} className="text-white sm:w-6 sm:h-6" />
             </div>
-            <div className="min-w-0">
-              <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900 tracking-tight">Manage Units</h1>
-              <p className="text-xs sm:text-sm text-gray-500 mt-1">
+            <div className="min-w-0 flex-1">
+              <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900 tracking-tight truncate">Manage Units</h1>
+              <p className="text-xs sm:text-sm text-gray-500 mt-1 line-clamp-2">
                 Units are the individual lessons inside a module
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2 sm:gap-3 self-start sm:self-center">
-            <span className="inline-flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium text-gray-600 shadow-sm">
+          <div className="flex items-center gap-2 sm:gap-3 self-start sm:self-center shrink-0">
+            <span className="inline-flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium text-gray-600 shadow-sm whitespace-nowrap">
               <BookOpen size={14} className="text-[#004900] hidden sm:block" />
               {filteredUnits.length} unit{filteredUnits.length !== 1 ? "s" : ""}
             </span>
@@ -853,13 +853,13 @@ export default function ManageUnits() {
 
         {/* Cascading filters: Course → Track → Module → Unit */}
         {!loading && !fetchError && (
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-5 mb-6">
-            <div className="flex items-center gap-2 mb-3 sm:mb-4">
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-5 mb-6 overflow-hidden">
+            <div className="flex flex-wrap items-center gap-2 mb-3 sm:mb-4">
               <Filter size={16} className="text-[#004900]" />
               <p className="text-xs sm:text-sm font-semibold text-gray-700">Filters</p>
               <span className="text-xs text-gray-400 hidden sm:inline">— narrowing from course to unit</span>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
               <div className="space-y-1.5">
                 <label className="text-[11px] font-semibold tracking-widest uppercase text-gray-500">Course</label>
                 <select

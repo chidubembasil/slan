@@ -211,10 +211,10 @@ export default function Dashboard() {
   ];
 
   return (
-    <div className="min-h-screen bg-[#f8faf8]">
-      <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
+    <div className="min-h-screen bg-[#f8faf8] w-full overflow-hidden">
+      <div className="max-w-7xl mx-auto p-3 sm:p-4 md:p-6 lg:p-8 w-full">
         {/* ── Fresh Gradient Header ── */}
-        <div className="relative overflow-hidden rounded-[28px] bg-gradient-to-br from-[#003a00] via-[#004900] to-[#0a7c0a] text-white p-7 sm:p-8 lg:p-9 mb-8 shadow-[0_20px_60px_-15px_rgba(0,73,0,0.5)] animate-slide-up">
+        <div className="relative overflow-hidden rounded-[20px] sm:rounded-[28px] bg-gradient-to-br from-[#003a00] via-[#004900] to-[#0a7c0a] text-white p-5 sm:p-8 lg:p-9 mb-6 sm:mb-8 shadow-[0_20px_60px_-15px_rgba(0,73,0,0.5)] animate-slide-up">
           {/* subtle pattern overlay */}
           <div className="absolute inset-0 opacity-[0.06]" style={{ backgroundImage: `radial-gradient(circle at 1px 1px, white 1px, transparent 0)`, backgroundSize: `22px 22px` }} />
           {/* decorative orbs */}

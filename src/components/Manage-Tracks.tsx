@@ -1323,8 +1323,8 @@ export default function ManageTracks() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
+    <div className="min-h-screen bg-gray-50 w-full overflow-hidden">
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-4 sm:py-6 lg:py-8 w-full">
 
         {/* Header Card */}
         <div className="bg-gradient-to-br from-[#004900] via-[#005a00] to-[#006400] rounded-2xl p-4 sm:p-6 lg:p-8 shadow-lg shadow-[#004900]/20 mb-4 sm:mb-6">
