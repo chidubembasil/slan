@@ -21,8 +21,8 @@ interface CourseAssessmentRow {
   title: string;
   courseId: number;
   courseName: string;
-  questionType: QuestionType; // used to decide which editor UI to show
-  displayLabel: string; // used to render the actual badge in the table
+  questionType: QuestionType;
+  displayLabel: string;
   questionCount: number;
   isActive: boolean;
 }
@@ -60,9 +60,6 @@ function emptyItem(): AssessmentItem {
   };
 }
 
-// Options sometimes come back from the API as objects (e.g. { text: "..." })
-// instead of plain strings. This normalizes any shape into a display string
-// so inputs never render "[object Object]".
 function normalizeOptions(raw: unknown): { id: string; text: string }[] {
   if (Array.isArray(raw) && raw.length) {
     return raw.map((opt: any, index) => ({
@@ -78,11 +75,6 @@ function normalizeOptions(raw: unknown): { id: string; text: string }[] {
     { id: "4", text: "" },
   ];
 }
-// Derives the badge text from the assessment's actual question items,
-// instead of guessing from a count. "No question yet" when the assessment
-// has zero items; the real question type when there's one shared type
-// across items; a comma-joined list of the types present when items have
-// different types (e.g. from a bulk file upload with varied questions).
 function getDisplayLabel(items: any[]): string {
   if (!items || items.length === 0) return "No question yet";
   const labels: Record<string, string> = {
@@ -94,9 +86,6 @@ function getDisplayLabel(items: any[]): string {
   return types.map((t) => labels[t] || t).join(", ");
 }
 
-// Pulls every bit of detail a backend validation error might carry
-// (message, error, errors[], details[], nested field errors) into one
-// readable string, instead of showing a bare "Validation error".
 function extractErrorMessage(d: any, fallback: string): string {
   if (!d) return fallback;
   const parts: string[] = [];
@@ -116,31 +105,9 @@ function extractErrorMessage(d: any, fallback: string): string {
   return unique.length ? unique.join(" — ") : fallback;
 }
 
-// Existing questions (especially ones created via CSV/Excel bulk upload)
-// can store the "correct answer" in a few different shapes depending on
-// where they came from:
-//   - a numeric option index (0-3)                      -> use directly
-//   - a letter ("a"-"d")                                 -> convert to index
-//   - the option's own id (a UUID assigned by the backend
-//     when the question/option was created)              -> match against
-//     the question's own options by id and resolve to index
-//   - the full text of the correct option (bulk uploads) -> match against
-//     the question's own options (case-insensitively) and resolve to index
-//   - true/false as a boolean, "True"/"False", or 0/1     -> normalize to
-//     the lowercase "true"/"false" the toggle expects
-//
-// IMPORTANT: the backend actually stores `correctAnswer` as the *option's
-// own id* (a UUID), not as a plain index. e.g. a saved item looks like:
-//   options: [{ id: "e3813e2e-...", text: "..." }, ...]
-//   correctAnswer: "e3813e2e-..."   <- matches one option's id, NOT "0"/"1"/etc
-// Without the id-matching branch below, the correct-answer radio would
-// silently show nothing selected for anything other than a clean numeric
-// index, even though the question genuinely has a correct answer saved on
-// the backend.
 function normalizeCorrectAnswer(it: any): string {
   if (it?.correctAnswer == null) return "";
 
-  // TRUE/FALSE
   if (it.questionType === "true_false") {
     if (typeof it.correctAnswer === "boolean") {
       return it.correctAnswer ? "true" : "false";
@@ -154,16 +121,13 @@ function normalizeCorrectAnswer(it: any): string {
     return raw;
   }
 
-  // MULTIPLE CHOICE
   if (it.questionType === "multiple_choice") {
     const options = normalizeOptions(it.options);
 
-    // number
     if (typeof it.correctAnswer === "number") {
       return String(it.correctAnswer);
     }
 
-    // object
     if (typeof it.correctAnswer === "object") {
       const value =
         it.correctAnswer.index ??
@@ -181,23 +145,19 @@ function normalizeCorrectAnswer(it: any): string {
 
     const raw = String(it.correctAnswer).trim();
 
-    // index
     if (/^\d+$/.test(raw)) {
       return raw;
     }
 
-    // A B C D
     if (/^[A-Da-d]$/.test(raw)) {
       return String(raw.toUpperCase().charCodeAt(0) - 65);
     }
 
-    // option id (backend stores the option's own id as the correct answer)
     const idIndex = options.findIndex((o) => o.id === raw);
     if (idIndex >= 0) {
       return String(idIndex);
     }
 
-    // option text
     const index = options.findIndex(
       o => o.text.trim().toLowerCase() === raw.toLowerCase()
     );
@@ -209,26 +169,12 @@ function normalizeCorrectAnswer(it: any): string {
     return "";
   }
 
-  // SHORT ANSWER
   return String(it.correctAnswer);
 }
 
-// Short-answer questions have no single machine-checkable answer — the API
-// validates `correctAnswer` as a number (an option index) for every
-// question, which only makes sense for multiple_choice/true_false. Sending
-// free text there is exactly what produced the
-// `questions.N.correctAnswer: expected number, received string` bulk-save
-// errors. So for short_answer we send `correctAnswer: null` and fold
-// whatever the admin typed into the "Correct Answer" box into `explanation`
-// instead — no text is lost, it just travels in a field the API accepts.
 function buildCorrectAnswerFields(
   item: AssessmentItem
 ): { correctAnswer: number | string | null; explanation: string } {
-  // The API schema documents `explanation` as a plain string field on every
-  // question (see PUT /admin/assessment-items/{id}). Previously this fell
-  // back to `undefined` when the box was empty, which can drop the field
-  // from the JSON body entirely instead of sending "" — always send a
-  // string so the field is present regardless of question type.
   if (item.questionType === "multiple_choice") {
     return { correctAnswer: Number(item.correctAnswer), explanation: item.explanation?.trim() || "" };
   }
@@ -238,12 +184,9 @@ function buildCorrectAnswerFields(
         explanation: item.explanation?.trim() || "" 
     };
 }
-  // true_false
   return { correctAnswer: item.correctAnswer, explanation: item.explanation?.trim() || "" };
 }
 
-// Client-side guard so a question with no valid answer never gets sent to
-// the backend as null. Returns an error string, or null if the item is fine.
 function validateItem(item: AssessmentItem, label: string): string | null {
   if (!item.questionText.trim()) return `${label}: question text is required`;
   if (item.questionType === "multiple_choice") {
@@ -260,7 +203,6 @@ function validateItem(item: AssessmentItem, label: string): string | null {
       return `${label}: please mark True or False as correct`;
     }
   } else if (item.questionType === "short_answer") {
-    // correctAnswer is optional for short_answer
   }
   return null;
 }
@@ -282,16 +224,8 @@ export default function CourseAssessments() {
     isActive: true,
   });
 
-  // A single unified list drives the editor for every assessment,
-  // regardless of whether it started out as "single", "multiple", or
-  // "upload" (bulk-created), so questions can always be added, edited,
-  // or removed one at a time.
   const [items, setItems] = useState<AssessmentItem[]>([emptyItem()]);
 
-  // CSV/Excel replace is now an optional, collapsed secondary action
-  // instead of the only way to touch a bulk-uploaded assessment's
-  // questions. Choosing a file here takes priority over the editable
-  // list on save (it replaces all questions).
   const [showCsvReplace, setShowCsvReplace] = useState(false);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
 
@@ -342,7 +276,6 @@ export default function CourseAssessments() {
                 questionCount = itemsForRow.length;
               }
             } catch {
-              // leave at 0 / empty
             }
 
             const questionType: QuestionType =
@@ -359,7 +292,6 @@ export default function CourseAssessments() {
               isActive: assessment.isActive !== false,
             });
           } catch {
-            // skip
           }
         })
       );
@@ -432,9 +364,6 @@ export default function CourseAssessments() {
       });
     }
 
-    // Always load the assessment's questions into the editable list —
-    // including assessments that started out as a bulk CSV/Excel upload.
-    // CSV replace is still available below as an optional secondary action.
     setLoadingItems(true);
     try {
       const res = await fetch(
@@ -493,9 +422,6 @@ export default function CourseAssessments() {
     try {
       await saveAssessmentConfig(editingRow.courseId);
 
-      // A CSV/Excel file (if chosen via the optional "replace" section)
-      // takes priority and replaces all questions; otherwise we save
-      // whatever is in the editable list.
       if (uploadFile) {
         await uploadQuestionsFile(editingRow.id, uploadFile);
       } else {
@@ -518,11 +444,6 @@ export default function CourseAssessments() {
       parentType: PARENT_TYPE,
       questionText: item.questionText,
       questionType: item.questionType,
-      // The API expects a plain array of option text strings, not
-      // {id, text} objects — it regenerates its own option ids/UUIDs from
-      // this array and uses `correctAnswer` (0-based index) to know which
-      // one is correct. Sending objects here produces
-      // "options.N: Invalid input: expected string, received object".
       options:
         item.questionType === "multiple_choice"
           ? item.options.filter((o) => o.text.trim()).map((o) => o.text.trim())
@@ -543,8 +464,6 @@ export default function CourseAssessments() {
     const existing = questionItems.filter((i) => i.id);
     const fresh = questionItems.filter((i) => !i.id);
 
-    // Sequential (not Promise.all) so a failure tells us exactly which
-    // question and why, instead of a generic "one of the questions" alert.
     for (let idx = 0; idx < existing.length; idx++) {
       const item = existing[idx];
       const payload = buildQuestionPayload(item, parentId, idx);
@@ -621,8 +540,6 @@ export default function CourseAssessments() {
     }
   }
 
-  // Sets a row's active status on the backend and mirrors it in local state.
-  // This is the shared mechanism behind Archive (-> false) and Restore (-> true).
   async function setRowActive(row: CourseAssessmentRow, isActive: boolean) {
     try {
       const res = await fetch(`${API_BASE}admin/courses/${row.courseId}/assessment`, {
@@ -650,14 +567,6 @@ export default function CourseAssessments() {
     await setRowActive(row, true);
   }
 
-  // Permanently removes an archived assessment. This is a hard delete (not
-  // the same as archiving) — it's only exposed from the Archive view so it
-  // never happens by accident from the main table.
-  // NOTE: assumes a DELETE endpoint exists at admin/courses/{courseId}/assessment.
-  // Confirm this against your backend before relying on it — the API docs
-  // screenshot we had only showed DELETE documented for individual
-  // assessment-items (admin/assessment-items/{id}), not for the assessment
-  // container itself.
   async function handleDeletePermanently(row: CourseAssessmentRow) {
     if (
       !confirm(
@@ -724,389 +633,498 @@ export default function CourseAssessments() {
   }
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center gap-3">
-        <div className="relative max-w-sm flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by title, course or question type..."
-            className="w-full pl-10 pr-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all bg-white shadow-sm"
-          />
-        </div>
-        <button
-          onClick={() => setArchiveOpen(true)}
-          className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium border border-gray-200 rounded-xl text-gray-600 hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm"
-          title="View archive"
-        >
-          <Archive className="w-4 h-4" />
-          Archive
-          {archivedRows.length > 0 && (
-            <span className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 text-[11px] font-semibold rounded-full bg-[#004900]/10 text-[#004900]">
-              {archivedRows.length}
-            </span>
-          )}
-        </button>
-      </div>
-
-      <div className="bg-white border border-gray-200/80 rounded-2xl shadow-sm overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-gray-50/80 border-b border-gray-200/80 text-left text-gray-500">
-              <th className="px-5 py-3.5 text-xs font-semibold uppercase tracking-wider">ID</th>
-              <th className="px-5 py-3.5 text-xs font-semibold uppercase tracking-wider">Title</th>
-              <th className="px-5 py-3.5 text-xs font-semibold uppercase tracking-wider">Course Name</th>
-              <th className="px-5 py-3.5 text-xs font-semibold uppercase tracking-wider">Question Type</th>
-              <th className="px-5 py-3.5 text-xs font-semibold uppercase tracking-wider text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {loading && (
-              <tr>
-                <td colSpan={5} className="px-5 py-16 text-center">
-                  <div className="flex flex-col items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center animate-pulse">
-                      <Search className="w-4 h-4 text-gray-400" />
-                    </div>
-                    <p className="text-sm text-gray-400">Loading course assessments...</p>
-                  </div>
-                </td>
-              </tr>
-            )}
-            {!loading && error && (
-              <tr>
-                <td colSpan={5} className="px-5 py-16 text-center">
-                  <div className="flex flex-col items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center">
-                      <X className="w-4 h-4 text-red-400" />
-                    </div>
-                    <p className="text-sm text-red-500">{error}</p>
-                  </div>
-                </td>
-              </tr>
-            )}
-            {!loading && !error && filteredRows.length === 0 && (
-              <tr>
-                <td colSpan={5} className="px-5 py-16 text-center">
-                  <div className="flex flex-col items-center gap-3">
-                    <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center">
-                      <ClipboardList className="w-5 h-5 text-gray-400" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-gray-500">No course assessments found</p>
-                      <p className="text-xs text-gray-400 mt-1">Try adjusting your search or check back later.</p>
-                    </div>
-                  </div>
-                </td>
-              </tr>
-            )}
-            {!loading &&
-              !error &&
-              filteredRows.map((row) => (
-                <tr key={row.id} className="hover:bg-gray-50/60 transition-colors">
-                  <td className="px-5 py-3.5 text-gray-500">{row.id}</td>
-                  <td className="px-5 py-3.5 font-medium text-gray-900">{row.title}</td>
-                  <td className="px-5 py-3.5 text-gray-600">{row.courseName}</td>
-                  <td className="px-5 py-3.5">
-                    <span
-                      className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${
-                        row.displayLabel === "No question yet"
-                          ? "bg-gray-100 text-gray-500"
-                          : "bg-purple-50 text-purple-700 border border-purple-200/60"
-                      }`}
-                    >
-                      {row.displayLabel}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3.5 text-right">
-                    <div className="inline-flex items-center gap-1">
-                      <button
-                        onClick={() => openEdit(row)}
-                        className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
-                        title="Edit"
-                      >
-                        <Pencil className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => handleArchive(row)}
-                        className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
-                        title="Move to archive"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-          </tbody>
-        </table>
-      </div>
-
-      {editingRow && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-2xl p-6 relative max-h-[90vh] overflow-y-auto shadow-2xl">
-            <button
-              onClick={closeEdit}
-              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-200 transition-colors"
-              title="cancel"
-            >
-              <X className="w-4 h-4" />
-            </button>
-            <h3 className="text-lg font-semibold mb-1 text-gray-900">Edit Course Assessment</h3>
-            <div className="flex items-center gap-2 mb-4">
-              <p className="text-sm text-gray-500">{editingRow.courseName}</p>
-              <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
-                {editingRow.displayLabel}
-              </span>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Title</label>
-                <input
-                  value={editForm.title}
-                  onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
-                  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all"
-                  title="title"
-                />
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 p-4 sm:p-6 lg:p-8">
+      <div className="max-w-7xl mx-auto space-y-5 sm:space-y-6">
+        {/* Header card */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-6 lg:p-8">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div className="flex items-start gap-3 sm:gap-4">
+              <div className="hidden sm:flex w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-[#004900] to-[#006400] items-center justify-center shadow-md shadow-[#004900]/20 shrink-0">
+                <ClipboardList className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
               </div>
               <div>
-                <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Description</label>
-                <textarea
-                  value={editForm.description}
-                  onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all"
-                  rows={2}
-                  title="description"
-                />
+                <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900 tracking-tight">Course Assessments</h1>
+                <p className="text-xs sm:text-sm text-gray-500 mt-1">Manage quizzes linked to each course</p>
               </div>
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Pass Mark %</label>
-                  <input
-                    type="number"
-                    value={editForm.passMarkPercent}
-                    onChange={(e) =>
-                      setEditForm({ ...editForm, passMarkPercent: Number(e.target.value) })
-                    }
-                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all"
-                    title="pass mark"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Max Attempts</label>
-                  <input
-                    type="number"
-                    value={editForm.maxAttempts}
-                    onChange={(e) =>
-                      setEditForm({ ...editForm, maxAttempts: Number(e.target.value) })
-                    }
-                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all"
-                    title="max attempts"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Time Limit (min)</label>
-                  <input
-                    type="number"
-                    value={editForm.timeLimitMinutes}
-                    onChange={(e) =>
-                      setEditForm({ ...editForm, timeLimitMinutes: Number(e.target.value) })
-                    }
-                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all"
-                    title="time limit"
-                  />
-                </div>
-              </div>
-              <label className="flex items-center gap-2.5 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={editForm.isActive}
-                  onChange={(e) => setEditForm({ ...editForm, isActive: e.target.checked })}
-                  className="w-4 h-4 rounded border-gray-300 accent-[#004900]"
-                />
-                <span className="text-sm text-gray-700">Active</span>
-              </label>
             </div>
-
-            <hr className="my-5 border-gray-100" />
-
-            {loadingItems && (
-              <p className="text-sm text-gray-400 text-center py-6">Loading questions...</p>
-            )}
-
-            {!loadingItems && (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                    Questions ({items.length})
-                  </p>
-                  <button
-                    onClick={addItem}
-                    className="inline-flex items-center gap-1 text-xs text-[#004900] hover:underline"
-                  >
-                    <Plus className="w-3.5 h-3.5" /> Add question
-                  </button>
-                </div>
-                {items.map((item, idx) => (
-                  <div
-                    key={item.id ?? `new-${idx}`}
-                    className="border border-gray-200 rounded-lg p-3 relative"
-                  >
-                    {items.length > 1 && (
-                      <button
-                        onClick={() => removeItem(idx)}
-                        className="absolute top-2 right-2 text-gray-400 hover:text-red-500"
-                        title="remove question"
-                      >
-                        <Trash className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                    <p className="text-xs text-gray-400 mb-2">Question {idx + 1}</p>
-                    <SingleQuestionEditor
-                      item={item}
-                      groupName={`course-q-${item.id ?? idx}`}
-                      onChange={(patch) => updateItem(idx, patch)}
-                      onOptionChange={(optionIndex, text) =>
-                        updateItemOption(idx, optionIndex, text)
-                      }
-                    />
-                  </div>
-                ))}
-
-                {/* CSV/Excel replace is now optional and collapsed by default —
-                    it's a secondary path, not a requirement, for assessments
-                    that originated from a bulk file upload. */}
-                <div className="pt-2 border-t border-gray-100">
-                  <button
-                    type="button"
-                    onClick={() => setShowCsvReplace((v) => !v)}
-                    className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 hover:underline"
-                  >
-                    <Upload className="w-3.5 h-3.5" />
-                    {showCsvReplace
-                      ? "Cancel CSV / Excel replace"
-                      : "Replace all questions via CSV / Excel upload instead"}
-                  </button>
-                  {showCsvReplace && (
-                    <div className="mt-3">
-                      <label className="flex items-center gap-2 px-3 py-2 border border-dashed border-gray-300 rounded-lg text-sm text-gray-500 cursor-pointer hover:border-[#004900]">
-                        <Upload className="w-4 h-4" />
-                        {uploadFile ? uploadFile.name : "Choose .csv or .xlsx file"}
-                        <input
-                          type="file"
-                          accept=".csv,.xlsx,.xls"
-                          className="hidden"
-                          onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
-                        />
-                      </label>
-                      <p className="text-xs text-gray-400 mt-2">
-                        Required columns: question_text, question_type, correct_answer.
-                        Optional: option_a–d, explanation, points. Max 5MB. Uploading a file
-                        here replaces every question above on save.
-                      </p>
-                      {uploadFile && (
-                        <button
-                          type="button"
-                          onClick={() => setUploadFile(null)}
-                          className="text-xs text-red-500 hover:underline mt-1"
-                        >
-                          Clear selected file
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            <div className="flex justify-end gap-3 mt-6">
-              <button
-                onClick={closeEdit}
-                className="px-4 py-2.5 text-sm rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors font-medium"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSaveEdit}
-                disabled={saving || loadingItems}
-                className="px-4 py-2.5 text-sm rounded-xl bg-[#004900] text-white hover:bg-[#003600] disabled:opacity-50 shadow-sm shadow-[#004900]/20 transition-all font-medium"
-              >
-                {saving ? "Saving..." : "Save Changes"}
-              </button>
+            <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-500 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2 w-fit">
+              <span className="w-2 h-2 rounded-full bg-[#004900] animate-pulse" />
+              {activeRows.length} active · {archivedRows.length} archived
             </div>
           </div>
-        </div>
-      )}
 
-      {archiveOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-3xl p-6 relative max-h-[85vh] overflow-y-auto shadow-2xl">
+          {/* Search + Archive controls — stacked on mobile, row on tablet/desktop */}
+          <div className="mt-6 flex flex-col sm:flex-row gap-3">
+            <div className="relative flex-1 w-full sm:max-w-md">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search by title, course or question type..."
+                className="w-full pl-10 pr-4 py-2.5 sm:py-3 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all bg-white shadow-sm placeholder:text-gray-400"
+              />
+            </div>
             <button
-              onClick={() => setArchiveOpen(false)}
-              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
-              title="close"
+              onClick={() => setArchiveOpen(true)}
+              className="inline-flex items-center justify-center gap-2 px-4 sm:px-5 py-2.5 sm:py-3 text-sm font-semibold border border-gray-200 rounded-xl text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm bg-white w-full sm:w-auto shrink-0"
+              title="View archive"
             >
-              <X className="w-5 h-5" />
+              <Archive className="w-4 h-4" />
+              Archive
+              {archivedRows.length > 0 && (
+                <span className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 text-[11px] font-bold rounded-full bg-gradient-to-r from-[#004900] to-[#006400] text-white shadow-sm">
+                  {archivedRows.length}
+                </span>
+              )}
             </button>
-            <h3 className="text-lg font-semibold mb-1">Assessment Archive</h3>
-            <p className="text-sm text-gray-500 mb-4">
-              Archived course assessments. Restore one to make it active again, or delete it
-              permanently.
-            </p>
+          </div>
+        </div>
 
-            {archivedRows.length === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-10">Archive is empty.</p>
-            ) : (
-              <div className="border border-gray-200 rounded-xl overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-gray-50 border-b border-gray-200 text-left text-gray-500">
-                      <th className="px-4 py-3 font-medium">ID</th>
-                      <th className="px-4 py-3 font-medium">Title</th>
-                      <th className="px-4 py-3 font-medium">Course Name</th>
-                      <th className="px-4 py-3 font-medium">Question Type</th>
-                      <th className="px-4 py-3 font-medium text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {archivedRows.map((row) => (
-                      <tr key={row.id} className="border-b border-gray-100 hover:bg-gray-50">
-                        <td className="px-4 py-3 text-gray-700">{row.id}</td>
-                        <td className="px-4 py-3 font-medium text-gray-900">{row.title}</td>
-                        <td className="px-4 py-3 text-gray-700">{row.courseName}</td>
-                        <td className="px-4 py-3">
-                          <span className="inline-flex px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-700">
-                            {row.displayLabel}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-right">
+        {/* Table / Cards */}
+        <div className="bg-white border border-gray-200/80 rounded-2xl shadow-sm overflow-hidden">
+          {/* Desktop / tablet table — horizontal scroll on small tablets */}
+          <div className="hidden md:block overflow-x-auto">
+            <table className="w-full text-sm min-w-[680px]">
+              <thead>
+                <tr className="bg-gray-50/80 border-b border-gray-200/80 text-left text-gray-500">
+                  <th className="px-4 lg:px-5 py-3.5 text-xs font-bold uppercase tracking-wider w-16">ID</th>
+                  <th className="px-4 lg:px-5 py-3.5 text-xs font-bold uppercase tracking-wider">Title</th>
+                  <th className="px-4 lg:px-5 py-3.5 text-xs font-bold uppercase tracking-wider">Course Name</th>
+                  <th className="px-4 lg:px-5 py-3.5 text-xs font-bold uppercase tracking-wider">Question Type</th>
+                  <th className="px-4 lg:px-5 py-3.5 text-xs font-bold uppercase tracking-wider text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {loading && (
+                  <tr>
+                    <td colSpan={5} className="px-5 py-16 text-center">
+                      <div className="flex flex-col items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center animate-pulse">
+                          <Search className="w-4 h-4 text-gray-400" />
+                        </div>
+                        <p className="text-sm text-gray-400">Loading course assessments...</p>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                {!loading && error && (
+                  <tr>
+                    <td colSpan={5} className="px-5 py-16 text-center">
+                      <div className="flex flex-col items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center">
+                          <X className="w-4 h-4 text-red-400" />
+                        </div>
+                        <p className="text-sm text-red-500">{error}</p>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                {!loading && !error && filteredRows.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="px-5 py-16 text-center">
+                      <div className="flex flex-col items-center gap-3">
+                        <div className="w-12 h-12 rounded-2xl bg-gray-50 border border-gray-100 flex items-center justify-center">
+                          <ClipboardList className="w-5 h-5 text-gray-400" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-gray-600">No course assessments found</p>
+                          <p className="text-xs text-gray-400 mt-1">Try adjusting your search or check back later.</p>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                {!loading &&
+                  !error &&
+                  filteredRows.map((row) => (
+                    <tr key={row.id} className="hover:bg-gray-50/60 transition-colors group">
+                      <td className="px-4 lg:px-5 py-4 text-gray-500 font-mono text-xs">{row.id}</td>
+                      <td className="px-4 lg:px-5 py-4 font-semibold text-gray-900 group-hover:text-[#004900] transition-colors max-w-[220px] truncate">{row.title}</td>
+                      <td className="px-4 lg:px-5 py-4 text-gray-600 max-w-[180px] truncate">{row.courseName}</td>
+                      <td className="px-4 lg:px-5 py-4">
+                        <span
+                          className={`inline-flex px-2.5 py-1 rounded-full text-xs font-semibold shadow-sm ring-1 ${
+                            row.displayLabel === "No question yet"
+                              ? "bg-gray-100 text-gray-500 ring-gray-200"
+                              : "bg-purple-50 text-purple-700 ring-purple-200"
+                          }`}
+                        >
+                          {row.displayLabel}
+                        </span>
+                      </td>
+                      <td className="px-4 lg:px-5 py-4 text-right">
+                        <div className="inline-flex items-center gap-1">
                           <button
-                            onClick={() => handleRestore(row)}
-                            className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-[#004900] hover:bg-green-50 mr-1"
-                            title="Restore"
+                            onClick={() => openEdit(row)}
+                            className="inline-flex items-center justify-center w-8 h-8 rounded-xl text-gray-400 hover:text-[#004900] hover:bg-[#004900]/5 border border-transparent hover:border-[#004900]/10 transition-colors"
+                            title="Edit"
                           >
-                            <RotateCcw className="w-4 h-4" />
+                            <Pencil className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={() => handleDeletePermanently(row)}
-                            className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-red-500 hover:bg-red-50"
-                            title="Delete permanently"
+                            onClick={() => handleArchive(row)}
+                            className="inline-flex items-center justify-center w-8 h-8 rounded-xl text-gray-400 hover:text-red-500 hover:bg-red-50 border border-transparent hover:border-red-100 transition-colors"
+                            title="Move to archive"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Mobile stacked cards — visible only on mobile */}
+          <div className="md:hidden divide-y divide-gray-100">
+            {loading && (
+              <div className="flex flex-col items-center gap-3 py-16 px-4">
+                <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center animate-pulse">
+                  <Search className="w-4 h-4 text-gray-400" />
+                </div>
+                <p className="text-sm text-gray-400">Loading course assessments...</p>
               </div>
             )}
+            {!loading && error && (
+              <div className="flex flex-col items-center gap-3 py-16 px-4">
+                <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center">
+                  <X className="w-4 h-4 text-red-400" />
+                </div>
+                <p className="text-sm text-red-500 text-center">{error}</p>
+              </div>
+            )}
+            {!loading && !error && filteredRows.length === 0 && (
+              <div className="flex flex-col items-center gap-3 py-16 px-4">
+                <div className="w-12 h-12 rounded-2xl bg-gray-50 border border-gray-100 flex items-center justify-center">
+                  <ClipboardList className="w-5 h-5 text-gray-400" />
+                </div>
+                <p className="text-sm font-semibold text-gray-600">No course assessments found</p>
+                <p className="text-xs text-gray-400 text-center">Try adjusting your search.</p>
+              </div>
+            )}
+            {!loading && !error && filteredRows.map((row) => (
+              <div key={row.id} className="p-4 sm:p-5 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap mb-1.5">
+                      <span className="text-[11px] font-mono text-gray-500 bg-gray-50 border border-gray-100 px-2 py-0.5 rounded-full">#{row.id}</span>
+                      <span className={`inline-flex px-2.5 py-1 rounded-full text-[11px] font-semibold ring-1 ${row.displayLabel === "No question yet" ? "bg-gray-100 text-gray-500 ring-gray-200" : "bg-purple-50 text-purple-700 ring-purple-200"}`}>{row.displayLabel}</span>
+                    </div>
+                    <h3 className="font-semibold text-gray-900 text-sm leading-tight break-words">{row.title}</h3>
+                    <p className="text-xs text-gray-500 mt-1 truncate">{row.courseName}</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <button onClick={() => openEdit(row)} className="inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-semibold border border-gray-200 bg-white text-gray-700 hover:bg-gray-50">
+                    <Pencil className="w-3.5 h-3.5" /> Edit
+                  </button>
+                  <button onClick={() => handleArchive(row)} className="inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-semibold border border-red-200 bg-red-50/50 text-red-600 hover:bg-red-50">
+                    <Trash2 className="w-3.5 h-3.5" /> Archive
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
-      )}
+
+        {editingRow && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-4 lg:p-6">
+            <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl">
+              <div className="sticky top-0 bg-gradient-to-r from-[#004900] to-[#006400] px-4 sm:px-6 py-4 sm:py-5 rounded-t-2xl flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <h3 className="text-base sm:text-lg font-bold text-white leading-tight">Edit Course Assessment</h3>
+                  <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                    <p className="text-xs sm:text-sm text-white/80 truncate">{editingRow.courseName}</p>
+                    <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-semibold bg-white/20 text-white backdrop-blur">
+                      {editingRow.displayLabel}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  onClick={closeEdit}
+                  className="shrink-0 w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-white transition-colors"
+                  title="cancel"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="p-4 sm:p-6">
+              <div className="space-y-4">
+                <div>
+                  <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Title</label>
+                  <input
+                    value={editForm.title}
+                    onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                    className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all shadow-sm bg-white"
+                    title="title"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Description</label>
+                  <textarea
+                    value={editForm.description}
+                    onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                    className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all shadow-sm bg-white resize-none"
+                    rows={2}
+                    title="description"
+                  />
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Pass Mark %</label>
+                    <input
+                      type="number"
+                      value={editForm.passMarkPercent}
+                      onChange={(e) =>
+                        setEditForm({ ...editForm, passMarkPercent: Number(e.target.value) })
+                      }
+                      className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all shadow-sm bg-white"
+                      title="pass mark"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Max Attempts</label>
+                    <input
+                      type="number"
+                      value={editForm.maxAttempts}
+                      onChange={(e) =>
+                        setEditForm({ ...editForm, maxAttempts: Number(e.target.value) })
+                      }
+                      className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all shadow-sm bg-white"
+                      title="max attempts"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Time Limit (min)</label>
+                    <input
+                      type="number"
+                      value={editForm.timeLimitMinutes}
+                      onChange={(e) =>
+                        setEditForm({ ...editForm, timeLimitMinutes: Number(e.target.value) })
+                      }
+                      className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all shadow-sm bg-white"
+                      title="time limit"
+                    />
+                  </div>
+                </div>
+                <label className="flex items-center gap-2.5 cursor-pointer select-none bg-gray-50 border border-gray-100 rounded-xl px-3 py-2.5 w-fit">
+                  <input
+                    type="checkbox"
+                    checked={editForm.isActive}
+                    onChange={(e) => setEditForm({ ...editForm, isActive: e.target.checked })}
+                    className="w-4 h-4 rounded border-gray-300 accent-[#004900]"
+                  />
+                  <span className="text-sm font-medium text-gray-700">Active</span>
+                </label>
+              </div>
+
+              <hr className="my-5 sm:my-6 border-gray-100" />
+
+              {loadingItems && (
+                <p className="text-sm text-gray-400 text-center py-8">Loading questions...</p>
+              )}
+
+              {!loadingItems && (
+                <div className="space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <p className="text-xs font-bold text-gray-700 uppercase tracking-wide">
+                      Questions ({items.length})
+                    </p>
+                    <button
+                      onClick={addItem}
+                      className="inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-white bg-gradient-to-r from-[#004900] to-[#006400] px-3 py-2 rounded-full shadow-sm shadow-[#004900]/20 hover:from-[#003700] hover:to-[#004900] transition-colors w-full sm:w-auto"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Add question
+                    </button>
+                  </div>
+                  {items.map((item, idx) => (
+                    <div
+                      key={item.id ?? `new-${idx}`}
+                      className="border border-gray-200 rounded-2xl p-3 sm:p-4 relative bg-gray-50/30 shadow-sm"
+                    >
+                      {items.length > 1 && (
+                        <button
+                          onClick={() => removeItem(idx)}
+                          className="absolute top-2 right-2 sm:top-3 sm:right-3 w-7 h-7 rounded-full bg-white border border-gray-200 text-gray-400 hover:text-red-500 hover:border-red-200 hover:bg-red-50 flex items-center justify-center transition-colors"
+                          title="remove question"
+                        >
+                          <Trash className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      <p className="text-xs font-bold text-[#004900] uppercase tracking-wide mb-2 pr-8">Question {idx + 1}</p>
+                      <SingleQuestionEditor
+                        item={item}
+                        groupName={`course-q-${item.id ?? idx}`}
+                        onChange={(patch) => updateItem(idx, patch)}
+                        onOptionChange={(optionIndex, text) =>
+                          updateItemOption(idx, optionIndex, text)
+                        }
+                      />
+                    </div>
+                  ))}
+
+                  <div className="pt-3 border-t border-gray-100">
+                    <button
+                      type="button"
+                      onClick={() => setShowCsvReplace((v) => !v)}
+                      className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-[#004900] hover:underline transition-colors"
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      {showCsvReplace
+                        ? "Cancel CSV / Excel replace"
+                        : "Replace all questions via CSV / Excel upload instead"}
+                    </button>
+                    {showCsvReplace && (
+                      <div className="mt-3">
+                        <label className="flex items-center gap-2 px-3 py-3 border-2 border-dashed border-gray-200 rounded-xl text-sm text-gray-500 cursor-pointer hover:border-[#004900]/30 hover:bg-[#004900]/5 transition-colors bg-white">
+                          <Upload className="w-4 h-4 shrink-0" />
+                          <span className="truncate">{uploadFile ? uploadFile.name : "Choose .csv or .xlsx file"}</span>
+                          <input
+                            type="file"
+                            accept=".csv,.xlsx,.xls"
+                            className="hidden"
+                            onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                          />
+                        </label>
+                        <p className="text-xs text-gray-400 mt-2 leading-relaxed">
+                          Required columns: question_text, question_type, correct_answer.
+                          Optional: option_a–d, explanation, points. Max 5MB. Uploading a file
+                          here replaces every question above on save.
+                        </p>
+                        {uploadFile && (
+                          <button
+                            type="button"
+                            onClick={() => setUploadFile(null)}
+                            className="text-xs font-medium text-red-500 hover:text-red-600 hover:underline mt-2"
+                          >
+                            Clear selected file
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex flex-col sm:flex-row justify-end gap-3 mt-6">
+                <button
+                  onClick={closeEdit}
+                  className="px-5 py-2.5 text-sm rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors font-semibold w-full sm:w-auto order-2 sm:order-1"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveEdit}
+                  disabled={saving || loadingItems}
+                  className="px-5 py-2.5 text-sm rounded-xl bg-gradient-to-r from-[#004900] to-[#006400] text-white hover:from-[#003600] hover:to-[#004900] disabled:opacity-50 shadow-md shadow-[#004900]/20 transition-all font-semibold w-full sm:w-auto order-1 sm:order-2"
+                >
+                  {saving ? "Saving..." : "Save Changes"}
+                </button>
+              </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {archiveOpen && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-4 lg:p-6">
+            <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[85vh] overflow-hidden shadow-2xl flex flex-col">
+              <div className="px-4 sm:px-6 py-4 sm:py-5 border-b border-gray-100 flex items-start justify-between gap-4 shrink-0">
+                <div>
+                  <h3 className="text-base sm:text-lg font-bold text-gray-900">Assessment Archive</h3>
+                  <p className="text-xs sm:text-sm text-gray-500 mt-1">
+                    Archived course assessments. Restore one to make it active again, or delete it permanently.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setArchiveOpen(false)}
+                  className="shrink-0 w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-500 hover:text-gray-700 transition-colors"
+                  title="close"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="overflow-y-auto p-4 sm:p-6">
+              {archivedRows.length === 0 ? (
+                <p className="text-sm text-gray-400 text-center py-10">Archive is empty.</p>
+              ) : (
+                <>
+                  <div className="hidden sm:block border border-gray-200 rounded-xl overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm min-w-[520px]">
+                        <thead>
+                          <tr className="bg-gray-50 border-b border-gray-200 text-left text-gray-500">
+                            <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider">ID</th>
+                            <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider">Title</th>
+                            <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider">Course Name</th>
+                            <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider">Question Type</th>
+                            <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {archivedRows.map((row) => (
+                            <tr key={row.id} className="hover:bg-gray-50">
+                              <td className="px-4 py-3 text-gray-600 font-mono text-xs">{row.id}</td>
+                              <td className="px-4 py-3 font-semibold text-gray-900 max-w-[150px] truncate">{row.title}</td>
+                              <td className="px-4 py-3 text-gray-600 max-w-[140px] truncate">{row.courseName}</td>
+                              <td className="px-4 py-3">
+                                <span className="inline-flex px-2 py-1 rounded-full text-xs bg-gray-100 text-gray-600 ring-1 ring-gray-200">
+                                  {row.displayLabel}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-right">
+                                <div className="inline-flex items-center gap-1">
+                                  <button
+                                    onClick={() => handleRestore(row)}
+                                    className="inline-flex items-center justify-center w-8 h-8 rounded-xl text-[#004900] hover:bg-green-50 border border-transparent hover:border-green-100 transition-colors"
+                                    title="Restore"
+                                  >
+                                    <RotateCcw className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeletePermanently(row)}
+                                    className="inline-flex items-center justify-center w-8 h-8 rounded-xl text-red-500 hover:bg-red-50 border border-transparent hover:border-red-100 transition-colors"
+                                    title="Delete permanently"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                  <div className="sm:hidden space-y-3">
+                    {archivedRows.map((row) => (
+                      <div key={row.id} className="border border-gray-200 rounded-2xl p-4 space-y-3 bg-gray-50/30">
+                        <div>
+                          <p className="text-xs font-mono text-gray-400">#{row.id}</p>
+                          <p className="font-semibold text-gray-900 text-sm mt-1 break-words">{row.title}</p>
+                          <p className="text-xs text-gray-500 mt-1">{row.courseName}</p>
+                          <span className="inline-flex mt-2 px-2 py-1 rounded-full text-xs bg-white border border-gray-200 text-gray-600">{row.displayLabel}</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button onClick={() => handleRestore(row)} className="inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-semibold bg-white border border-green-200 text-[#004900] hover:bg-green-50">
+                            <RotateCcw className="w-3.5 h-3.5" /> Restore
+                          </button>
+                          <button onClick={() => handleDeletePermanently(row)} className="inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-semibold bg-white border border-red-200 text-red-600 hover:bg-red-50">
+                            <Trash2 className="w-3.5 h-3.5" /> Delete
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -1123,65 +1141,67 @@ function SingleQuestionEditor({
   onOptionChange: (optionIndex: number, text: string) => void;
 }) {
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 sm:space-y-4">
       <div>
-        <label className="text-xs font-medium text-gray-600">Question Text</label>
+        <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Question Text</label>
         <textarea
           value={item.questionText}
           onChange={(e) => onChange({ questionText: e.target.value })}
-          className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+          className="w-full mt-1 px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] bg-white shadow-sm resize-none placeholder:text-gray-400"
           rows={2}
           title="question text"
         />
       </div>
 
-      <div>
-        <label className="text-xs font-medium text-gray-600">Question Type</label>
-        <select
-          value={item.questionType}
-          onChange={(e) => onChange({ questionType: e.target.value as AssessmentItem["questionType"] })}
-          className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
-          title="question type select"
-        >
-          <option value="multiple_choice">Multiple Choice</option>
-          <option value="true_false">True / False</option>
-          <option value="short_answer">Short Answer</option>
-        </select>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+        <div>
+          <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Question Type</label>
+          <select
+            value={item.questionType}
+            onChange={(e) => onChange({ questionType: e.target.value as AssessmentItem["questionType"] })}
+            className="w-full mt-1 px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] bg-white shadow-sm"
+            title="question type select"
+          >
+            <option value="multiple_choice">Multiple Choice</option>
+            <option value="true_false">True / False</option>
+            <option value="short_answer">Short Answer</option>
+          </select>
+        </div>
+        <div>
+          <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Points</label>
+          <input
+            type="number"
+            value={item.points}
+            onChange={(e) => onChange({ points: Number(e.target.value) })}
+            className="w-full mt-1 px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] bg-white shadow-sm max-w-full sm:max-w-32"
+            title="points"
+          />
+        </div>
       </div>
 
-      {/* Correct answer is marked inline. isCorrect is derived by comparing
-          the OPTION'S INDEX (not its id) against item.correctAnswer, since
-          item.correctAnswer is kept as a stringified index ("0".."3") on the
-          client — regardless of whether the option's own `id` is a
-          locally-generated placeholder ("1".."4") or a backend UUID.
-          Previously this compared `opt.id === item.correctAnswer` and set
-          `correctAnswer: opt.id` on select — which (a) never matched
-          anything loaded from the backend (correctAnswer normalizes to an
-          index, not a UUID) and (b) was off-by-one for brand new questions,
-          since new option ids start at "1" while their real index is 0. */}
       {item.questionType === "multiple_choice" && (
         <div>
-          <label className="text-xs font-medium text-gray-600 mb-1 block">
+          <label className="text-xs font-semibold text-gray-700 mb-2 block">
             Options — mark the correct one
           </label>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {item.options.map((opt, idx) => {
               const isCorrect = String(idx) === item.correctAnswer;
 
               return (
-                <div key={idx} className="flex items-end gap-2">
-                  <div className="flex-1">
-                    <label className="text-xs text-gray-500">Option {String.fromCharCode(65 + idx)}</label>
+                <div key={idx} className={`flex items-end gap-2 p-2.5 rounded-xl border transition-colors ${isCorrect ? "bg-[#004900]/5 border-[#004900]/20" : "bg-white border-gray-100"}`}>
+                  <div className="flex-1 min-w-0">
+                    <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wide">Option {String.fromCharCode(65 + idx)}</label>
                     <input
                       value={opt.text}
                       onChange={(e) => onOptionChange(idx, e.target.value)}
-                      className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                      className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] bg-white"
                       title={`option ${idx}`}
                     />
                   </div>
                   <label
-                    className={`flex items-center gap-1 pb-2 cursor-pointer select-none text-xs ${
-                      isCorrect ? "text-[#004900] font-medium" : "text-gray-400"
+                    className={`flex items-center gap-1 pb-2 cursor-pointer select-none text-xs whitespace-nowrap ${
+                      isCorrect ? "text-[#004900] font-semibold" : "text-gray-400"
                     }`}
                     title="Mark as correct answer"
                   >
@@ -1203,17 +1223,17 @@ function SingleQuestionEditor({
 
       {item.questionType === "true_false" && (
         <div>
-          <label className="text-xs font-medium text-gray-600 mb-1 block">
+          <label className="text-xs font-semibold text-gray-700 mb-1.5 block">
             Correct Answer
           </label>
-          <div className="flex gap-2">
+          <div className="grid grid-cols-2 gap-2 sm:gap-3">
             <button
               type="button"
               onClick={() => onChange({ correctAnswer: "true" })}
-              className={`flex-1 px-3 py-2 text-sm rounded-lg border transition-colors ${
+              className={`px-3 py-2.5 text-sm font-semibold rounded-xl border transition-colors ${
                 item.correctAnswer === "true"
-                  ? "bg-[#004900] text-white border-[#004900]"
-                  : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                  ? "bg-gradient-to-r from-[#004900] to-[#006400] text-white border-[#004900] shadow-md shadow-[#004900]/20"
+                  : "border-gray-200 text-gray-600 hover:bg-gray-50 bg-white"
               }`}
             >
               True
@@ -1221,10 +1241,10 @@ function SingleQuestionEditor({
             <button
               type="button"
               onClick={() => onChange({ correctAnswer: "false" })}
-              className={`flex-1 px-3 py-2 text-sm rounded-lg border transition-colors ${
+              className={`px-3 py-2.5 text-sm font-semibold rounded-xl border transition-colors ${
                 item.correctAnswer === "false"
-                  ? "bg-[#004900] text-white border-[#004900]"
-                  : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                  ? "bg-gradient-to-r from-[#004900] to-[#006400] text-white border-[#004900] shadow-md shadow-[#004900]/20"
+                  : "border-gray-200 text-gray-600 hover:bg-gray-50 bg-white"
               }`}
             >
               False
@@ -1235,14 +1255,14 @@ function SingleQuestionEditor({
 
       {item.questionType === "short_answer" && (
         <div>
-          <label className="text-xs font-medium text-gray-600">Correct Answer</label>
+          <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Correct Answer</label>
           <input
             value={item.correctAnswer}
             onChange={(e) => onChange({ correctAnswer: e.target.value })}
-            className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+            className="w-full mt-1 px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] bg-white shadow-sm"
             title="correct answer"
           />
-          <p className="text-[11px] text-gray-400 mt-1">
+          <p className="text-[11px] text-gray-400 mt-1.5 leading-relaxed">
             Short-answer questions aren't auto-graded on the backend, so this text is saved
             inside the explanation field as "Expected answer: …" instead of as a literal
             correct-answer value.
@@ -1250,26 +1270,27 @@ function SingleQuestionEditor({
         </div>
       )}
 
-      <div>
-        <label className="text-xs font-medium text-gray-600">Points</label>
-        <input
-          type="number"
-          value={item.points}
-          onChange={(e) => onChange({ points: Number(e.target.value) })}
-          className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm max-w-35"
-          title="points"
-        />
-      </div>
-
-      <div>
-        <label className="text-xs font-medium text-gray-600">Explanation (optional)</label>
-        <textarea
-          value={item.explanation}
-          onChange={(e) => onChange({ explanation: e.target.value })}
-          className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
-          rows={2}
-          title="explanation"
-        />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+        <div className="sm:col-span-1">
+          <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Points</label>
+          <input
+            type="number"
+            value={item.points}
+            onChange={(e) => onChange({ points: Number(e.target.value) })}
+            className="w-full mt-1 px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] bg-white shadow-sm"
+            title="points"
+          />
+        </div>
+        <div className="sm:col-span-2">
+          <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Explanation <span className="font-normal text-gray-400">(optional)</span></label>
+          <textarea
+            value={item.explanation}
+            onChange={(e) => onChange({ explanation: e.target.value })}
+            className="w-full mt-1 px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] bg-white shadow-sm resize-none"
+            rows={2}
+            title="explanation"
+          />
+        </div>
       </div>
     </div>
   );

@@ -1,5 +1,23 @@
 import { useState, useEffect, useCallback } from "react";
-import RichTextEditor  from "./RichTextEditor"
+import RichTextEditor from "./RichTextEditor";
+import {
+  BookOpen,
+  X,
+  AlertTriangle,
+  Check,
+  AlertCircle,
+  Clock,
+  BadgeCheck,
+  Trash2,
+  Pencil,
+  Video,
+  FileText,
+  Search,
+  Filter,
+  Loader2,
+  GraduationCap,
+} from "lucide-react";
+
 const BASE = import.meta.env.VITE_BASE_URL;
 
 type UnitStatus = "draft" | "published" | "archived";
@@ -28,7 +46,7 @@ type Course = { id: number; title: string };
 // ── Shared styles ─────────────────────────────────────────────────────────────
 
 const inputCls =
-  "w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900]";
+  "w-full px-3 sm:px-3.5 py-2 sm:py-2.5 border border-gray-200 bg-white rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all placeholder:text-gray-400";
 const textareaCls = inputCls + " resize-none";
 const statusOptions = ["draft", "published", "archived"] as const;
 
@@ -70,16 +88,17 @@ const MAX_PDF_SIZE_MB = 25;
 // ── Badge ─────────────────────────────────────────────────────────────────────
 
 const statusBadge: Record<UnitStatus, string> = {
-  published: "bg-green-100 text-green-700",
-  draft: "bg-yellow-100 text-yellow-700",
-  archived: "bg-gray-100 text-gray-500",
+  published: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  draft: "bg-amber-50 text-amber-700 border-amber-200",
+  archived: "bg-gray-50 text-gray-600 border-gray-200",
 };
 
 function Badge({ status }: { status: UnitStatus }) {
   return (
     <span
-      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${statusBadge[status]}`}
+      className={`inline-flex items-center gap-1 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full text-[11px] sm:text-xs font-semibold capitalize border shadow-sm ${statusBadge[status]}`}
     >
+      <span className="w-1.5 h-1.5 rounded-full bg-current opacity-70 hidden sm:inline-block" />
       {status}
     </span>
   );
@@ -97,22 +116,23 @@ function Modal({
   children: React.ReactNode;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 lg:p-6">
       <div
         className="absolute inset-0 bg-black/40 backdrop-blur-sm"
         onClick={onClose}
       />
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div className="bg-[#004900] px-6 py-4 flex items-center justify-between rounded-t-2xl sticky top-0 z-10">
-          <h2 className="text-white font-semibold text-base">{title}</h2>
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] sm:max-h-[90vh] overflow-hidden flex flex-col">
+        <div className="bg-gradient-to-r from-[#004900] to-[#006400] px-4 sm:px-6 py-4 sm:py-5 flex items-center justify-between shrink-0">
+          <h2 className="text-white font-semibold text-sm sm:text-base truncate pr-3">{title}</h2>
           <button
             onClick={onClose}
-            className="text-white/70 hover:text-white text-xl leading-none"
+            className="w-8 h-8 rounded-xl bg-white/10 hover:bg-white/20 flex items-center justify-center text-white/80 hover:text-white transition-colors shrink-0"
+            aria-label="Close"
           >
-            ✕
+            <X size={16} />
           </button>
         </div>
-        <div className="p-6">{children}</div>
+        <div className="p-4 sm:p-6 overflow-y-auto flex-1">{children}</div>
       </div>
     </div>
   );
@@ -132,42 +152,37 @@ function ConfirmModal({
   loading: boolean;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
       <div
         className="absolute inset-0 bg-black/40 backdrop-blur-sm"
         onClick={onCancel}
       />
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
-        <div className="flex items-start gap-3 mb-5">
-          <div className="w-9 h-9 rounded-full bg-red-100 flex items-center justify-center shrink-0 mt-0.5">
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="#dc2626"
-              strokeWidth="2.5"
-            >
-              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-              <line x1="12" y1="9" x2="12" y2="13" />
-              <line x1="12" y1="17" x2="12.01" y2="17" />
-            </svg>
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5 sm:p-6">
+        <div className="flex items-start gap-3 sm:gap-4 mb-5 sm:mb-6">
+          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-red-50 border border-red-100 flex items-center justify-center shrink-0">
+            <AlertTriangle size={18} className="text-red-600" />
           </div>
-          <p className="text-sm text-gray-700 leading-relaxed">{message}</p>
+          <p className="text-sm text-gray-700 leading-relaxed pt-1">{message}</p>
         </div>
-        <div className="flex gap-3 justify-end">
+        <div className="flex flex-col-reverse sm:flex-row gap-3 sm:justify-end">
           <button
             onClick={onCancel}
-            className="px-4 py-2 rounded-lg text-sm border border-gray-300 text-gray-600 hover:bg-gray-50"
+            className="w-full sm:w-auto px-4 py-2.5 rounded-xl text-sm font-medium border border-gray-200 text-gray-700 bg-white hover:bg-gray-50 transition-colors"
           >
             Cancel
           </button>
           <button
             onClick={onConfirm}
             disabled={loading}
-            className="px-4 py-2 rounded-lg text-sm bg-red-600 text-white hover:bg-red-700 disabled:opacity-60"
+            className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-sm font-medium bg-red-600 text-white hover:bg-red-700 disabled:opacity-60 transition-colors inline-flex items-center justify-center gap-2"
           >
-            {loading ? "Deleting..." : "Delete"}
+            {loading ? (
+              <>
+                <Loader2 size={14} className="animate-spin" /> Deleting...
+              </>
+            ) : (
+              "Delete"
+            )}
           </button>
         </div>
       </div>
@@ -273,7 +288,6 @@ function EditUnitForm({
     }
     setLoading(true);
 
-    
     let videoUrl = existingVideoUrl || null;
     let pdfUrl = existingPdfUrl || null;
 
@@ -320,9 +334,9 @@ function EditUnitForm({
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 sm:space-y-5">
       <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1.5">
+        <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-1.5">
           Title <span className="text-red-500">*</span>
         </label>
         <input
@@ -332,12 +346,14 @@ function EditUnitForm({
           placeholder="Unit title"
         />
         {formErrors.title && (
-          <p className="text-xs text-red-600 mt-1">{formErrors.title}</p>
+          <p className="text-xs text-red-600 mt-1.5 flex items-center gap-1">
+            <AlertCircle size={12} /> {formErrors.title}
+          </p>
         )}
       </div>
 
       <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1.5">
+        <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-1.5">
           Description
         </label>
         <textarea
@@ -350,7 +366,7 @@ function EditUnitForm({
       </div>
 
       <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1.5">
+        <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-1.5">
           Content <span className="text-red-500">*</span>
         </label>
         <RichTextEditor
@@ -359,109 +375,111 @@ function EditUnitForm({
           placeholder="Main learning content for this unit"
         />
         {formErrors.content && (
-          <p className="text-xs text-red-600 mt-1">{formErrors.content}</p>
+          <p className="text-xs text-red-600 mt-1.5 flex items-center gap-1">
+            <AlertCircle size={12} /> {formErrors.content}
+          </p>
         )}
       </div>
 
-      <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1.5">
-          Summary
-        </label>
-        <textarea
-          rows={2}
-          value={form.summary}
-          onChange={(e) => set("summary", e.target.value)}
-          className={textareaCls}
-          placeholder="Key takeaways summary"
-        />
-      </div>
-
-      <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1.5">
-          Case Study
-        </label>
-        <textarea
-          rows={3}
-          value={form.caseStudy}
-          onChange={(e) => set("caseStudy", e.target.value)}
-          className={textareaCls}
-          placeholder="Real-world case study (optional)"
-        />
-      </div>
-
-      <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1.5">
-          Discussion Prompt
-        </label>
-        <textarea
-          rows={2}
-          value={form.discussionPrompt}
-          onChange={(e) => set("discussionPrompt", e.target.value)}
-          className={textareaCls}
-          placeholder="Prompt for group discussion (optional)"
-        />
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:gap-5">
         <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1.5">
-            Video file
+          <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-1.5">
+            Summary
+          </label>
+          <textarea
+            rows={2}
+            value={form.summary}
+            onChange={(e) => set("summary", e.target.value)}
+            className={textareaCls}
+            placeholder="Key takeaways summary"
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-1.5">
+            Case Study
+          </label>
+          <textarea
+            rows={3}
+            value={form.caseStudy}
+            onChange={(e) => set("caseStudy", e.target.value)}
+            className={textareaCls}
+            placeholder="Real-world case study (optional)"
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-1.5">
+            Discussion Prompt
+          </label>
+          <textarea
+            rows={2}
+            value={form.discussionPrompt}
+            onChange={(e) => set("discussionPrompt", e.target.value)}
+            className={textareaCls}
+            placeholder="Prompt for group discussion (optional)"
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
+        <div>
+          <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-1.5 flex items-center gap-1.5">
+            <Video size={14} className="text-purple-600" /> Video file
           </label>
           {existingVideoUrl && !videoFile && (
-            <div className="flex items-center justify-between mb-1.5 bg-purple-50 border border-purple-100 rounded-lg px-3 py-2">
+            <div className="flex items-center justify-between mb-2 bg-purple-50 border border-purple-100 rounded-xl px-3 py-2.5">
               <a
                 href={existingVideoUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="text-xs text-purple-700 underline truncate max-w-40"
+                className="text-xs font-medium text-purple-700 underline truncate max-w-[140px] sm:max-w-[160px]"
               >
                 Current video
               </a>
-
               <button
                 type="button"
                 onClick={() => setExistingVideoUrl("")}
-                className="text-xs text-red-500 hover:text-red-700 ml-2"
+                className="text-xs font-medium text-red-600 hover:text-red-700 bg-white border border-red-100 px-2.5 py-1 rounded-lg shrink-0 ml-2"
               >
                 Remove
               </button>
             </div>
-        
           )}
           <input
             type="file"
             accept="video/mp4,video/webm,video/ogg,video/quicktime"
             onChange={handleVideoChange}
-            className={inputCls}
+            className={`${inputCls} file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:bg-purple-50 file:text-purple-700 file:text-xs file:font-medium hover:file:bg-purple-100`}
             aria-label="Video file"
           />
           {videoFile && (
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs text-gray-500 mt-1.5 truncate">
               Selected: {videoFile.name} ({(videoFile.size / (1024 * 1024)).toFixed(1)} MB)
             </p>
           )}
           {formErrors.video && (
-            <p className="text-xs text-red-600 mt-1">{formErrors.video}</p>
+            <p className="text-xs text-red-600 mt-1.5">{formErrors.video}</p>
           )}
         </div>
         <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1.5">
-            PDF file
+          <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-1.5 flex items-center gap-1.5">
+            <FileText size={14} className="text-red-500" /> PDF file
           </label>
           {existingPdfUrl && !pdfFile && (
-            <div className="flex items-center justify-between mb-1.5 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+            <div className="flex items-center justify-between mb-2 bg-red-50 border border-red-100 rounded-xl px-3 py-2.5">
               <a
                 href={existingPdfUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="text-xs text-red-700 underline truncate max-w-40"
+                className="text-xs font-medium text-red-700 underline truncate max-w-[140px] sm:max-w-[160px]"
               >
                 Current PDF
               </a>
               <button
                 type="button"
                 onClick={() => setExistingPdfUrl("")}
-                className="text-xs text-red-500 hover:text-red-700 ml-2"
+                className="text-xs font-medium text-red-600 hover:text-red-700 bg-white border border-red-100 px-2.5 py-1 rounded-lg shrink-0 ml-2"
               >
                 Remove
               </button>
@@ -471,24 +489,24 @@ function EditUnitForm({
             type="file"
             accept="application/pdf"
             onChange={handlePdfChange}
-            className={inputCls}
+            className={`${inputCls} file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:bg-red-50 file:text-red-700 file:text-xs file:font-medium hover:file:bg-red-100`}
             aria-label="PDF file"
           />
           {pdfFile && (
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs text-gray-500 mt-1.5 truncate">
               Selected: {pdfFile.name} ({(pdfFile.size / (1024 * 1024)).toFixed(1)} MB)
             </p>
           )}
           {formErrors.pdf && (
-            <p className="text-xs text-red-600 mt-1">{formErrors.pdf}</p>
+            <p className="text-xs text-red-600 mt-1.5">{formErrors.pdf}</p>
           )}
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
         <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1.5">
-            Est. Read (mins)
+          <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-1.5 flex items-center gap-1.5">
+            <Clock size={14} className="text-gray-400" /> Est. Read (mins)
           </label>
           <input
             type="number"
@@ -499,16 +517,32 @@ function EditUnitForm({
             title="input"
           />
         </div>
+        <div className="hidden lg:block" />
+        <div>
+          <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-1.5 flex items-center gap-1.5">
+            <BadgeCheck size={14} className="text-gray-400" /> Status
+          </label>
+          <select
+            value={form.status}
+            onChange={(e) => set("status", e.target.value)}
+            className={inputCls}
+            aria-label="select"
+          >
+            {statusOptions.map((s) => (
+              <option key={s} value={s}>
+                {s.charAt(0).toUpperCase() + s.slice(1)}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
-      <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1.5">
-          Status
-        </label>
+      <div className="lg:hidden">
+        <label className="block text-xs font-semibold text-gray-700 mb-1.5">Status</label>
         <select
           value={form.status}
           onChange={(e) => set("status", e.target.value)}
-          className={inputCls}
+          className={`${inputCls} lg:hidden`}
           aria-label="select"
         >
           {statusOptions.map((s) => (
@@ -519,14 +553,27 @@ function EditUnitForm({
         </select>
       </div>
 
-      {error && <p className="text-xs text-red-600">{error}</p>}
-      <div className="flex gap-3 pt-1">
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 flex items-start gap-2">
+          <AlertCircle size={16} className="text-red-600 mt-0.5 shrink-0" />
+          <p className="text-xs sm:text-sm text-red-700">{error}</p>
+        </div>
+      )}
+      <div className="flex flex-col sm:flex-row gap-3 pt-2">
         <button
           onClick={handleSave}
           disabled={loading}
-          className="bg-[#004900] text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-[#003700] disabled:opacity-60"
+          className="w-full sm:w-auto bg-gradient-to-r from-[#004900] to-[#006400] text-white px-6 sm:px-7 py-2.5 sm:py-3 rounded-xl text-sm font-semibold hover:from-[#003700] hover:to-[#004900] disabled:opacity-60 shadow-sm transition-all inline-flex items-center justify-center gap-2"
         >
-          {loading ? uploadStage || "Saving..." : "Save Changes"}
+          {loading ? (
+            <>
+              <Loader2 size={16} className="animate-spin" /> {uploadStage || "Saving..."}
+            </>
+          ) : (
+            <>
+              <Check size={16} /> Save Changes
+            </>
+          )}
         </button>
       </div>
     </div>
@@ -780,96 +827,124 @@ export default function ManageUnits() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto px-6 py-8">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100/50 -m-4 md:-m-6">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
 
         {/* Header */}
-        <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Manage Units</h1>
-            <p className="text-sm text-gray-500 mt-0.5">
-              Units are the individual lessons inside a module
-            </p>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 mb-6 sm:mb-8">
+          <div className="flex items-start gap-3 sm:gap-4">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-gradient-to-br from-[#004900] to-[#006400] flex items-center justify-center shadow-sm shrink-0">
+              <GraduationCap size={20} className="text-white sm:w-6 sm:h-6" />
+            </div>
+            <div className="min-w-0">
+              <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900 tracking-tight">Manage Units</h1>
+              <p className="text-xs sm:text-sm text-gray-500 mt-1">
+                Units are the individual lessons inside a module
+              </p>
+            </div>
           </div>
-          <span className="text-sm text-gray-400 whitespace-nowrap">
-            {filteredUnits.length} unit{filteredUnits.length !== 1 ? "s" : ""}
-          </span>
+          <div className="flex items-center gap-2 sm:gap-3 self-start sm:self-center">
+            <span className="inline-flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium text-gray-600 shadow-sm">
+              <BookOpen size={14} className="text-[#004900] hidden sm:block" />
+              {filteredUnits.length} unit{filteredUnits.length !== 1 ? "s" : ""}
+            </span>
+          </div>
         </div>
 
         {/* Cascading filters: Course → Track → Module → Unit */}
         {!loading && !fetchError && (
-          <div className="flex flex-wrap items-center gap-3 mb-6 ">
-            <select
-              value={selectedCourseId}
-              onChange={(e) => handleCourseSelect(e.target.value)}
-              className="px-3.5 py-2 border border-gray-200 rounded-xl text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all shadow-sm"
-              aria-label="Filter by course"
-            >
-              <option value="all">All courses</option>
-              {courses.map((c) => (
-                <option key={c.id} value={c.id}>{c.title}</option>
-              ))}
-            </select>
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-5 mb-6">
+            <div className="flex items-center gap-2 mb-3 sm:mb-4">
+              <Filter size={16} className="text-[#004900]" />
+              <p className="text-xs sm:text-sm font-semibold text-gray-700">Filters</p>
+              <span className="text-xs text-gray-400 hidden sm:inline">— narrowing from course to unit</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-semibold tracking-widest uppercase text-gray-500">Course</label>
+                <select
+                  value={selectedCourseId}
+                  onChange={(e) => handleCourseSelect(e.target.value)}
+                  className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all shadow-sm"
+                  aria-label="Filter by course"
+                >
+                  <option value="all">All courses</option>
+                  {courses.map((c) => (
+                    <option key={c.id} value={c.id}>{c.title}</option>
+                  ))}
+                </select>
+              </div>
 
-            <select
-              value={selectedTrackId}
-              onChange={(e) => handleTrackSelect(e.target.value)}
-              className="px-3.5 py-2 border border-gray-200 rounded-xl text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all shadow-sm"
-              aria-label="Filter by track"
-            >
-              <option value="all">All tracks</option>
-              {availableTracks.map((t) => (
-                <option key={t.id} value={t.id}>{t.title}</option>
-              ))}
-            </select>
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-semibold tracking-widest uppercase text-gray-500">Track</label>
+                <select
+                  value={selectedTrackId}
+                  onChange={(e) => handleTrackSelect(e.target.value)}
+                  className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all shadow-sm"
+                  aria-label="Filter by track"
+                >
+                  <option value="all">All tracks</option>
+                  {availableTracks.map((t) => (
+                    <option key={t.id} value={t.id}>{t.title}</option>
+                  ))}
+                </select>
+              </div>
 
-            <select
-              value={selectedModuleId}
-              onChange={(e) => handleModuleSelect(e.target.value)}
-              className="px-3.5 py-2 border border-gray-200 rounded-xl text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all shadow-sm"
-              aria-label="Filter by module"
-            >
-              <option value="all">All modules</option>
-              {availableModules.map((m) => (
-                <option key={m.id} value={m.id}>{m.title}</option>
-              ))}
-            </select>
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-semibold tracking-widest uppercase text-gray-500">Module</label>
+                <select
+                  value={selectedModuleId}
+                  onChange={(e) => handleModuleSelect(e.target.value)}
+                  className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all shadow-sm"
+                  aria-label="Filter by module"
+                >
+                  <option value="all">All modules</option>
+                  {availableModules.map((m) => (
+                    <option key={m.id} value={m.id}>{m.title}</option>
+                  ))}
+                </select>
+              </div>
 
-            <select
-              value={selectedUnitId}
-              onChange={(e) => handleUnitSelect(e.target.value)}
-              className="px-3.5 py-2 border border-gray-200 rounded-xl text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all shadow-sm"
-              aria-label="Filter by unit"
-            >
-              <option value="all">All units</option>
-              {availableUnits.map((u) => (
-                <option key={u.id} value={u.id}>{u.title}</option>
-              ))}
-            </select>
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-semibold tracking-widest uppercase text-gray-500">Unit</label>
+                <select
+                  value={selectedUnitId}
+                  onChange={(e) => handleUnitSelect(e.target.value)}
+                  className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all shadow-sm"
+                  aria-label="Filter by unit"
+                >
+                  <option value="all">All units</option>
+                  {availableUnits.map((u) => (
+                    <option key={u.id} value={u.id}>{u.title}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
           </div>
         )}
 
         {/* Table card */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden w-[95%]">
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
 
           {loading && (
-            <div className="flex flex-col items-center justify-center py-20 gap-3 text-gray-400 text-sm">
-              <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center animate-pulse">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+            <div className="flex flex-col items-center justify-center py-16 sm:py-20 gap-3 text-gray-400 text-sm px-4">
+              <div className="w-12 h-12 rounded-2xl bg-gray-50 border border-gray-100 flex items-center justify-center animate-pulse">
+                <Loader2 size={18} className="animate-spin" />
               </div>
-              Loading units...
+              <p className="text-sm font-medium">Loading units...</p>
+              <p className="text-xs text-gray-400">Fetching courses, tracks and modules</p>
             </div>
           )}
 
           {!loading && fetchError && (
-            <div className="flex flex-col items-center justify-center py-20 gap-3">
-              <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+            <div className="flex flex-col items-center justify-center py-16 sm:py-20 gap-3 px-4">
+              <div className="w-12 h-12 rounded-2xl bg-red-50 border border-red-100 flex items-center justify-center">
+                <AlertCircle size={20} className="text-red-500" />
               </div>
-              <p className="text-sm text-red-600">{fetchError}</p>
+              <p className="text-sm font-medium text-red-600 text-center">{fetchError}</p>
               <button
                 onClick={fetchUnits}
-                className="text-sm text-[#004900] underline"
+                className="mt-1 inline-flex items-center gap-2 text-sm font-medium text-white bg-gradient-to-r from-[#004900] to-[#006400] px-5 py-2.5 rounded-xl shadow-sm"
               >
                 Retry
               </button>
@@ -877,174 +952,257 @@ export default function ManageUnits() {
           )}
 
           {!loading && !fetchError && filteredUnits.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-20 gap-3">
-              <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+            <div className="flex flex-col items-center justify-center py-16 sm:py-20 gap-3 px-4">
+              <div className="w-14 h-14 rounded-2xl bg-gray-50 border border-gray-100 flex items-center justify-center">
+                <Search size={20} className="text-gray-400" />
               </div>
               <div className="text-center">
-                <p className="text-sm font-medium text-gray-500">
+                <p className="text-sm font-semibold text-gray-600">
                   {units.length === 0 ? "No units found" : "No units match the selected filters"}
                 </p>
-                <p className="text-xs text-gray-400 mt-1">
-                  {units.length === 0 ? "Add units from the Manage Modules page." : "Try changing the filter."}
+                <p className="text-xs sm:text-sm text-gray-400 mt-1 max-w-xs mx-auto">
+                  {units.length === 0 ? "Add units from the Manage Modules page." : "Try changing the filter or clear selections."}
                 </p>
               </div>
             </div>
           )}
 
           {!loading && !fetchError && filteredUnits.length > 0 && (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50 border-b border-gray-100">
-                    <th className="text-left px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide w-12">
-                      ID
-                    </th>
-                    <th className="text-left px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                      Unit Name
-                    </th>
-                    <th className="text-left px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                      Track
-                    </th>
-                    <th className="text-left px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                      Module
-                    </th>
-                    <th className="text-left px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                      Status
-                    </th>
-                    <th className="text-left px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                      Read (mins)
-                    </th>
-                    <th className="text-right px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {filteredUnits.map((unit) => (
-                    <tr
-                      key={unit.id}
-                      className="hover:bg-gray-50/60 transition-colors"
-                    >
-                      {/* ID */}
-                      <td className="px-6 py-4 text-gray-400 font-mono text-xs">
-                        {unit.id}
-                      </td>
-
-                      {/* Unit Name */}
-                      <td className="px-6 py-4">
-                        <div className="font-medium text-gray-900">
-                          {unit.title}
-                        </div>
-                        {unit.description && (
-                          <div className="text-xs text-gray-400 mt-0.5 line-clamp-1 max-w-xs">
-                            {unit.description}
-                          </div>
-                        )}
-                        <div className="flex items-center gap-2 mt-1.5">
-                          {unit.videoUrl && (
-                            <span className="inline-flex items-center gap-1 text-xs text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full">
-                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <polygon points="5 3 19 12 5 21 5 3" />
-                              </svg>
-                              Video
-                            </span>
-                          )}
-                          {unit.pdfUrl && (
-                            <span className="inline-flex items-center gap-1 text-xs text-red-600 bg-red-50 px-2 py-0.5 rounded-full">
-                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                                <polyline points="14 2 14 8 20 8" />
-                              </svg>
-                              PDF
-                            </span>
-                          )}
-                        </div>
-                      </td>
-
-                      {/* Track */}
-                      <td className="px-6 py-4">
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700">
-                          {getTrackForUnit(unit)?.title ?? "—"}
-                        </span>
-                      </td>
-
-                      {/* Module */}
-                      <td className="px-6 py-4">
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700">
-                          {unit.module?.title ?? `Module #${unit.moduleId}`}
-                        </span>
-                      </td>
-
-                      {/* Status — inline patch dropdown */}
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2">
-                          <Badge status={unit.status} />
-                          {patchingId === unit.id ? (
-                            <span className="text-xs text-gray-400">updating…</span>
-                          ) : (
-                            <select
-                              value={unit.status}
-                              onChange={(e) =>
-                                handlePatchStatus(unit, e.target.value as UnitStatus)
-                              }
-                              aria-label="change status"
-                              className="text-xs border border-gray-200 rounded-md px-1.5 py-1 text-gray-500 focus:outline-none focus:border-[#004900] cursor-pointer"
-                            >
-                              {statusOptions.map((s) => (
-                                <option key={s} value={s}>
-                                  {s.charAt(0).toUpperCase() + s.slice(1)}
-                                </option>
-                              ))}
-                            </select>
-                          )}
-                        </div>
-                      </td>
-
-                      {/* Read time */}
-                      <td className="px-6 py-4 text-gray-500 text-xs">
-                        {unit.estimatedReadMinutes
-                          ? `${unit.estimatedReadMinutes} min`
-                          : "—"}
-                      </td>
-
-                      {/* Actions */}
-                      <td className="px-6 py-4">
-                        <div className="flex items-center justify-end gap-2">
-
-                          {/* Edit */}
-                          <button
-                            onClick={() => setModal({ type: "edit", unit })}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-blue-200 text-blue-600 hover:bg-blue-50 transition-colors"
-                          >
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                            </svg>
-                            Edit
-                          </button>
-
-                          {/* Delete */}
-                          <button
-                            onClick={() => setModal({ type: "delete", unit })}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-red-200 text-red-600 hover:bg-red-50 transition-colors"
-                          >
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <polyline points="3 6 5 6 21 6" />
-                              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                              <path d="M10 11v6M14 11v6" />
-                              <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-                            </svg>
-                            Delete
-                          </button>
-
-                        </div>
-                      </td>
+            <>
+              {/* Desktop table - hidden on mobile/tablet, horizontal scroll contained */}
+              <div className="hidden lg:block overflow-x-auto">
+                <table className="w-full text-sm min-w-[860px]">
+                  <thead>
+                    <tr className="bg-gradient-to-r from-gray-50 to-white border-b border-gray-100">
+                      <th className="text-left px-5 xl:px-6 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider w-16">
+                        ID
+                      </th>
+                      <th className="text-left px-5 xl:px-6 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">
+                        Unit Name
+                      </th>
+                      <th className="text-left px-5 xl:px-6 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">
+                        Track
+                      </th>
+                      <th className="text-left px-5 xl:px-6 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">
+                        Module
+                      </th>
+                      <th className="text-left px-5 xl:px-6 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">
+                        Status
+                      </th>
+                      <th className="text-left px-5 xl:px-6 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">
+                        Read
+                      </th>
+                      <th className="text-right px-5 xl:px-6 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">
+                        Actions
+                      </th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {filteredUnits.map((unit) => (
+                      <tr
+                        key={unit.id}
+                        className="hover:bg-gray-50/70 transition-colors group"
+                      >
+                        <td className="px-5 xl:px-6 py-4 text-gray-400 font-mono text-xs">
+                          #{unit.id}
+                        </td>
+                        <td className="px-5 xl:px-6 py-4">
+                          <div className="font-semibold text-gray-900 text-sm">
+                            {unit.title}
+                          </div>
+                          {unit.description && (
+                            <div className="text-xs text-gray-500 mt-1 line-clamp-1 max-w-[260px] xl:max-w-xs">
+                              {unit.description}
+                            </div>
+                          )}
+                          <div className="flex items-center gap-2 mt-2">
+                            {unit.videoUrl && (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-medium text-purple-700 bg-purple-50 border border-purple-100 px-2 py-1 rounded-full">
+                                <Video size={10} />
+                                Video
+                              </span>
+                            )}
+                            {unit.pdfUrl && (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-medium text-red-700 bg-red-50 border border-red-100 px-2 py-1 rounded-full">
+                                <FileText size={10} />
+                                PDF
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-5 xl:px-6 py-4">
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-100">
+                            {getTrackForUnit(unit)?.title ?? "—"}
+                          </span>
+                        </td>
+                        <td className="px-5 xl:px-6 py-4">
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-100">
+                            {unit.module?.title ?? `Module #${unit.moduleId}`}
+                          </span>
+                        </td>
+                        <td className="px-5 xl:px-6 py-4">
+                          <div className="flex items-center gap-2">
+                            <Badge status={unit.status} />
+                            {patchingId === unit.id ? (
+                              <span className="text-xs text-gray-400 inline-flex items-center gap-1">
+                                <Loader2 size={12} className="animate-spin" /> updating…
+                              </span>
+                            ) : (
+                              <select
+                                value={unit.status}
+                                onChange={(e) =>
+                                  handlePatchStatus(unit, e.target.value as UnitStatus)
+                                }
+                                aria-label="change status"
+                                className="text-xs border border-gray-200 rounded-lg px-2 py-1 text-gray-600 focus:outline-none focus:border-[#004900] focus:ring-1 focus:ring-[#004900]/20 cursor-pointer bg-white"
+                              >
+                                {statusOptions.map((s) => (
+                                  <option key={s} value={s}>
+                                    {s.charAt(0).toUpperCase() + s.slice(1)}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-5 xl:px-6 py-4">
+                          <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-600 bg-gray-50 border border-gray-100 px-2.5 py-1 rounded-full">
+                            <Clock size={12} className="text-gray-400" />
+                            {unit.estimatedReadMinutes
+                              ? `${unit.estimatedReadMinutes} min`
+                              : "—"}
+                          </span>
+                        </td>
+                        <td className="px-5 xl:px-6 py-4">
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              onClick={() => setModal({ type: "edit", unit })}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100 transition-colors"
+                            >
+                              <Pencil size={12} />
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => setModal({ type: "delete", unit })}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border border-red-200 text-red-700 bg-red-50 hover:bg-red-100 transition-colors"
+                            >
+                              <Trash2 size={12} />
+                              Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Tablet horizontal scroll table */}
+              <div className="hidden sm:block lg:hidden overflow-x-auto">
+                <table className="w-full text-sm min-w-[720px]">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-100">
+                      <th className="text-left px-4 py-3 text-xs font-bold text-gray-500 uppercase tracking-wider">Unit</th>
+                      <th className="text-left px-4 py-3 text-xs font-bold text-gray-500 uppercase tracking-wider">Track / Module</th>
+                      <th className="text-left px-4 py-3 text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
+                      <th className="text-right px-4 py-3 text-xs font-bold text-gray-500 uppercase tracking-wider">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {filteredUnits.map((unit) => (
+                      <tr key={unit.id} className="hover:bg-gray-50/60">
+                        <td className="px-4 py-3.5">
+                          <div className="font-semibold text-gray-900 text-sm">{unit.title}</div>
+                          <div className="text-xs text-gray-400 font-mono">#{unit.id} • {unit.estimatedReadMinutes ? `${unit.estimatedReadMinutes} min` : "—"}</div>
+                        </td>
+                        <td className="px-4 py-3.5">
+                          <div className="flex flex-col gap-1.5">
+                            <span className="inline-flex w-fit px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-100">{getTrackForUnit(unit)?.title ?? "—"}</span>
+                            <span className="inline-flex w-fit px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-100">{unit.module?.title ?? `Module #${unit.moduleId}`}</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3.5">
+                          <Badge status={unit.status} />
+                        </td>
+                        <td className="px-4 py-3.5">
+                          <div className="flex justify-end gap-2">
+                            <button onClick={() => setModal({ type: "edit", unit })} className="p-2 rounded-xl border border-blue-200 text-blue-600 bg-blue-50 hover:bg-blue-100">
+                              <Pencil size={14} />
+                            </button>
+                            <button onClick={() => setModal({ type: "delete", unit })} className="p-2 rounded-xl border border-red-200 text-red-600 bg-red-50 hover:bg-red-100">
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile stacked cards */}
+              <div className="sm:hidden p-3 space-y-3">
+                {filteredUnits.map((unit) => (
+                  <div key={unit.id} className="rounded-2xl border border-gray-100 bg-gradient-to-br from-white to-gray-50/50 p-4 shadow-sm">
+                    <div className="flex items-start justify-between gap-3 mb-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-mono text-gray-400">#{unit.id}</p>
+                        <h3 className="font-semibold text-gray-900 text-sm leading-tight mt-1">{unit.title}</h3>
+                        {unit.description && (
+                          <p className="text-xs text-gray-500 mt-1 line-clamp-2">{unit.description}</p>
+                        )}
+                      </div>
+                      <Badge status={unit.status} />
+                    </div>
+
+                    <div className="flex flex-wrap gap-2 mb-3">
+                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-100">
+                        {getTrackForUnit(unit)?.title ?? "—"}
+                      </span>
+                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-100">
+                        {unit.module?.title ?? `Module #${unit.moduleId}`}
+                      </span>
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-gray-50 text-gray-600 border border-gray-100">
+                        <Clock size={12} /> {unit.estimatedReadMinutes ? `${unit.estimatedReadMinutes} min` : "—"}
+                      </span>
+                    </div>
+
+                    {(unit.videoUrl || unit.pdfUrl) && (
+                      <div className="flex gap-2 mb-3">
+                        {unit.videoUrl && <span className="inline-flex items-center gap-1 text-xs bg-purple-50 border border-purple-100 text-purple-700 px-2 py-1 rounded-full"><Video size={10} />Video</span>}
+                        {unit.pdfUrl && <span className="inline-flex items-center gap-1 text-xs bg-red-50 border border-red-100 text-red-700 px-2 py-1 rounded-full"><FileText size={10} />PDF</span>}
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={unit.status}
+                        onChange={(e) => handlePatchStatus(unit, e.target.value as UnitStatus)}
+                        className="flex-1 text-xs border border-gray-200 rounded-xl px-3 py-2 bg-white text-gray-700 focus:outline-none focus:border-[#004900]"
+                        aria-label="change status"
+                      >
+                        {statusOptions.map((s) => (
+                          <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={() => setModal({ type: "edit", unit })}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold border border-blue-200 text-blue-700 bg-blue-50"
+                      >
+                        <Pencil size={12} /> Edit
+                      </button>
+                      <button
+                        onClick={() => setModal({ type: "delete", unit })}
+                        className="inline-flex items-center justify-center p-2.5 rounded-xl border border-red-200 text-red-600 bg-red-50"
+                        aria-label="Delete"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
           )}
         </div>
       </div>
@@ -1079,22 +1237,19 @@ export default function ManageUnits() {
       {/* Toast */}
       {toast && (
         <div
-          className={`fixed bottom-6 right-6 px-5 py-3 rounded-xl shadow-lg flex items-center gap-3 z-50 ${
-            toast.type === "error" ? "bg-red-600" : "bg-[#004900]"
+          className={`fixed bottom-4 right-4 left-4 sm:left-auto sm:bottom-6 sm:right-6 px-4 sm:px-5 py-3 rounded-2xl shadow-lg flex items-center gap-3 z-50 ${
+            toast.type === "error" ? "bg-red-600" : "bg-gradient-to-r from-[#004900] to-[#006400]"
           } text-white`}
         >
           {toast.type === "success" ? (
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
-              <polyline points="20 6 9 17 4 12" />
-            </svg>
+            <Check size={18} className="shrink-0" />
           ) : (
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
-              <circle cx="12" cy="12" r="10" />
-              <line x1="12" y1="8" x2="12" y2="12" />
-              <line x1="12" y1="16" x2="12.01" y2="16" />
-            </svg>
+            <AlertCircle size={18} className="shrink-0" />
           )}
-          <span className="text-sm font-medium">{toast.msg}</span>
+          <span className="text-sm font-medium flex-1">{toast.msg}</span>
+          <button onClick={() => setToast(null)} className="text-white/70 hover:text-white shrink-0">
+            <X size={16} />
+          </button>
         </div>
       )}
     </div>

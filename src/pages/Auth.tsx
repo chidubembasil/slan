@@ -161,10 +161,10 @@ export default function AdminLogin() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-[#004900]/5 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-[#004900]/5 flex items-center justify-center p-4 sm:p-6 md:p-8">
       <div className="w-full max-w-5xl grid lg:grid-cols-2 bg-white rounded-3xl shadow-2xl overflow-hidden animate-scale-in">
         {/* Left panel */}
-        <div className="bg-gradient-to-br from-[#004900] via-[#003d00] to-[#002a00] p-10 lg:p-12 text-white flex flex-col justify-between relative overflow-hidden">
+        <div className="bg-gradient-to-br from-[#004900] via-[#003d00] to-[#002a00] p-8 sm:p-10 md:p-10 lg:p-12 text-white flex flex-col justify-between relative overflow-hidden">
           {/* Decorative elements */}
           <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/2" />
           <div className="absolute bottom-0 left-0 w-48 h-48 bg-white/5 rounded-full translate-y-1/2 -translate-x-1/2" />
@@ -194,7 +194,7 @@ export default function AdminLogin() {
         </div>
 
         {/* Right panel */}
-        <div className="p-8 lg:p-12 flex flex-col justify-center animate-fade-in">
+        <div className="p-6 sm:p-8 md:p-8 lg:p-12 flex flex-col justify-center animate-fade-in">
           <h2 className="text-2xl font-semibold mb-1 text-gray-900">Authorize Access</h2>
           <p className="text-sm text-gray-500 mb-7">
             {step === 'credentials' ? 'Enter your credentials to continue.' : 'Enter the 6-digit code sent to your email.'}

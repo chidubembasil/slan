@@ -125,20 +125,20 @@ export default function AdminUsers() {
   }
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4 sm:space-y-5 p-4 sm:p-0">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-[#004900]/10 flex items-center justify-center">
+          <div className="w-10 h-10 rounded-xl bg-[#004900]/10 flex items-center justify-center shrink-0">
             <ShieldCheck className="w-5 h-5 text-[#004900]" />
           </div>
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900">Admins</h2>
+          <div className="min-w-0">
+            <h2 className="text-lg sm:text-xl font-semibold text-gray-900">Admins</h2>
             <p className="text-sm text-gray-500">Invite and manage administrator accounts</p>
           </div>
         </div>
         <button
           onClick={openModal}
-          className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-xl bg-[#004900] text-white hover:bg-[#003600] shadow-sm shadow-[#004900]/20 transition-all duration-200"
+          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-xl bg-[#004900] text-white hover:bg-[#003600] shadow-sm shadow-[#004900]/20 transition-all duration-200 w-full sm:w-auto shrink-0"
         >
           <UserPlus className="w-4 h-4" />
           Invite Admin
@@ -146,19 +146,20 @@ export default function AdminUsers() {
       </div>
 
       <div className="bg-white border border-gray-200/80 rounded-2xl shadow-sm overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-gray-50/80 border-b border-gray-200/80 text-left text-gray-500">
-              <th className="px-5 py-3.5 text-xs font-semibold uppercase tracking-wider">Full Name</th>
-              <th className="px-5 py-3.5 text-xs font-semibold uppercase tracking-wider">Email</th>
-              <th className="px-5 py-3.5 text-xs font-semibold uppercase tracking-wider">Invited</th>
-              <th className="px-5 py-3.5 text-xs font-semibold uppercase tracking-wider">Status</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {invitedAdmins.length === 0 && (
-              <tr>
-                <td colSpan={4} className="px-5 py-16 text-center">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50/80 border-b border-gray-200/80 text-left text-gray-500">
+                <th className="px-4 sm:px-5 py-3.5 text-xs font-semibold uppercase tracking-wider whitespace-nowrap">Full Name</th>
+                <th className="px-4 sm:px-5 py-3.5 text-xs font-semibold uppercase tracking-wider whitespace-nowrap">Email</th>
+                <th className="px-4 sm:px-5 py-3.5 text-xs font-semibold uppercase tracking-wider whitespace-nowrap">Invited</th>
+                <th className="px-4 sm:px-5 py-3.5 text-xs font-semibold uppercase tracking-wider whitespace-nowrap">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {invitedAdmins.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="px-4 sm:px-5 py-16 text-center">
                   <div className="flex flex-col items-center gap-3">
                     <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center">
                       <UserPlus className="w-5 h-5 text-gray-400" />
@@ -188,6 +189,7 @@ export default function AdminUsers() {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
 
       {modalOpen && (

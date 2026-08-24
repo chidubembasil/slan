@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import { Bold, Italic, Underline, Palette, ChevronDown } from "lucide-react";
 import type { ReactNode } from "react";
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
 import { RichTextPlugin } from "@lexical/react/LexicalRichTextPlugin";
@@ -392,31 +393,31 @@ function InitialHtmlPlugin({ value, skipNextChangeRef }: { value: string; skipNe
   return null;
 }
 
-// Table Grid Picker
+// Table Grid Picker - responsive card
 function TableGridPicker({ onSelect, onClose }: { onSelect: (r: number, c: number) => void; onClose: () => void }) {
   const [hover, setHover] = useState({ r: 0, c: 0 });
   return (
-    <div style={{ background: "white", border: "1px solid #d1d5db", borderRadius: 8, padding: 12, width: 260, boxShadow: "0 10px 30px rgba(0,0,0,.15)" }}>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(10, 1fr)", gap: 4 }}>
+    <div className="bg-white border border-gray-200 rounded-2xl p-3 sm:p-4 w-[260px] shadow-xl">
+      <div className="grid grid-cols-10 gap-1 sm:gap-1.5">
         {Array.from({ length: 100 }).map((_, i) => {
           const r = Math.floor(i / 10) + 1, c = i % 10 + 1, a = r <= hover.r && c <= hover.c;
-          return <div key={i} onMouseEnter={() => setHover({ r, c })} onClick={() => { onSelect(r, c); onClose(); }} style={{ width: 20, height: 20, border: "1px solid #9ca3af", background: a ? "#3b82f6" : "white", cursor: "pointer" }} />
+          return <div key={i} onMouseEnter={() => setHover({ r, c })} onClick={() => { onSelect(r, c); onClose(); }} className="w-5 h-5 border rounded-md cursor-pointer transition-colors" style={{ borderColor: "#d1d5db", background: a ? "#004900" : "white" }} />
         })}
       </div>
-      <div style={{ textAlign: "center", fontSize: 12, marginTop: 8 }}>{hover.r ? `${hover.r} x ${hover.c} Table` : "Insert Table"}</div>
+      <div className="text-center text-xs font-medium text-gray-600 mt-3">{hover.r ? `${hover.r} x ${hover.c} Table` : "Insert Table"}</div>
     </div>
   );
 }
 
-// Small reusable dropdown wrapper
+// Small reusable dropdown wrapper - responsive
 function Dropdown({ label, open, setOpen, children, width = 180 }: { label: ReactNode; open: boolean; setOpen: (v: boolean) => void; children: ReactNode; width?: number }) {
   return (
-    <div style={{ position: "relative" }}>
-      <button type="button" onClick={() => setOpen(!open)} style={{ border: "1px solid #e5e7eb", background: "white", padding: "5px 10px", borderRadius: 6, cursor: "pointer", fontSize: 13, display: "flex", alignItems: "center", gap: 4, transition: "all 0.15s ease" }}>
-        {label} <span style={{ fontSize: 10 }}>▼</span>
+    <div className="relative">
+      <button type="button" onClick={() => setOpen(!open)} className="inline-flex items-center gap-1 sm:gap-1.5 border border-gray-200 bg-white px-2 sm:px-3 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-colors shadow-sm">
+        {label} <ChevronDown size={12} className="text-gray-400 shrink-0" />
       </button>
       {open && (
-        <div style={{ position: "absolute", top: 34, left: 0, zIndex: 20, background: "white", border: "1px solid #e5e7eb", borderRadius: 10, boxShadow: "0 10px 25px rgba(0,0,0,0.1), 0 4px 10px rgba(0,0,0,0.05)", width, overflow: "hidden", maxHeight: 320, overflowY: "auto" }}>
+        <div className="absolute top-[calc(100%+8px)] left-0 z-20 bg-white border border-gray-200 rounded-2xl shadow-xl overflow-hidden max-h-[320px] overflow-y-auto" style={{ width }}>
           {children}
         </div>
       )}
@@ -454,10 +455,10 @@ function Toolbar() {
   const [showTableTools, setShowTableTools] = useState(false);
   const [fontSizeIdx, setFontSizeIdx] = useState(3); // 16px default
   const fileRef = useRef<HTMLInputElement>(null);
-  const btn: React.CSSProperties = { border: "1px solid #e5e7eb", background: "white", padding: "5px 10px", borderRadius: 6, cursor: "pointer", fontSize: 13, transition: "all 0.15s ease" };
-  const menuItem: React.CSSProperties = { padding: "8px 12px", cursor: "pointer", fontSize: 13, borderBottom: "1px solid #f3f4f6", borderRadius: 4, transition: "background 0.1s ease" };
-  const menuItemDanger: React.CSSProperties = { ...menuItem, color: "#dc2626" };
-  const menuLabel: React.CSSProperties = { padding: "6px 12px", fontSize: 11, color: "#9ca3af", textTransform: "uppercase", letterSpacing: 0.4, borderBottom: "1px solid #f3f4f6", background: "#fafafa" };
+  const btnClass = "inline-flex items-center justify-center border border-gray-200 bg-white px-2 sm:px-2.5 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-colors shadow-sm";
+  const menuItemClass = "px-3 sm:px-4 py-2 sm:py-2.5 cursor-pointer text-xs sm:text-sm text-gray-700 hover:bg-gray-50 border-b border-gray-50 last:border-0 transition-colors";
+  const menuItemDangerClass = menuItemClass + " text-red-600 hover:bg-red-50";
+  const menuLabelClass = "px-3 sm:px-4 py-2 text-[10px] sm:text-xs font-semibold tracking-widest uppercase text-gray-400 bg-gray-50 border-b border-gray-100";
 
   const applyStyle = (s: Record<string, string>) => editor.update(() => {
     const sel = $getSelection();
@@ -687,7 +688,7 @@ function Toolbar() {
 
   return (
     <div
-      style={{ borderBottom: "1px solid #e5e7eb" }}
+      className="border-b border-gray-200"
       // Every click/mousedown in this toolbar (including the paragraph
       // spacing menu items) is contained here. Without this, clicking any
       // toolbar button still bubbles as a native DOM event straight out of
@@ -699,37 +700,37 @@ function Toolbar() {
       onClick={e => e.stopPropagation()}
     >
       <EditorStyles />
-      <div style={{ display: "flex", background: "#f9fafb", fontSize: 13, borderBottom: "1px solid #f3f4f6" }}>
+      <div className="flex bg-gray-50/80 text-xs sm:text-sm border-b border-gray-100 overflow-x-auto scrollbar-thin">
         {["Home", "Insert"].map(t => (
-          <div key={t} onClick={() => setTab(t as any)} style={{ padding: "9px 16px", cursor: "pointer", borderBottom: tab === t ? "2px solid #004900" : "2px solid transparent", fontWeight: tab === t ? 600 : 400, color: tab === t ? "#004900" : "#6b7280", transition: "all 0.15s ease" }}>{t}</div>
+          <button key={t} onClick={() => setTab(t as any)} className={`px-3 sm:px-4 lg:px-5 py-2.5 sm:py-3 cursor-pointer whitespace-nowrap border-b-2 transition-colors text-xs sm:text-sm font-semibold ${tab === t ? "border-[#004900] text-[#004900] bg-white" : "border-transparent text-gray-500 hover:text-gray-700 hover:bg-white/50"}`}>{t}</button>
         ))}
       </div>
 
       {tab === "Home" ? (
-        <div style={{ display: "flex", gap: 8, padding: 8, background: "white", flexWrap: "wrap", alignItems: "center" }}>
+        <div className="flex gap-1.5 sm:gap-2 p-2 sm:p-3 bg-white items-center flex-wrap md:flex-nowrap md:overflow-x-auto md:scrollbar-thin xl:flex-wrap xl:overflow-visible">
           <Dropdown label="Heading" open={showHeading} setOpen={setShowHeading} width={160}>
             {HEADINGS.map(h => (
-              <div key={h.tag} style={menuItem} onMouseDown={e => { e.preventDefault(); formatBlock(h.tag); setShowHeading(false); }}>{h.label}</div>
+              <div key={h.tag} className={menuItemClass} onMouseDown={e => { e.preventDefault(); formatBlock(h.tag); setShowHeading(false); }}>{h.label}</div>
             ))}
           </Dropdown>
 
           <Dropdown label="Font" open={showFontFamily} setOpen={setShowFontFamily} width={190}>
             {FONT_FAMILIES.map(f => (
-              <div key={f.label} style={{ ...menuItem, fontFamily: f.value || undefined }} onMouseDown={e => { e.preventDefault(); setFontFamily(f.value); setShowFontFamily(false); }}>{f.label}</div>
+              <div key={f.label} style={{ fontFamily: f.value || undefined }} className={menuItemClass} onMouseDown={e => { e.preventDefault(); setFontFamily(f.value); setShowFontFamily(false); }}>{f.label}</div>
             ))}
           </Dropdown>
 
-          <div style={{ display: "flex", alignItems: "center", border: "1px solid #e5e7eb", borderRadius: 4 }}>
-            <button type="button" onClick={() => setFontSize(fontSizeIdx - 1)} style={{ ...btn, border: "none", borderRight: "1px solid #e5e7eb" }} title="Decrease font size">A-</button>
-            <span style={{ padding: "0 8px", fontSize: 13, minWidth: 24, textAlign: "center" }}>{FONT_SIZES[fontSizeIdx]}</span>
-            <button type="button" onClick={() => setFontSize(fontSizeIdx + 1)} style={{ ...btn, border: "none", borderLeft: "1px solid #e5e7eb" }} title="Increase font size">A+</button>
+          <div className="flex items-center border border-gray-200 rounded-xl overflow-hidden shadow-sm shrink-0">
+            <button type="button" onClick={() => setFontSize(fontSizeIdx - 1)} className="px-2 sm:px-2.5 py-1.5 sm:py-2 hover:bg-gray-50 text-xs sm:text-sm font-medium text-gray-600 border-r border-gray-200" title="Decrease font size">A-</button>
+            <span className="px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-gray-700 min-w-[28px] sm:min-w-[36px] text-center bg-white">{FONT_SIZES[fontSizeIdx]}</span>
+            <button type="button" onClick={() => setFontSize(fontSizeIdx + 1)} className="px-2 sm:px-2.5 py-1.5 sm:py-2 hover:bg-gray-50 text-xs sm:text-sm font-medium text-gray-600 border-l border-gray-200" title="Increase font size">A+</button>
           </div>
 
-          <button type="button" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "bold")} style={btn}><b>B</b></button>
-          <button type="button" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "italic")} style={btn}><i>I</i></button>
-          <button type="button" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "underline")} style={btn}><u>U</u></button>
+          <button type="button" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "bold")} className={btnClass}><Bold size={14} /></button>
+          <button type="button" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "italic")} className={btnClass}><Italic size={14} /></button>
+          <button type="button" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "underline")} className={btnClass}><Underline size={14} /></button>
 
-          <Dropdown label={<span style={{ borderBottom: "3px solid #dc2626" }}>A</span>} open={showFontColor} setOpen={setShowFontColor} width={170}>
+          <Dropdown label={<span className="inline-flex items-center gap-1"><Palette size={14} className="text-red-600" />A</span>} open={showFontColor} setOpen={setShowFontColor} width={170}>
             <div style={{ padding: 10, display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 6 }}>
               {["#000000", "#dc2626", "#ea580c", "#ca8a04", "#16a34a", "#0891b2", "#2563eb", "#7c3aed", "#db2777", "#6b7280", "#ffffff", "#f3f4f6"].map(c => (
                 <div key={c} onMouseDown={e => { e.preventDefault(); setFontColor(c); setShowFontColor(false); }} style={{ width: 20, height: 20, background: c, border: "1px solid #d1d5db", cursor: "pointer", borderRadius: 3 }} />
@@ -744,33 +745,33 @@ function Toolbar() {
               { label: "⇥ Right", v: "right" as ElementFormatType },
               { label: "≡ Justify", v: "justify" as ElementFormatType },
             ].map(a => (
-              <div key={a.v} style={menuItem} onMouseDown={e => { e.preventDefault(); align(a.v); setShowAlign(false); }}>{a.label}</div>
+              <div key={a.v} className={menuItemClass} onMouseDown={e => { e.preventDefault(); align(a.v); setShowAlign(false); }}>{a.label}</div>
             ))}
           </Dropdown>
 
           <Dropdown label="≡ List" open={showList} setOpen={setShowList} width={200}>
             {LIST_OPTIONS.map(o => (
-              <div key={o.kind} style={menuItem} onMouseDown={e => { e.preventDefault(); insertList(o.kind); setShowList(false); }}>{o.label}</div>
+              <div key={o.kind} className={menuItemClass} onMouseDown={e => { e.preventDefault(); insertList(o.kind); setShowList(false); }}>{o.label}</div>
             ))}
-            <div style={{ ...menuItem, borderBottom: "none", color: "#dc2626" }} onMouseDown={e => { e.preventDefault(); removeList(); setShowList(false); }}>Remove list</div>
+            <div className={`${menuItemClass} !border-0 text-red-600`} style={{ borderBottom: "none" }} onMouseDown={e => { e.preventDefault(); removeList(); setShowList(false); }}>Remove list</div>
           </Dropdown>
 
           <Dropdown label="⇕ Line Height" open={showLineHeight} setOpen={setShowLineHeight} width={140}>
             {LINE_HEIGHTS.map(v => (
-              <div key={v} style={menuItem} onMouseDown={e => { e.preventDefault(); setLineHeight(v); setShowLineHeight(false); }}>{v}</div>
+              <div key={v} className={menuItemClass} onMouseDown={e => { e.preventDefault(); setLineHeight(v); setShowLineHeight(false); }}>{v}</div>
             ))}
           </Dropdown>
 
           <Dropdown label="¶ Paragraph" open={showParagraph} setOpen={setShowParagraph} width={210}>
-            <div style={menuItem} onMouseDown={e => { e.preventDefault(); addSpaceBefore(); setShowParagraph(false); }}>Add space before</div>
-            <div style={menuItem} onMouseDown={e => { e.preventDefault(); removeSpaceBefore(); setShowParagraph(false); }}>Remove space before</div>
-            <div style={menuItem} onMouseDown={e => { e.preventDefault(); addSpaceAfter(); setShowParagraph(false); }}>Add space after</div>
-            <div style={menuItem} onMouseDown={e => { e.preventDefault(); removeSpaceAfter(); setShowParagraph(false); }}>Remove space after</div>
-            <div style={{ ...menuItem, borderBottom: "none" }} onMouseDown={e => { e.preventDefault(); removeAllSpacing(); setShowParagraph(false); }}>No spacing</div>
+            <div className={menuItemClass} onMouseDown={e => { e.preventDefault(); addSpaceBefore(); setShowParagraph(false); }}>Add space before</div>
+            <div className={menuItemClass} onMouseDown={e => { e.preventDefault(); removeSpaceBefore(); setShowParagraph(false); }}>Remove space before</div>
+            <div className={menuItemClass} onMouseDown={e => { e.preventDefault(); addSpaceAfter(); setShowParagraph(false); }}>Add space after</div>
+            <div className={menuItemClass} onMouseDown={e => { e.preventDefault(); removeSpaceAfter(); setShowParagraph(false); }}>Remove space after</div>
+            <div className={`${menuItemClass} !border-0`} style={{ borderBottom: "none" }} onMouseDown={e => { e.preventDefault(); removeAllSpacing(); setShowParagraph(false); }}>No spacing</div>
           </Dropdown>
         </div>
       ) : (
-        <div style={{ display: "flex", gap: 12, padding: 8, background: "white", position: "relative", alignItems: "center" }}>
+        <div className="flex gap-2 sm:gap-3 p-2 sm:p-3 bg-white relative items-center flex-wrap md:flex-nowrap md:overflow-x-auto xl:flex-wrap xl:overflow-visible">
           <Dropdown label="⊞ Table" open={showTable} setOpen={setShowTable} width={260}>
             <TableGridPicker onSelect={(r, c) => editor.dispatchCommand(INSERT_TABLE_COMMAND, { rows: String(r), columns: String(c) })} onClose={() => setShowTable(false)} />
           </Dropdown>
@@ -785,22 +786,22 @@ function Toolbar() {
           </Dropdown>
 
           <Dropdown label="⚙ Table tools" open={showTableTools} setOpen={setShowTableTools} width={230}>
-            <div style={menuLabel}>Rows &amp; Columns</div>
-            <div style={menuItem} onMouseDown={e => { e.preventDefault(); insertTableRow(false); setShowTableTools(false); }}>Insert row above</div>
-            <div style={menuItem} onMouseDown={e => { e.preventDefault(); insertTableRow(true); setShowTableTools(false); }}>Insert row below</div>
-            <div style={menuItem} onMouseDown={e => { e.preventDefault(); insertTableColumn(false); setShowTableTools(false); }}>Insert column left</div>
-            <div style={menuItem} onMouseDown={e => { e.preventDefault(); insertTableColumn(true); setShowTableTools(false); }}>Insert column right</div>
-            <div style={menuItemDanger} onMouseDown={e => { e.preventDefault(); deleteTableRow(); setShowTableTools(false); }}>Delete row</div>
-            <div style={menuItemDanger} onMouseDown={e => { e.preventDefault(); deleteTableColumn(); setShowTableTools(false); }}>Delete column</div>
-            <div style={menuLabel}>Resize</div>
-            <div style={menuItem} onMouseDown={e => { e.preventDefault(); adjustCellWidth(20); setShowTableTools(false); }}>Widen column</div>
-            <div style={menuItem} onMouseDown={e => { e.preventDefault(); adjustCellWidth(-20); setShowTableTools(false); }}>Narrow column</div>
-            <div style={menuItem} onMouseDown={e => { e.preventDefault(); adjustRowHeight(10); setShowTableTools(false); }}>Increase row height</div>
-            <div style={menuItem} onMouseDown={e => { e.preventDefault(); adjustRowHeight(-10); setShowTableTools(false); }}>Decrease row height</div>
-            <div style={{ ...menuItemDanger, borderBottom: "none", fontWeight: 600 }} onMouseDown={e => { e.preventDefault(); deleteTable(); setShowTableTools(false); }}>Delete table</div>
+            <div className={menuLabelClass}>Rows &amp; Columns</div>
+            <div className={menuItemClass} onMouseDown={e => { e.preventDefault(); insertTableRow(false); setShowTableTools(false); }}>Insert row above</div>
+            <div className={menuItemClass} onMouseDown={e => { e.preventDefault(); insertTableRow(true); setShowTableTools(false); }}>Insert row below</div>
+            <div className={menuItemClass} onMouseDown={e => { e.preventDefault(); insertTableColumn(false); setShowTableTools(false); }}>Insert column left</div>
+            <div className={menuItemClass} onMouseDown={e => { e.preventDefault(); insertTableColumn(true); setShowTableTools(false); }}>Insert column right</div>
+            <div className={menuItemDangerClass} onMouseDown={e => { e.preventDefault(); deleteTableRow(); setShowTableTools(false); }}>Delete row</div>
+            <div className={menuItemDangerClass} onMouseDown={e => { e.preventDefault(); deleteTableColumn(); setShowTableTools(false); }}>Delete column</div>
+            <div className={menuLabelClass}>Resize</div>
+            <div className={menuItemClass} onMouseDown={e => { e.preventDefault(); adjustCellWidth(20); setShowTableTools(false); }}>Widen column</div>
+            <div className={menuItemClass} onMouseDown={e => { e.preventDefault(); adjustCellWidth(-20); setShowTableTools(false); }}>Narrow column</div>
+            <div className={menuItemClass} onMouseDown={e => { e.preventDefault(); adjustRowHeight(10); setShowTableTools(false); }}>Increase row height</div>
+            <div className={menuItemClass} onMouseDown={e => { e.preventDefault(); adjustRowHeight(-10); setShowTableTools(false); }}>Decrease row height</div>
+            <div className={`${menuItemDangerClass} !border-0 font-semibold`} style={{ borderBottom: "none" }} onMouseDown={e => { e.preventDefault(); deleteTable(); setShowTableTools(false); }}>Delete table</div>
           </Dropdown>
 
-          <button type="button" onClick={() => fileRef.current?.click()} style={btn}>🖼️ Picture</button>
+          <button type="button" onClick={() => fileRef.current?.click()} className={btnClass}>🖼️ Picture</button>
           <input ref={fileRef} type="file" accept="image/*" hidden onChange={upload} />
         </div>
       )}
@@ -1114,22 +1115,13 @@ export default function RichTextEditor({ value, onChange, placeholder }: RichTex
           to open "Paragraph spacing", picking an option, then scrolling
           back down to see it applied. */}
       <div
-        style={{
-          border: "1px solid #e5e7eb",
-          borderRadius: 12,
-          overflow: "hidden",
-          background: "white",
-          display: "flex",
-          flexDirection: "column",
-          maxHeight: "85vh",
-          boxShadow: "0 1px 3px 0 rgba(0,0,0,0.05), 0 1px 2px -1px rgba(0,0,0,0.05)",
-        }}
+        className="border border-gray-200 rounded-xl sm:rounded-2xl overflow-hidden bg-white flex flex-col shadow-sm max-h-[75vh] sm:max-h-[80vh] lg:max-h-[85vh]"
       >
-        <div style={{ position: "sticky", top: 0, zIndex: 40, background: "white", flexShrink: 0 }}>
+        <div className="sticky top-0 z-30 bg-white shrink-0 border-b border-gray-100">
           <Toolbar />
         </div>
-        <div style={{ position: "relative", overflowY: "auto", flex: 1 }}>
-          <RichTextPlugin contentEditable={<ContentEditable style={{ minHeight: 300, padding: 20, outline: "none" }} />} placeholder={<div style={{ position: "absolute", top: 20, left: 20, color: "#999", pointerEvents: "none" }}>{placeholder || "Write content..."}</div>} ErrorBoundary={LexicalErrorBoundary} />
+        <div className="relative overflow-y-auto flex-1">
+          <RichTextPlugin contentEditable={<ContentEditable className="min-h-[240px] sm:min-h-[300px] p-3 sm:p-4 lg:p-5 outline-none text-sm sm:text-base" />} placeholder={<div className="absolute top-3 sm:top-4 lg:top-5 left-3 sm:left-4 lg:left-5 text-gray-400 text-sm pointer-events-none">{placeholder || "Write content..."}</div>} ErrorBoundary={LexicalErrorBoundary} />
           <HistoryPlugin /><ListPlugin /><TablePlugin /><PasteCleanupPlugin />
           {/* <TableCellResizerPlugin /> */}
           <TableActionMenuPlugin />

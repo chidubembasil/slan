@@ -112,14 +112,14 @@ const AddAdmin: React.FC = () => {
   };
 
   return (
-    <div className="p-8 max-w-5xl mx-auto animate-fade-in">
+    <div className="p-4 sm:p-6 md:p-6 lg:p-8 max-w-5xl mx-auto animate-fade-in">
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Add Admin</h1>
-        <p className="text-gray-500 mt-1">Invite a new administrator to SLAN Admin</p>
+      <div className="mb-6 sm:mb-8">
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-900 tracking-tight">Add Admin</h1>
+        <p className="text-sm sm:text-base text-gray-500 mt-1">Invite a new administrator to SLAN Admin</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 sm:gap-6">
         {/* Invite form card */}
         <div className="lg:col-span-2">
           <div className="bg-white border border-gray-200/60 rounded-2xl shadow-sm p-6 hover:shadow-md transition-shadow duration-300">
@@ -220,36 +220,38 @@ const AddAdmin: React.FC = () => {
                 No invites sent yet. Invited admins will appear here.
               </div>
             ) : (
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-gray-500 border-b border-gray-100">
-                    <th className="px-6 py-3 font-semibold text-xs uppercase tracking-wider">Name</th>
-                    <th className="px-6 py-3 font-semibold text-xs uppercase tracking-wider">Email</th>
-                    <th className="px-6 py-3 font-semibold text-xs uppercase tracking-wider">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {invitedList.map((admin, idx) => (
-                    <tr key={idx} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition-colors duration-200">
-                      <td className="px-6 py-3.5 font-medium text-gray-900">{admin.fullName}</td>
-                      <td className="px-6 py-3.5 text-gray-600">{admin.email}</td>
-                      <td className="px-6 py-3.5">
-                        {admin.status === "success" ? (
-                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-[#004900]/10 text-[#004900]">
-                            <CheckCircle2 size={12} />
-                            {admin.message}
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-red-50 text-red-600">
-                            <XCircle size={12} />
-                            {admin.message}
-                          </span>
-                        )}
-                      </td>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-gray-500 border-b border-gray-100">
+                      <th className="px-4 sm:px-6 py-3 font-semibold text-xs uppercase tracking-wider whitespace-nowrap">Name</th>
+                      <th className="px-4 sm:px-6 py-3 font-semibold text-xs uppercase tracking-wider whitespace-nowrap">Email</th>
+                      <th className="px-4 sm:px-6 py-3 font-semibold text-xs uppercase tracking-wider whitespace-nowrap">Status</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {invitedList.map((admin, idx) => (
+                      <tr key={idx} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition-colors duration-200">
+                        <td className="px-4 sm:px-6 py-3.5 font-medium text-gray-900 whitespace-nowrap">{admin.fullName}</td>
+                        <td className="px-4 sm:px-6 py-3.5 text-gray-600 whitespace-nowrap">{admin.email}</td>
+                        <td className="px-4 sm:px-6 py-3.5 whitespace-nowrap">
+                          {admin.status === "success" ? (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-[#004900]/10 text-[#004900]">
+                              <CheckCircle2 size={12} />
+                              {admin.message}
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-red-50 text-red-600">
+                              <XCircle size={12} />
+                              {admin.message}
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
         </div>

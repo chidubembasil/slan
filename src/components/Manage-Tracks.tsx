@@ -60,20 +60,16 @@ type Track = {
 // Minimal shape for the course filter dropdown.
 type CourseOption = { id: number; title: string };
 
-// Backend field for module thumbnails is `thumbnail` (confirmed via Swagger
-// docs), kept alongside `thumbnailUrl` for backward compatibility.
-// type ModuleThumbFields = { thumbnail?: string; thumbnailUrl?: string };
-// const getModuleThumbnail = (m: ModuleThumbFields) => m.thumbnail || m.thumbnailUrl || "";
-
 const statusBadge: Record<TrackStatus, string> = {
-  published: "bg-green-100 text-green-700",
-  draft: "bg-yellow-100 text-yellow-700",
-  archived: "bg-gray-100 text-gray-500",
+  published: "bg-emerald-50 text-emerald-700 border border-emerald-200",
+  draft: "bg-amber-50 text-amber-700 border border-amber-200",
+  archived: "bg-gray-100 text-gray-500 border border-gray-200",
 };
 
 function Badge({ status }: { status: TrackStatus }) {
   return (
-    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${statusBadge[status]}`}>
+    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold capitalize ${statusBadge[status]}`}>
+      <span className="w-1.5 h-1.5 rounded-full bg-current opacity-60 mr-1.5 hidden sm:inline-block" />
       {status}
     </span>
   );
@@ -83,14 +79,14 @@ function Modal({ title, onClose, children, wide }: {
   title: string; onClose: () => void; children: React.ReactNode; wide?: boolean;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 lg:p-6">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className={`relative bg-white rounded-2xl shadow-2xl w-full ${wide ? "max-w-3xl" : "max-w-2xl"} max-h-[90vh] overflow-y-auto`}>
-        <div className="bg-[#004900] px-6 py-4 flex items-center justify-between rounded-t-2xl sticky top-0 z-10">
-          <h2 className="text-white font-semibold text-base">{title}</h2>
-          <button onClick={onClose} className="text-white/70 hover:text-white text-xl leading-none">✕</button>
+      <div className={`relative bg-white rounded-2xl shadow-2xl w-full ${wide ? "max-w-3xl" : "max-w-2xl"} max-h-[92vh] sm:max-h-[90vh] overflow-hidden flex flex-col`}>
+        <div className="bg-gradient-to-br from-[#004900] to-[#006400] px-4 sm:px-6 py-4 sm:py-5 flex items-center justify-between gap-3 shrink-0">
+          <h2 className="text-white font-semibold text-sm sm:text-base leading-tight pr-2">{title}</h2>
+          <button onClick={onClose} className="w-8 h-8 rounded-xl bg-white/10 hover:bg-white/20 flex items-center justify-center text-white/80 hover:text-white transition-colors shrink-0">✕</button>
         </div>
-        <div className="p-6">{children}</div>
+        <div className="p-4 sm:p-6 overflow-y-auto flex-1">{children}</div>
       </div>
     </div>
   );
@@ -102,7 +98,7 @@ function ConfirmModal({ message, onConfirm, onCancel, loading }: {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onCancel} />
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5 sm:p-6">
         <div className="flex items-start gap-3 mb-5">
           <div className="w-9 h-9 rounded-full bg-red-100 flex items-center justify-center shrink-0 mt-0.5">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2.5">
@@ -110,15 +106,15 @@ function ConfirmModal({ message, onConfirm, onCancel, loading }: {
               <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
             </svg>
           </div>
-          <p className="text-sm text-gray-700 leading-relaxed">{message}</p>
+          <p className="text-sm text-gray-700 leading-relaxed flex-1">{message}</p>
         </div>
-        <div className="flex gap-3 justify-end">
+        <div className="flex flex-col-reverse sm:flex-row gap-3 justify-end">
           <button onClick={onCancel}
-            className="px-4 py-2 rounded-lg text-sm border border-gray-300 text-gray-600 hover:bg-gray-50">
+            className="w-full sm:w-auto px-4 py-2.5 rounded-xl text-sm border border-gray-200 text-gray-600 hover:bg-gray-50 font-medium">
             Cancel
           </button>
           <button onClick={onConfirm} disabled={loading}
-            className="px-4 py-2 rounded-lg text-sm bg-red-600 text-white hover:bg-red-700 disabled:opacity-60">
+            className="w-full sm:w-auto px-4 py-2.5 rounded-xl text-sm bg-red-600 text-white hover:bg-red-700 disabled:opacity-60 font-medium">
             {loading ? "Deleting..." : "Delete"}
           </button>
         </div>
@@ -149,7 +145,7 @@ function ActionsMenu({
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen((o) => !o)}
-        className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors"
+        className="inline-flex items-center justify-center w-8 h-8 rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors"
         aria-label="More actions"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -173,7 +169,7 @@ function ActionsMenu({
   );
 }
 
-const inputCls = "w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900]";
+const inputCls = "w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all shadow-sm";
 const textareaCls = inputCls + " resize-none";
 const statusOptions = ["draft", "published", "archived"] as const;
 
@@ -296,23 +292,34 @@ function EditTrackForm({ track, onDone }: { track: Track; onDone: () => void }) 
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 sm:space-y-5">
       {fetchingDetails && (
-        <div className="text-xs text-gray-400 -mt-1 mb-1">Loading current values…</div>
+        <div className="flex items-center gap-2 text-xs text-gray-400 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2">
+          <span className="w-3 h-3 border-2 border-gray-300 border-t-[#004900] rounded-full animate-spin" />
+          Loading current values…
+        </div>
       )}
 
       {/* Thumbnail Upload */}
-      <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1.5">Thumbnail</label>
-        <div className="flex items-center gap-4">
-          {thumbnailPreview && (
-            <img src={thumbnailPreview} alt="preview" className="w-16 h-16 rounded-lg object-cover border border-gray-200" />
+      <div className="bg-gray-50/60 border border-gray-100 rounded-2xl p-3 sm:p-4">
+        <label className="block text-xs font-semibold text-gray-700 mb-2">Thumbnail</label>
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4">
+          {thumbnailPreview ? (
+            <img src={thumbnailPreview} alt="preview" className="w-20 h-20 sm:w-16 sm:h-16 rounded-xl object-cover border border-gray-200 shrink-0" />
+          ) : (
+            <div className="w-20 h-20 sm:w-16 sm:h-16 rounded-xl border-2 border-dashed border-gray-200 bg-white flex items-center justify-center shrink-0">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" strokeWidth="1.5">
+                <rect x="3" y="3" width="18" height="18" rx="2" />
+                <circle cx="8.5" cy="8.5" r="1.5" />
+                <path d="M21 15l-5-5L5 21" />
+              </svg>
+            </div>
           )}
-          <div className="flex-1">
+          <div className="flex-1 w-full sm:w-auto">
             <button
               onClick={() => thumbInputRef.current?.click()}
               disabled={uploadingThumb}
-              className="px-4 py-2 rounded-lg text-xs font-medium border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-60"
+              className="w-full sm:w-auto px-4 py-2 rounded-xl text-xs font-semibold border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-60 transition-colors"
             >
               {uploadingThumb ? "Uploading…" : thumbnailPreview ? "Change Image" : "Upload Image"}
             </button>
@@ -324,29 +331,29 @@ function EditTrackForm({ track, onDone }: { track: Track; onDone: () => void }) 
               onChange={handleThumbnailSelect}
               title="input"
             />
-            <p className="text-xs text-gray-400 mt-1">JPG, PNG, WebP. Max 5MB.</p>
+            <p className="text-xs text-gray-400 mt-1.5">JPG, PNG, WebP. Max 5MB.</p>
           </div>
         </div>
-        {error && <p className="text-xs text-red-600 mt-1">{error}</p>}
+        {error && <p className="text-xs text-red-600 mt-2">{error}</p>}
       </div>
 
       <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1.5">
+        <label className="block text-xs font-semibold text-gray-700 mb-1.5">
           Title <span className="text-red-500">*</span>
         </label>
         <input value={form.title} onChange={e => set("title", e.target.value)} className={inputCls} title="input"/>
       </div>
       <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1.5">Short Description</label>
-        <input value={form.shortDescription} onChange={e => set("shortDescription", e.target.value)} className={inputCls} title="input"/>
+        <label className="block text-xs font-semibold text-gray-700 mb-1.5">Short Description</label>
+        <input value={form.shortDescription} onChange={e => set("shortDescription", e.target.value)} className={inputCls} title="input" placeholder="One-line summary" />
       </div>
       <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1.5">Description</label>
-        <textarea rows={3} value={form.description} onChange={e => set("description", e.target.value)} className={textareaCls} title="textarea"/>
+        <label className="block text-xs font-semibold text-gray-700 mb-1.5">Description</label>
+        <textarea rows={3} value={form.description} onChange={e => set("description", e.target.value)} className={textareaCls} title="textarea" placeholder="Full description" />
       </div>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1.5">Status</label>
+          <label className="block text-xs font-semibold text-gray-700 mb-1.5">Status</label>
           <select value={form.status} onChange={e => set("status", e.target.value)}
             className={inputCls} aria-label="select">
             {statusOptions.map(s => (
@@ -354,20 +361,25 @@ function EditTrackForm({ track, onDone }: { track: Track; onDone: () => void }) 
             ))}
           </select>
         </div>
-        <div className="flex flex-col justify-end pb-1">
-          <label className="flex items-center gap-2.5 text-sm cursor-pointer">
+        <div className="flex flex-col justify-end">
+          <label className="flex items-center gap-2.5 text-sm cursor-pointer p-3 rounded-xl border border-gray-200 bg-gray-50/50 hover:bg-white transition-colors">
             <input type="checkbox" checked={form.isFree}
               onChange={e => set("isFree", e.target.checked)}
-              className="w-4 h-4 accent-[#004900]" />
-            <span className="text-gray-700">Free track</span>
+              className="w-4 h-4 accent-[#004900] rounded" />
+            <span className="text-gray-700 font-medium">Free track</span>
           </label>
         </div>
       </div>
-      {error && <p className="text-xs text-red-600">{error}</p>}
-      <div className="flex gap-3 pt-1">
+      {error && <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2">{error}</p>}
+      <div className="flex flex-col-reverse sm:flex-row gap-3 pt-2">
         <button onClick={handleSave} disabled={loading || uploadingThumb}
-          className="bg-[#004900] text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-[#003700] disabled:opacity-60">
-          {loading ? "Saving..." : "Save Changes"}
+          className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-gradient-to-br from-[#004900] to-[#006400] text-white px-6 py-2.5 rounded-xl text-sm font-semibold hover:shadow-lg hover:shadow-[#004900]/20 disabled:opacity-60 transition-all">
+          {loading ? (
+            <>
+              <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              Saving...
+            </>
+          ) : "Save Changes"}
         </button>
       </div>
     </div>
@@ -468,20 +480,24 @@ function AddModuleForm({ trackId, onDone, onCancel }: {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 sm:space-y-5">
       {/* Thumbnail Upload */}
-      <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1.5">Thumbnail</label>
-        <div className="flex items-center gap-4">
-          {thumbnailPreview && (
-            <img src={thumbnailPreview} alt="preview" className="w-16 h-16 rounded-lg object-cover border border-gray-200" />
+      <div className="bg-gray-50/60 border border-gray-100 rounded-2xl p-3 sm:p-4">
+        <label className="block text-xs font-semibold text-gray-700 mb-2">Thumbnail</label>
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4">
+          {thumbnailPreview ? (
+            <img src={thumbnailPreview} alt="preview" className="w-20 h-20 sm:w-16 sm:h-16 rounded-xl object-cover border border-gray-200 shrink-0" />
+          ) : (
+            <div className="w-20 h-20 sm:w-16 sm:h-16 rounded-xl border-2 border-dashed border-gray-200 bg-white flex items-center justify-center shrink-0">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" strokeWidth="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+            </div>
           )}
-          <div className="flex-1">
+          <div className="flex-1 w-full sm:w-auto">
             <button
               type="button"
               onClick={() => thumbInputRef.current?.click()}
               disabled={uploadingThumb}
-              className="px-4 py-2 rounded-lg text-xs font-medium border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-60"
+              className="w-full sm:w-auto px-4 py-2 rounded-xl text-xs font-semibold border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-60 transition-colors"
             >
               {uploadingThumb ? "Uploading…" : thumbnailPreview ? "Change Image" : "Upload Image"}
             </button>
@@ -493,13 +509,13 @@ function AddModuleForm({ trackId, onDone, onCancel }: {
               onChange={handleThumbnailSelect}
               title="input"
             />
-            <p className="text-xs text-gray-400 mt-1">JPG, PNG, WebP. Max 5MB.</p>
+            <p className="text-xs text-gray-400 mt-1.5">JPG, PNG, WebP. Max 5MB.</p>
           </div>
         </div>
       </div>
 
       <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1.5">
+        <label className="block text-xs font-semibold text-gray-700 mb-1.5">
           Title <span className="text-red-500">*</span>
         </label>
         <input value={form.title} onChange={e => set("title", e.target.value)}
@@ -507,7 +523,7 @@ function AddModuleForm({ trackId, onDone, onCancel }: {
         {formErrors.title && <p className="text-xs text-red-600 mt-1">{formErrors.title}</p>}
       </div>
       <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1.5">
+        <label className="block text-xs font-semibold text-gray-700 mb-1.5">
           Description <span className="text-red-500">*</span>
         </label>
         <textarea rows={3} value={form.description} onChange={e => set("description", e.target.value)}
@@ -515,18 +531,18 @@ function AddModuleForm({ trackId, onDone, onCancel }: {
         {formErrors.description && <p className="text-xs text-red-600 mt-1">{formErrors.description}</p>}
       </div>
       <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1.5">Content</label>
+        <label className="block text-xs font-semibold text-gray-700 mb-1.5">Content</label>
         <textarea rows={4} value={form.content} onChange={e => set("content", e.target.value)}
           className={textareaCls} placeholder="Module content (optional)" />
       </div>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1.5">Est. Read (mins)</label>
+          <label className="block text-xs font-semibold text-gray-700 mb-1.5">Est. Read (mins)</label>
           <input type="number" min={0} value={form.estimatedReadMinutes}
             onChange={e => set("estimatedReadMinutes", Number(e.target.value))} className={inputCls} title="input"/>
         </div>
         <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1.5">Status</label>
+          <label className="block text-xs font-semibold text-gray-700 mb-1.5">Status</label>
           <select value={form.status} onChange={e => set("status", e.target.value)}
             className={inputCls} aria-label="select">
             {statusOptions.map(s => (
@@ -535,14 +551,19 @@ function AddModuleForm({ trackId, onDone, onCancel }: {
           </select>
         </div>
       </div>
-      {error && <p className="text-xs text-red-600">{error}</p>}
-      <div className="flex gap-3 pt-1">
+      {error && <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2">{error}</p>}
+      <div className="flex flex-col-reverse sm:flex-row gap-3 pt-1">
         <button onClick={handleSubmit} disabled={loading || uploadingThumb}
-          className="bg-[#004900] text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-[#003700] disabled:opacity-60">
-          {loading ? "Creating..." : "Create Module →"}
+          className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-gradient-to-br from-[#004900] to-[#006400] text-white px-6 py-2.5 rounded-xl text-sm font-semibold hover:shadow-lg hover:shadow-[#004900]/20 disabled:opacity-60 transition-all">
+          {loading ? (
+            <>
+              <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              Creating...
+            </>
+          ) : "Create Module →"}
         </button>
         <button onClick={onCancel}
-          className="px-5 py-2.5 rounded-lg text-sm font-medium border border-gray-300 text-gray-600 hover:bg-gray-50">
+          className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-sm font-medium border border-gray-200 bg-white text-gray-600 hover:bg-gray-50">
           Cancel
         </button>
       </div>
@@ -620,20 +641,21 @@ function QuestionEditor({
   };
 
   return (
-    <div className="border border-gray-200 rounded-xl p-4 space-y-3 bg-gray-50/50">
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-          Question {index + 1} <span className="text-gray-300 normal-case font-normal">· Multiple Choice</span>
+    <div className="border border-gray-200 rounded-2xl p-3 sm:p-4 space-y-3 bg-white shadow-sm">
+      <div className="flex items-center justify-between gap-2">
+        <span className="inline-flex items-center gap-2 text-xs font-bold text-gray-700 uppercase tracking-wide">
+          <span className="w-7 h-7 rounded-xl bg-[#004900] text-white flex items-center justify-center text-[11px]">Q{index + 1}</span>
+          Multiple Choice
         </span>
         {showRemove && (
-          <button onClick={onRemove} className="text-xs text-red-500 hover:text-red-700 font-medium">
+          <button onClick={onRemove} className="text-xs font-semibold text-red-500 hover:text-red-700 px-3 py-1 rounded-full hover:bg-red-50 transition-colors">
             Remove
           </button>
         )}
       </div>
 
       <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1">
+        <label className="block text-xs font-semibold text-gray-700 mb-1">
           Question Text <span className="text-red-500">*</span>
         </label>
         <textarea
@@ -646,11 +668,11 @@ function QuestionEditor({
       </div>
 
       <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1.5">Options</label>
-        <div className="space-y-2">
+        <label className="block text-xs font-semibold text-gray-700 mb-1.5">Options</label>
+        <div className="grid grid-cols-1 gap-2">
           {q.options.map((opt, i) => (
             <div key={opt.id} className="flex items-center gap-2">
-              <span className="text-xs font-mono font-bold text-gray-400 w-4">
+              <span className="w-7 h-7 rounded-lg bg-gray-100 flex items-center justify-center text-xs font-bold text-gray-500 shrink-0">
                 {opt.id.toUpperCase()}
               </span>
               <input
@@ -664,9 +686,9 @@ function QuestionEditor({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1">
+          <label className="block text-xs font-semibold text-gray-700 mb-1">
             Correct Answer <span className="text-red-500">*</span>
           </label>
           <select
@@ -684,7 +706,7 @@ function QuestionEditor({
           </select>
         </div>
         <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1">Points</label>
+          <label className="block text-xs font-semibold text-gray-700 mb-1">Points</label>
           <input
             type="number" min={1}
             value={q.points}
@@ -696,8 +718,8 @@ function QuestionEditor({
       </div>
 
       <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1">
-          Explanation <span className="text-gray-400">(optional)</span>
+        <label className="block text-xs font-semibold text-gray-700 mb-1">
+          Explanation <span className="text-gray-400 font-normal">(optional)</span>
         </label>
         <input
           value={q.explanation}
@@ -897,15 +919,14 @@ function AddAssessmentForm({
     setQuestions(qs => qs.map((old, idx) => (idx === i ? q : old)));
 
   return (
-    <div className="space-y-5">
-
+    <div className="space-y-4 sm:space-y-5">
       {/* Step tabs */}
-      <div className="flex gap-0 border border-gray-200 rounded-xl overflow-hidden">
+      <div className="flex gap-0 border border-gray-200 rounded-2xl overflow-hidden">
         <button
           onClick={() => step === 2 && setStep(1)}
-          className={`flex-1 py-2.5 text-sm font-medium transition-colors ${
+          className={`flex-1 py-2.5 sm:py-3 text-xs sm:text-sm font-semibold transition-colors ${
             step === 1
-              ? "bg-[#004900] text-white"
+              ? "bg-gradient-to-br from-[#004900] to-[#006400] text-white shadow"
               : "bg-white text-gray-400 hover:bg-gray-50 cursor-pointer"
           }`}
         >
@@ -913,9 +934,9 @@ function AddAssessmentForm({
         </button>
         <button
           disabled={!assessmentId}
-          className={`flex-1 py-2.5 text-sm font-medium transition-colors ${
+          className={`flex-1 py-2.5 sm:py-3 text-xs sm:text-sm font-semibold transition-colors ${
             step === 2
-              ? "bg-[#004900] text-white"
+              ? "bg-gradient-to-br from-[#004900] to-[#006400] text-white shadow"
               : "bg-white text-gray-400"
           } disabled:cursor-not-allowed`}
         >
@@ -927,7 +948,7 @@ function AddAssessmentForm({
       {step === 1 && (
         <div className="space-y-4">
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1.5">
+            <label className="block text-xs font-semibold text-gray-700 mb-1.5">
               Title <span className="text-red-500">*</span>
             </label>
             <input
@@ -942,7 +963,7 @@ function AddAssessmentForm({
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1.5">
+            <label className="block text-xs font-semibold text-gray-700 mb-1.5">
               Description <span className="text-red-500">*</span>
             </label>
             <textarea
@@ -957,9 +978,9 @@ function AddAssessmentForm({
             )}
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1.5">Pass Mark (%)</label>
+              <label className="block text-xs font-semibold text-gray-700 mb-1.5">Pass Mark (%)</label>
               <input
                 type="number" min={0} max={100}
                 value={config.passMarkPercent}
@@ -969,7 +990,7 @@ function AddAssessmentForm({
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1.5">Max Attempts</label>
+              <label className="block text-xs font-semibold text-gray-700 mb-1.5">Max Attempts</label>
               <input
                 type="number" min={1}
                 value={config.maxAttempts}
@@ -979,7 +1000,7 @@ function AddAssessmentForm({
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1.5">Time Limit (mins)</label>
+              <label className="block text-xs font-semibold text-gray-700 mb-1.5">Time Limit (mins)</label>
               <input
                 type="number" min={0}
                 value={config.timeLimitMinutes}
@@ -990,29 +1011,34 @@ function AddAssessmentForm({
             </div>
           </div>
 
-          <label className="flex items-center gap-2.5 cursor-pointer select-none">
+          <label className="flex items-center gap-2.5 cursor-pointer select-none p-3 rounded-xl border border-gray-200 bg-gray-50/50 hover:bg-white transition-colors">
             <input
               type="checkbox"
               checked={config.isActive}
               onChange={e => setC("isActive", e.target.checked)}
               className="w-4 h-4 rounded border-gray-300 accent-[#004900]"
             />
-            <span className="text-sm text-gray-700">Active immediately</span>
+            <span className="text-sm font-medium text-gray-700">Active immediately</span>
           </label>
 
-          {configError && <p className="text-xs text-red-600">{configError}</p>}
+          {configError && <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2">{configError}</p>}
 
-          <div className="flex gap-3 pt-2">
+          <div className="flex flex-col-reverse sm:flex-row gap-3 pt-2">
             <button
               onClick={handleSaveConfig}
               disabled={configLoading}
-              className="bg-[#004900] text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-[#003700] disabled:opacity-60 flex items-center gap-2"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-gradient-to-br from-[#004900] to-[#006400] text-white px-6 py-2.5 rounded-xl text-sm font-semibold hover:shadow-lg hover:shadow-[#004900]/20 disabled:opacity-60 transition-all"
             >
-              {configLoading ? "Saving…" : "Save & Add Questions →"}
+              {configLoading ? (
+                <>
+                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  Saving…
+                </>
+              ) : "Save & Add Questions →"}
             </button>
             <button
               onClick={onCancel}
-              className="px-5 py-2.5 rounded-lg text-sm border border-gray-300 text-gray-600 hover:bg-gray-50"
+              className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-sm border border-gray-200 text-gray-600 hover:bg-gray-50 font-medium"
             >
               Cancel
             </button>
@@ -1022,15 +1048,15 @@ function AddAssessmentForm({
 
       {/* ── STEP 2: Questions (MCQ builder or CSV upload) ── */}
       {step === 2 && (
-        <div className="space-y-5">
+        <div className="space-y-4 sm:space-y-5">
 
           {/* Input mode toggle */}
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1.5">Add questions via</label>
+            <label className="block text-xs font-semibold text-gray-700 mb-1.5">Add questions via</label>
             <div className="flex gap-0 border border-gray-200 rounded-xl overflow-hidden w-full sm:w-72">
               <button
                 onClick={() => setInputMode("mcq")}
-                className={`flex-1 py-2 text-xs font-semibold transition-colors ${
+                className={`flex-1 py-2.5 text-xs font-semibold transition-colors ${
                   inputMode === "mcq"
                     ? "bg-[#004900] text-white"
                     : "bg-white text-gray-500 hover:bg-gray-50"
@@ -1040,26 +1066,26 @@ function AddAssessmentForm({
               </button>
               <button
                 onClick={() => setInputMode("csv")}
-                className={`flex-1 py-2 text-xs font-semibold transition-colors ${
+                className={`flex-1 py-2.5 text-xs font-semibold transition-colors ${
                   inputMode === "csv"
                     ? "bg-[#004900] text-white"
                     : "bg-white text-gray-500 hover:bg-gray-50"
                 }`}
               >
-                CSV / Excel Upload
+                CSV / Excel
               </button>
             </div>
           </div>
 
           {/* ── MCQ builder ── */}
           {inputMode === "mcq" && (
-            <div className="space-y-5">
-              <div className="flex items-center gap-2 px-3.5 py-2.5 bg-[#004900]/5 border border-[#004900]/20 rounded-lg">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#004900" strokeWidth="2">
+            <div className="space-y-4 sm:space-y-5">
+              <div className="flex items-start gap-2 px-3.5 py-3 bg-[#004900]/5 border border-[#004900]/15 rounded-xl">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#004900" strokeWidth="2" className="mt-0.5 shrink-0">
                   <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
                   <rect x="9" y="3" width="6" height="4" rx="1" />
                 </svg>
-                <p className="text-xs text-[#004900] font-medium">
+                <p className="text-xs text-[#004900] font-medium leading-relaxed">
                   Build questions here — submitted as a batch of multiple-choice questions.
                 </p>
               </div>
@@ -1077,19 +1103,19 @@ function AddAssessmentForm({
                 ))}
                 <button
                   onClick={addQuestion}
-                  className="w-full py-2.5 border-2 border-dashed border-gray-200 rounded-xl text-xs font-medium text-gray-400 hover:border-[#004900]/40 hover:text-[#004900] transition-colors"
+                  className="w-full py-3 border-2 border-dashed border-gray-200 rounded-2xl text-xs sm:text-sm font-semibold text-gray-500 hover:border-[#004900]/30 hover:text-[#004900] hover:bg-[#004900]/[0.02] transition-colors"
                 >
                   + Add Another Question
                 </button>
               </div>
 
-              {qError && <p className="text-xs text-red-600">{qError}</p>}
+              {qError && <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2">{qError}</p>}
 
-              <div className="flex gap-3 pt-2">
+              <div className="flex flex-col-reverse sm:flex-row gap-3 pt-2">
                 <button
                   onClick={handleSubmitQuestions}
                   disabled={qLoading}
-                  className="bg-[#004900] text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-[#003700] disabled:opacity-60"
+                  className="w-full sm:w-auto bg-gradient-to-br from-[#004900] to-[#006400] text-white px-6 py-2.5 rounded-xl text-sm font-semibold hover:shadow-lg hover:shadow-[#004900]/20 disabled:opacity-60 transition-all"
                 >
                   {qLoading
                     ? "Submitting…"
@@ -1097,13 +1123,13 @@ function AddAssessmentForm({
                 </button>
                 <button
                   onClick={() => setStep(1)}
-                  className="px-5 py-2.5 rounded-lg text-sm border border-gray-300 text-gray-600 hover:bg-gray-50"
+                  className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-sm border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 font-medium"
                 >
                   ← Back
                 </button>
                 <button
                   onClick={onCancel}
-                  className="px-5 py-2.5 rounded-lg text-sm border border-gray-300 text-gray-600 hover:bg-gray-50"
+                  className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-sm border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 font-medium"
                 >
                   Cancel
                 </button>
@@ -1113,9 +1139,9 @@ function AddAssessmentForm({
 
           {/* ── CSV / Excel upload ── */}
           {inputMode === "csv" && (
-            <div className="space-y-5">
-              <div className="px-3.5 py-3 bg-purple-50 border border-purple-200 rounded-lg space-y-1.5">
-                <p className="text-xs text-purple-800 font-medium">
+            <div className="space-y-4 sm:space-y-5">
+              <div className="px-3.5 py-3 bg-gradient-to-br from-purple-50 to-indigo-50 border border-purple-200 rounded-xl space-y-1.5">
+                <p className="text-xs text-purple-800 font-semibold">
                   Upload a .csv or .xlsx file. Each row is one question. Max 5MB.
                 </p>
                 <p className="text-xs text-purple-700">
@@ -1133,14 +1159,14 @@ function AddAssessmentForm({
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                <label className="block text-xs font-semibold text-gray-700 mb-1.5">
                   File <span className="text-red-500">*</span>
                 </label>
-                <div className="flex items-center gap-4">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
                   <button
                     onClick={() => csvInputRef.current?.click()}
                     disabled={csvLoading}
-                    className="px-4 py-2 rounded-lg text-xs font-medium border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-60"
+                    className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-xs font-semibold border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-60 transition-colors"
                   >
                     {csvFile ? "Change File" : "Choose File"}
                   </button>
@@ -1153,30 +1179,30 @@ function AddAssessmentForm({
                     title="csv-file-input"
                   />
                   {csvFile && (
-                    <span className="text-xs text-gray-600 truncate max-w-xs">{csvFile.name}</span>
+                    <span className="text-xs text-gray-600 truncate max-w-full sm:max-w-xs bg-gray-50 border border-gray-100 rounded-full px-3 py-1.5">{csvFile.name}</span>
                   )}
                 </div>
               </div>
 
-              {csvError && <p className="text-xs text-red-600">{csvError}</p>}
+              {csvError && <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2">{csvError}</p>}
 
-              <div className="flex gap-3 pt-2">
+              <div className="flex flex-col-reverse sm:flex-row gap-3 pt-2">
                 <button
                   onClick={handleCsvSubmit}
                   disabled={csvLoading || !csvFile}
-                  className="bg-[#004900] text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-[#003700] disabled:opacity-60"
+                  className="w-full sm:w-auto bg-gradient-to-br from-[#004900] to-[#006400] text-white px-6 py-2.5 rounded-xl text-sm font-semibold hover:shadow-lg hover:shadow-[#004900]/20 disabled:opacity-60 transition-all"
                 >
                   {csvLoading ? "Uploading…" : "Upload & Save Questions"}
                 </button>
                 <button
                   onClick={() => setStep(1)}
-                  className="px-5 py-2.5 rounded-lg text-sm border border-gray-300 text-gray-600 hover:bg-gray-50"
+                  className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-sm border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 font-medium"
                 >
                   ← Back
                 </button>
                 <button
                   onClick={onCancel}
-                  className="px-5 py-2.5 rounded-lg text-sm border border-gray-300 text-gray-600 hover:bg-gray-50"
+                  className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-sm border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 font-medium"
                 >
                   Cancel
                 </button>
@@ -1298,50 +1324,66 @@ export default function ManageTracks() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto px-6 py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
 
-        <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Manage Tracks</h1>
-            <p className="text-sm text-gray-500 mt-0.5">Tracks belong to courses and group related modules</p>
-          </div>
-          <div className="flex items-center gap-3">
-            {!loading && !fetchError && courses.length > 0 && (
-              <select
-                value={selectedCourseId}
-                onChange={(e) => handleCourseFilterChange(e.target.value)}
-                className="px-3.5 py-2 border border-gray-200 rounded-xl text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all shadow-sm"
-                aria-label="Filter by course"
-              >
-                <option value="all">All courses</option>
-                {courses.map((c) => (
-                  <option key={c.id} value={c.id}>{c.title}</option>
-                ))}
-              </select>
-            )}
-            {!loading && !fetchError && tracksInSelectedCourse.length > 0 && (
-              <select
-                value={selectedTrackId}
-                onChange={(e) => setSelectedTrackId(e.target.value === "all" ? "all" : Number(e.target.value))}
-                className="px-3.5 py-2 border border-gray-200 rounded-xl text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all shadow-sm"
-                aria-label="Filter by track"
-              >
-                <option value="all">All tracks</option>
-                {tracksInSelectedCourse.map((t) => (
-                  <option key={t.id} value={t.id}>{t.title}</option>
-                ))}
-              </select>
-            )}
-            <span className="text-sm text-gray-400 whitespace-nowrap">
-              {filteredTracks.length} track{filteredTracks.length !== 1 ? "s" : ""}
-            </span>
+        {/* Header Card */}
+        <div className="bg-gradient-to-br from-[#004900] via-[#005a00] to-[#006400] rounded-2xl p-4 sm:p-6 lg:p-8 shadow-lg shadow-[#004900]/20 mb-4 sm:mb-6">
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+              <div className="flex gap-3 sm:gap-4">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-white/15 backdrop-blur flex items-center justify-center shrink-0">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" className="w-5 h-5 sm:w-6 sm:h-6">
+                    <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+                    <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+                  </svg>
+                </div>
+                <div>
+                  <h1 className="text-lg sm:text-xl lg:text-2xl font-bold text-white leading-tight">Manage Tracks</h1>
+                  <p className="text-xs sm:text-sm text-white/80 mt-1">Tracks belong to courses and group related modules</p>
+                </div>
+              </div>
+              <span className="inline-flex items-center gap-2 self-start sm:self-auto px-3 sm:px-4 py-1.5 sm:py-2 rounded-full bg-white/15 backdrop-blur text-white text-xs sm:text-sm font-semibold whitespace-nowrap">
+                <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
+                {filteredTracks.length} track{filteredTracks.length !== 1 ? "s" : ""}
+              </span>
+            </div>
+
+            {/* Filters — stacked on mobile, row on desktop */}
+            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 sm:items-center">
+              {!loading && !fetchError && courses.length > 0 && (
+                <select
+                  value={selectedCourseId}
+                  onChange={(e) => handleCourseFilterChange(e.target.value)}
+                  className="w-full sm:w-auto sm:min-w-[180px] px-3.5 py-2.5 border border-white/20 rounded-xl text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-white/30 shadow-sm"
+                  aria-label="Filter by course"
+                >
+                  <option value="all">All courses</option>
+                  {courses.map((c) => (
+                    <option key={c.id} value={c.id}>{c.title}</option>
+                  ))}
+                </select>
+              )}
+              {!loading && !fetchError && tracksInSelectedCourse.length > 0 && (
+                <select
+                  value={selectedTrackId}
+                  onChange={(e) => setSelectedTrackId(e.target.value === "all" ? "all" : Number(e.target.value))}
+                  className="w-full sm:w-auto sm:min-w-[180px] px-3.5 py-2.5 border border-white/20 rounded-xl text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-white/30 shadow-sm"
+                  aria-label="Filter by track"
+                >
+                  <option value="all">All tracks</option>
+                  {tracksInSelectedCourse.map((t) => (
+                    <option key={t.id} value={t.id}>{t.title}</option>
+                  ))}
+                </select>
+              )}
+            </div>
           </div>
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
 
           {loading && (
-            <div className="flex flex-col items-center justify-center py-20 gap-3 text-gray-400 text-sm">
+            <div className="flex flex-col items-center justify-center py-16 sm:py-20 gap-3 text-gray-400 text-sm">
               <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center animate-pulse">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
               </div>
@@ -1350,131 +1392,194 @@ export default function ManageTracks() {
           )}
 
           {!loading && fetchError && (
-            <div className="flex flex-col items-center justify-center py-20 gap-3">
+            <div className="flex flex-col items-center justify-center py-16 sm:py-20 gap-3 px-4">
               <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
               </div>
-              <p className="text-sm text-red-600">{fetchError}</p>
-              <button onClick={fetchTracks} className="text-sm text-[#004900] underline">Retry</button>
+              <p className="text-sm text-red-600 text-center">{fetchError}</p>
+              <button onClick={fetchTracks} className="text-sm text-[#004900] underline font-medium">Retry</button>
             </div>
           )}
 
           {!loading && !fetchError && filteredTracks.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-20 gap-3">
-              <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center">
+            <div className="flex flex-col items-center justify-center py-16 sm:py-20 gap-3 px-4">
+              <div className="w-12 h-12 rounded-2xl bg-gray-100 flex items-center justify-center">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
               </div>
               <div className="text-center">
-                <p className="text-sm font-medium text-gray-500">{tracks.length === 0 ? "No tracks found" : "No tracks match this selection"}</p>
+                <p className="text-sm font-semibold text-gray-600">{tracks.length === 0 ? "No tracks found" : "No tracks match this selection"}</p>
                 <p className="text-xs text-gray-400 mt-1">{tracks.length === 0 ? "Add tracks from a course first." : "Try changing the filter."}</p>
               </div>
             </div>
           )}
 
           {!loading && !fetchError && filteredTracks.length > 0 && (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50 border-b border-gray-100">
-                    <th className="text-left px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide w-12">ID</th>
-                    <th className="text-left px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Track Name</th>
-                    <th className="text-left px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Course</th>
-                    <th className="text-left px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
-                    <th className="text-left px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Free</th>
-                    <th className="text-right px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {filteredTracks.map((track) => (
-                    <tr key={track.id} className="hover:bg-gray-50/60 transition-colors">
-
-                      <td className="px-6 py-4 text-gray-400 font-mono text-xs">{track.id}</td>
-
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-lg border border-gray-100 bg-gray-50 overflow-hidden flex items-center justify-center shrink-0">
-                            {track.thumbnail ? (
-                              <img src={track.thumbnail} alt="" className="w-full h-full object-cover" />
-                            ) : (
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" strokeWidth="1.5">
-                                <rect x="3" y="3" width="18" height="18" rx="2" />
-                                <circle cx="8.5" cy="8.5" r="1.5" />
-                                <path d="M21 15l-5-5L5 21" />
-                              </svg>
-                            )}
-                          </div>
-                          <div>
-                            <div className="font-medium text-gray-900">{track.title}</div>
-                            {track.shortDescription && (
-                              <div className="text-xs text-gray-400 mt-0.5 line-clamp-1 max-w-xs">
-                                {track.shortDescription}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </td>
-
-                      <td className="px-6 py-4">
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700">
-                          {track.course?.title ?? `Course #${track.courseId}`}
-                        </span>
-                      </td>
-
-                      <td className="px-6 py-4">
-                        <Badge status={track.status} />
-                      </td>
-
-                      <td className="px-6 py-4">
-                        {track.isFree ? (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-600">Free</span>
+            <>
+              {/* Mobile cards — visible below lg */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 p-3 sm:p-4 lg:hidden">
+                {filteredTracks.map((track) => (
+                  <div key={track.id} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow">
+                    <div className="flex gap-3">
+                      <div className="w-12 h-12 rounded-xl border border-gray-100 bg-gray-50 overflow-hidden flex items-center justify-center shrink-0">
+                        {track.thumbnail ? (
+                          <img src={track.thumbnail} alt="" className="w-full h-full object-cover" />
                         ) : (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">Paid</span>
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" strokeWidth="1.5">
+                            <rect x="3" y="3" width="18" height="18" rx="2" />
+                            <circle cx="8.5" cy="8.5" r="1.5" />
+                            <path d="M21 15l-5-5L5 21" />
+                          </svg>
                         )}
-                      </td>
-
-                      <td className="px-6 py-4">
-                        <div className="flex items-center justify-end gap-2">
-
-                          {/* Add Module */}
-                          <button
-                            onClick={() => setModal({ type: "addModule", track })}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-[#004900] text-white hover:bg-[#003700] transition-colors"
-                          >
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                              <line x1="12" y1="5" x2="12" y2="19" />
-                              <line x1="5" y1="12" x2="19" y2="12" />
-                            </svg>
-                            Add Module
-                          </button>
-
-                          {/* Add Assessment */}
-                          <button
-                            onClick={() => setModal({ type: "addAssessment", track })}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-purple-600 text-white hover:bg-purple-700 transition-colors"
-                          >
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                              <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
-                              <rect x="9" y="3" width="6" height="4" rx="1" />
-                              <line x1="9" y1="12" x2="15" y2="12" />
-                              <line x1="9" y1="16" x2="13" y2="16" />
-                            </svg>
-                            Add Assessment
-                          </button>
-
-                          {/* Overflow menu */}
-                          <ActionsMenu
-                            items={[
-                              { label: "Edit Track", onClick: () => setModal({ type: "edit", track }) },
-                              { label: "Delete Track", onClick: () => setModal({ type: "delete", track }), danger: true },
-                            ]}
-                          />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-gray-900 text-sm truncate">{track.title}</div>
+                        {track.shortDescription && (
+                          <div className="text-xs text-gray-400 mt-0.5 line-clamp-2">
+                            {track.shortDescription}
+                          </div>
+                        )}
+                        <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-50 text-blue-700 border border-blue-100">
+                            {track.course?.title ?? `Course #${track.courseId}`}
+                          </span>
+                          <Badge status={track.status} />
+                          {track.isFree ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-600 border border-emerald-100">Free</span>
+                          ) : (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-gray-100 text-gray-500">Paid</span>
+                          )}
                         </div>
-                      </td>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 mt-4">
+                      <button
+                        onClick={() => setModal({ type: "addModule", track })}
+                        className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-[#004900] text-white hover:bg-[#003700] transition-colors"
+                      >
+                        + Module
+                      </button>
+                      <button
+                        onClick={() => setModal({ type: "addAssessment", track })}
+                        className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-purple-600 text-white hover:bg-purple-700 transition-colors"
+                      >
+                        + Assessment
+                      </button>
+                      <ActionsMenu
+                        items={[
+                          { label: "Edit Track", onClick: () => setModal({ type: "edit", track }) },
+                          { label: "Delete Track", onClick: () => setModal({ type: "delete", track }), danger: true },
+                        ]}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Desktop table — hidden on mobile/tablet */}
+              <div className="hidden lg:block overflow-x-auto">
+                <table className="w-full text-sm min-w-[760px]">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-100">
+                      <th className="text-left px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide w-12">ID</th>
+                      <th className="text-left px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Track Name</th>
+                      <th className="text-left px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Course</th>
+                      <th className="text-left px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
+                      <th className="text-left px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Free</th>
+                      <th className="text-right px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {filteredTracks.map((track) => (
+                      <tr key={track.id} className="hover:bg-gray-50/60 transition-colors">
+
+                        <td className="px-6 py-4 text-gray-400 font-mono text-xs">{track.id}</td>
+
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg border border-gray-100 bg-gray-50 overflow-hidden flex items-center justify-center shrink-0">
+                              {track.thumbnail ? (
+                                <img src={track.thumbnail} alt="" className="w-full h-full object-cover" />
+                              ) : (
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" strokeWidth="1.5">
+                                  <rect x="3" y="3" width="18" height="18" rx="2" />
+                                  <circle cx="8.5" cy="8.5" r="1.5" />
+                                  <path d="M21 15l-5-5L5 21" />
+                                </svg>
+                              )}
+                            </div>
+                            <div>
+                              <div className="font-medium text-gray-900">{track.title}</div>
+                              {track.shortDescription && (
+                                <div className="text-xs text-gray-400 mt-0.5 line-clamp-1 max-w-xs">
+                                  {track.shortDescription}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+
+                        <td className="px-6 py-4">
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-100">
+                            {track.course?.title ?? `Course #${track.courseId}`}
+                          </span>
+                        </td>
+
+                        <td className="px-6 py-4">
+                          <Badge status={track.status} />
+                        </td>
+
+                        <td className="px-6 py-4">
+                          {track.isFree ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-600 border border-emerald-100">Free</span>
+                          ) : (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">Paid</span>
+                          )}
+                        </td>
+
+                        <td className="px-6 py-4">
+                          <div className="flex items-center justify-end gap-2">
+
+                            {/* Add Module */}
+                            <button
+                              onClick={() => setModal({ type: "addModule", track })}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#004900] text-white hover:bg-[#003700] transition-colors"
+                            >
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                <line x1="12" y1="5" x2="12" y2="19" />
+                                <line x1="5" y1="12" x2="19" y2="12" />
+                              </svg>
+                              Add Module
+                            </button>
+
+                            {/* Add Assessment */}
+                            <button
+                              onClick={() => setModal({ type: "addAssessment", track })}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-purple-600 text-white hover:bg-purple-700 transition-colors"
+                            >
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
+                                <rect x="9" y="3" width="6" height="4" rx="1" />
+                                <line x1="9" y1="12" x2="15" y2="12" />
+                                <line x1="9" y1="16" x2="13" y2="16" />
+                              </svg>
+                              Add Assessment
+                            </button>
+
+                            {/* Overflow menu */}
+                            <ActionsMenu
+                              items={[
+                                { label: "Edit Track", onClick: () => setModal({ type: "edit", track }) },
+                                { label: "Delete Track", onClick: () => setModal({ type: "delete", track }), danger: true },
+                              ]}
+                            />
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </div>
       </div>
@@ -1537,11 +1642,13 @@ export default function ManageTracks() {
 
       {/* Toast */}
       {toast && (
-        <div className="fixed bottom-6 right-6 bg-[#004900] text-white px-5 py-3 rounded-xl shadow-lg flex items-center gap-3 z-50">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
-            <polyline points="20 6 9 17 4 12" />
-          </svg>
-          <span className="text-sm font-medium">{toast}</span>
+        <div className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-6 sm:bottom-6 bg-gradient-to-br from-[#004900] to-[#006400] text-white px-4 sm:px-5 py-3 rounded-2xl shadow-xl flex items-center gap-3 z-50">
+          <span className="w-8 h-8 rounded-full bg-white/15 flex items-center justify-center shrink-0">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+          </span>
+          <span className="text-sm font-medium flex-1">{toast}</span>
         </div>
       )}
     </div>

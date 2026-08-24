@@ -9,7 +9,6 @@ import {
   Search,
   Upload,
   X,
-  ShieldCheck,
   Sparkles,
   Eye,
   Loader2,
@@ -18,11 +17,8 @@ import {
   Crown,
   FileText,
   Users,
-  Layers,
   CheckCircle2,
-  AlertTriangle,
   Image as ImageIcon,
-  Fingerprint,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -69,7 +65,7 @@ interface CertificateRecord {
   [key: string]: unknown;
 }
 
-type CertType = "topic" | "course" | "track" | "field";
+type CertType = "course";
 type TabKey = "certificates" | "signatories";
 type CertSubTab = "issue" | "lookup";
 
@@ -119,117 +115,6 @@ function Banner({
       <button onClick={onClose} className="opacity-60 hover:opacity-100 p-1 -mr-1 shrink-0">
         <X size={15} />
       </button>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Certificate Preview                                                */
-/* ------------------------------------------------------------------ */
-
-function CertificatePreview({
-  record,
-  signatories,
-}: {
-  record: CertificateRecord;
-  signatories: Signatory[];
-}) {
-  const activeSigs = signatories
-    .filter((s) => s.isActive)
-    .sort((a, b) => a.displayOrder - b.displayOrder)
-    .slice(0, 2);
-
-  const title =
-    (record.track as { title?: string } | null)?.title ||
-    (record.course as { title?: string } | null)?.title ||
-    (record as Record<string, unknown>).title ||
-    "Certificate of Completion";
-
-  return (
-    <div className="relative bg-white rounded-2xl overflow-hidden border border-amber-200/50 shadow-xl">
-      {/* ornate border */}
-      <div className="absolute inset-3 border-2 border-amber-900/10 rounded-xl pointer-events-none" />
-      <div className="absolute inset-0 pointer-events-none opacity-[0.03]">
-        <div className="w-full h-full" style={{
-          backgroundImage: `repeating-linear-gradient(45deg, transparent, transparent 14px, #92400e 14px, #92400e 15px)`
-        }} />
-      </div>
-
-      {/* header accent */}
-      <div className="h-1.5 bg-gradient-to-r from-[#004900] via-amber-500 to-[#004900]" />
-
-      <div className="relative p-8 md:p-10 text-center">
-        {/* top badge */}
-        <div className="flex justify-center mb-4">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#004900] to-[#005c00] flex items-center justify-center shadow-lg">
-            <Award size={26} className="text-amber-300" />
-          </div>
-        </div>
-
-        <p className="text-[11px] tracking-[0.3em] text-amber-700 font-semibold uppercase">SLAN • Science Learning Advancement Network</p>
-        <h2 className="text-3xl md:text-4xl font-serif font-bold text-slate-900 tracking-tight mt-2" style={{ fontFamily: "Georgia, serif" }}>
-          Certificate of Achievement
-        </h2>
-        <div className="w-20 h-px bg-amber-400 mx-auto mt-4 mb-6" />
-
-        <p className="text-sm text-gray-500">This certifies that</p>
-        <p className="text-2xl font-semibold text-[#004900] mt-2" style={{ fontFamily: "Georgia, serif" }}>
-          {record.user?.fullName ?? "Recipient Name"}
-        </p>
-        <div className="w-48 h-px bg-gray-200 mx-auto mt-3 mb-4" />
-
-        <p className="text-sm text-gray-600 max-w-xl mx-auto leading-relaxed">
-          has successfully completed the <span className="font-semibold text-slate-800">{String(title)}</span>{" "}
-          and demonstrated outstanding commitment to learning.
-        </p>
-
-        <div className="grid grid-cols-3 gap-4 mt-8 text-xs">
-          <div className="text-left">
-            <p className="text-gray-400 uppercase tracking-wide text-[10px]">Certificate No.</p>
-            <p className="font-mono font-semibold text-slate-800 mt-1">{record.certificateNumber}</p>
-          </div>
-          <div className="text-center">
-            <p className="text-gray-400 uppercase tracking-wide text-[10px]">Type</p>
-            <span className="inline-flex mt-1 px-2.5 py-1 rounded-full bg-[#004900] text-white text-xs font-medium capitalize">
-              {record.certType}
-            </span>
-          </div>
-          <div className="text-right">
-            <p className="text-gray-400 uppercase tracking-wide text-[10px]">Issued</p>
-            <p className="font-medium text-slate-800 mt-1">{formatDate(record.issuedAt)}</p>
-          </div>
-        </div>
-
-        {/* signatures */}
-        <div className="flex justify-between items-end mt-10 pt-8 border-t border-gray-100 gap-8">
-          {activeSigs.length === 0 ? (
-            <p className="text-xs text-gray-400 mx-auto">No active signatories configured</p>
-          ) : (
-            activeSigs.map((s) => (
-              <div key={s.id} className="flex-1 text-center">
-                <div className="h-12 flex items-center justify-center mb-2">
-                  {s.signatureImagePath ? (
-                    <img src={resolveImageUrl(s.signatureImagePath)} alt={s.name} className="h-10 object-contain" />
-                  ) : (
-                    <span className="text-gray-300 text-xs">— signature —</span>
-                  )}
-                </div>
-                <div className="w-32 h-px bg-slate-300 mx-auto" />
-                <p className="text-xs font-semibold text-slate-900 mt-2">{s.name}</p>
-                <p className="text-[11px] text-gray-500">{s.title}</p>
-              </div>
-            ))
-          )}
-          {activeSigs.length === 1 && <div className="flex-1" />}
-        </div>
-
-        {/* seal */}
-        <div className="absolute right-6 bottom-16 hidden md:flex w-20 h-20 rounded-full border-2 border-amber-600/20 items-center justify-center opacity-60 rotate-12">
-          <div className="w-16 h-16 rounded-full border border-dashed border-amber-700/30 flex items-center justify-center">
-            <ShieldCheck size={20} className="text-amber-700/60" />
-          </div>
-        </div>
-      </div>
     </div>
   );
 }
@@ -482,7 +367,7 @@ export default function CertificatesPage() {
 
   /* certificates */
   const [userId, setUserId] = useState("");
-  const [certType, setCertType] = useState<CertType>("track");
+  const certType: CertType = "course";
   const [referenceId, setReferenceId] = useState("");
   const [issuing, setIssuing] = useState(false);
   const [issueNotice, setIssueNotice] = useState<{ kind: "success" | "error"; message: string } | null>(null);
@@ -599,7 +484,7 @@ export default function CertificatesPage() {
                   Certificates & Signatories <Sparkles size={18} className="text-amber-300 hidden md:inline" />
                 </h1>
                 <p className="text-sm text-white/70 mt-1 max-w-xl">
-                  Issue certificates for tracks, courses and topics — and manage the signatories whose signatures appear on them. Max 2 active signatories are rendered on each PDF.
+                  Issue certificates for courses — and manage the signatories whose signatures appear on them. Max 2 active signatories are rendered on each PDF.
                 </p>
               </div>
             </div>
@@ -617,7 +502,7 @@ export default function CertificatesPage() {
         </div>
 
         {/* top tab switch */}
-        <div className="flex p-1 bg-white rounded-2xl border border-gray-200 w-fit shadow-sm mb-6 gap-1">
+        <div className="flex p-1 bg-white rounded-2xl border border-gray-200 w-fit max-w-full overflow-x-auto shadow-sm mb-6 gap-1">
           <button
             onClick={() => setTab("certificates")}
             className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all ${tab === "certificates" ? "bg-[#004900] text-white shadow" : "text-gray-600 hover:bg-gray-50"}`}
@@ -644,12 +529,11 @@ export default function CertificatesPage() {
                 <button onClick={() => setCertSubTab("lookup")} className={`py-4 text-sm font-semibold border-b-2 whitespace-nowrap transition-colors ${certSubTab === "lookup" ? "border-[#004900] text-[#004900]" : "border-transparent text-gray-500 hover:text-gray-700"}`}>
                   Lookup & Download
                 </button>
-                <span className="ml-auto hidden md:flex items-center gap-1.5 text-xs text-gray-400 py-4"><Fingerprint size={12} /> POST /admin/certifications/issue · GET /admin/certifications/{"{id}"}</span>
+                
               </div>
 
-              <div className="p-6 grid grid-cols-1 lg:grid-cols-5 gap-6">
-                {/* left: forms */}
-                <div className="lg:col-span-2 space-y-6">
+              <div className="p-6">
+                <div className="max-w-2xl mx-auto space-y-6">
                   {certSubTab === "issue" ? (
                     <>
                       <div>
@@ -665,19 +549,16 @@ export default function CertificatesPage() {
                           <input type="number" value={userId} onChange={(e) => setUserId(e.target.value)} placeholder="e.g. 42" className="mt-1.5 w-full rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900]" required />
                         </label>
                         <label className="block">
-                          <span className="text-xs font-semibold text-slate-700">Certificate Type <span className="text-red-500">*</span></span>
-                          <div className="mt-1.5 grid grid-cols-4 gap-2">
-                            {(["track", "course", "topic", "field"] as CertType[]).map((t) => (
-                              <button key={t} type="button" onClick={() => setCertType(t)} className={`capitalize px-3 py-2.5 rounded-xl text-xs font-semibold border transition-all ${certType === t ? "bg-[#004900] text-white border-[#004900] shadow" : "bg-white border-gray-200 text-gray-600 hover:border-gray-300"}`}>
-                                {t}
-                              </button>
-                            ))}
+                          <span className="text-xs font-semibold text-slate-700">Certificate Type</span>
+                          <div className="mt-1.5 w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5 text-sm font-medium text-slate-700 flex items-center gap-2">
+                            <Award size={14} className="text-[#004900]" /> Course
                           </div>
+                          <span className="text-xs text-gray-500 mt-1 block">Only course certificates are supported.</span>
                         </label>
                         <label className="block">
                           <span className="text-xs font-semibold text-slate-700">Reference ID <span className="text-red-500">*</span></span>
-                          <input type="number" value={referenceId} onChange={(e) => setReferenceId(e.target.value)} placeholder="Track / Course ID" className="mt-1.5 w-full rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900]" required />
-                          <span className="text-xs text-gray-500 mt-1 block">The track, course, topic or field ID to certify.</span>
+                          <input type="number" value={referenceId} onChange={(e) => setReferenceId(e.target.value)} placeholder="Course ID" className="mt-1.5 w-full rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900]" required />
+                          <span className="text-xs text-gray-500 mt-1 block">The course ID to certify.</span>
                         </label>
                         <button type="submit" disabled={issuing} className="w-full inline-flex items-center justify-center gap-2 bg-[#004900] hover:bg-[#003d00] disabled:opacity-50 text-white text-sm font-semibold px-4 py-3 rounded-xl shadow">
                           {issuing ? <Loader2 size={16} className="animate-spin" /> : <Award size={16} />} {issuing ? "Issuing..." : "Issue Certificate"}
@@ -749,45 +630,6 @@ export default function CertificatesPage() {
                     </>
                   )}
                 </div>
-
-                {/* right: preview */}
-                <div className="lg:col-span-3">
-                  <div className="sticky top-6 space-y-4">
-                    <div className="flex items-center justify-between">
-                      <h3 className="font-semibold text-slate-900 flex items-center gap-2"><Layers size={16} className="text-gray-400" /> Live Preview</h3>
-                      <span className="text-xs text-gray-500 hidden md:inline">Signatures auto-populate from active signatories</span>
-                    </div>
-
-                    {/* show issued or looked up record, fallback to sample */}
-                    {(() => {
-                      const r = issued ?? record;
-                      if (r) return <CertificatePreview record={r} signatories={signatories} />;
-                      // sample
-                      const sample: CertificateRecord = {
-                        id: 0,
-                        certType: certType,
-                        certificateNumber: "SLAN-M9KZ4F-AB3C",
-                        issuedAt: new Date().toISOString(),
-                        user: { id: Number(userId) || 1, fullName: "Amina Bello" },
-                        track: certType === "track" ? { id: Number(referenceId) || 1, title: "Advanced Product Design" } : null,
-                        course: certType === "course" ? { id: Number(referenceId) || 1, title: "Introduction to Data Science" } : null,
-                      };
-                      return (
-                        <div className="opacity-90">
-                          <CertificatePreview record={sample} signatories={signatories} />
-                          <p className="text-xs text-center text-gray-400 mt-3">Sample preview — issue or lookup to see real data</p>
-                        </div>
-                      );
-                    })()}
-
-                    <div className="rounded-2xl bg-amber-50 border border-amber-200 p-4 flex gap-3">
-                      <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
-                      <div className="text-xs leading-relaxed text-amber-900">
-                        <span className="font-semibold">How it works:</span> Certificates are generated on the server with the current active signatories (max 2). To change signatures, update signatories and re-issue or re-download — the PDF will reflect the latest active pair.
-                      </div>
-                    </div>
-                  </div>
-                </div>
               </div>
             </div>
           ) : (
@@ -806,7 +648,7 @@ export default function CertificatesPage() {
               {sigNotice && <Banner kind={sigNotice.kind} message={sigNotice.message} onClose={() => setSigNotice(null)} />}
 
               {/* stats */}
-              <div className="grid grid-cols-3 gap-3 mb-6">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
                 <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
                   <div className="text-2xl font-bold text-emerald-700">{activeCount}</div>
                   <div className="text-xs text-emerald-700 font-medium">Active</div>

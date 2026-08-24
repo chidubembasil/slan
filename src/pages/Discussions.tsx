@@ -432,11 +432,6 @@ export default function Discussions() {
                 <p className="text-sm text-white/70 mt-1 max-w-xl">
                   Manage community conversations — edit or remove any discussion (author or admin), moderate replies, pin important topics and lock resolved threads.
                 </p>
-                <div className="flex gap-2 mt-3 text-xs font-mono flex-wrap">
-                  <span className="bg-white/10 border border-white/15 px-2 py-1 rounded-full">PATCH /discussions/{"{id}"}</span>
-                  <span className="bg-white/10 border border-white/15 px-2 py-1 rounded-full">DELETE /discussions/{"{id}"}</span>
-                  <span className="bg-white/10 border border-white/15 px-2 py-1 rounded-full">PATCH /pin · /lock</span>
-                </div>
               </div>
             </div>
             <div className="grid grid-cols-3 gap-2">
@@ -465,9 +460,9 @@ export default function Discussions() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
           {/* list */}
-          <div className="xl:col-span-2">
+          <div className="lg:col-span-2">
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 mb-4">
               <div className="relative">
                 <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -500,7 +495,6 @@ export default function Discussions() {
                 <div className="bg-white rounded-2xl border border-gray-200 p-12 text-center">
                   <Loader2 size={20} className="animate-spin mx-auto text-gray-400" />
                   <p className="text-sm text-gray-500 mt-3">Loading discussions...</p>
-                  <p className="text-xs text-gray-400 font-mono mt-1">{API || "VITE_BASE_URL not set"}/discussions</p>
                 </div>
               ) : filtered.length === 0 ? (
                 <div className="bg-white rounded-2xl border border-dashed border-gray-300 p-12 text-center">
@@ -547,8 +541,8 @@ export default function Discussions() {
           </div>
 
           {/* detail */}
-          <div className="xl:col-span-1">
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm sticky top-6 overflow-hidden">
+          <div className="lg:col-span-1">
+            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm lg:sticky lg:top-6 overflow-hidden">
               {!selected ? (
                 <div className="p-12 text-center">
                   <div className="w-12 h-12 rounded-2xl bg-gray-50 border border-gray-200 flex items-center justify-center mx-auto"><Eye size={18} className="text-gray-400" /></div>
@@ -603,8 +597,6 @@ export default function Discussions() {
                       <button onClick={() => openEdit(selected)} className="inline-flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-[#004900] text-white text-xs font-semibold hover:bg-[#003d00]"><Pencil size={12} /> Edit</button>
                       <button onClick={() => setDeleteTarget({ type: "discussion", discussionId: selected.id })} className="inline-flex items-center justify-center gap-1.5 py-2.5 rounded-xl border border-red-200 text-red-600 text-xs font-semibold hover:bg-red-50"><Trash2 size={12} /> Delete</button>
                     </div>
-                    <p className="text-xs text-gray-400 text-center mt-2">Pin/lock = admin only · Edit/delete = author or admin (403 if not authorised)</p>
-
                     {/* replies */}
                     <div className="mt-6">
                       <h3 className="text-xs font-bold uppercase tracking-wide text-gray-600 flex items-center gap-1.5"><MessageCircle size={12} /> Replies · {(selected.replies?.length ?? 0)} </h3>
@@ -632,13 +624,13 @@ export default function Discussions() {
                           ))
                         )}
                       </div>
-                      <p className="text-xs text-gray-400 mt-2 font-mono">DELETE /discussions/{"{discussionId}"}/replies/{"{replyId}"}</p>
+                     
                     </div>
                   </div>
                 </div>
               )}
             </div>
-            <p className="text-xs text-gray-400 text-center mt-3 font-mono break-all">API {API || "VITE_BASE_URL not set"}</p>
+            
           </div>
         </div>
       </div>
@@ -653,7 +645,6 @@ export default function Discussions() {
                 <div className="w-9 h-9 rounded-xl bg-[#004900]/10 flex items-center justify-center"><Pencil size={16} className="text-[#004900]" /></div>
                 <div>
                   <h3 className="font-semibold text-slate-900 text-sm">Edit discussion</h3>
-                  <p className="text-xs text-gray-500 font-mono">PATCH /discussions/{"{id}"} {"{title, body}"}</p>
                 </div>
               </div>
               <button onClick={() => setEditOpen(false)} disabled={saving} className="p-2 rounded-xl hover:bg-gray-100 text-gray-500"><X size={16} /></button>

@@ -22,8 +22,8 @@ interface TrackAssessmentRow {
   title: string;
   trackId: number;
   trackName: string;
-  questionType: QuestionType; // used to decide which editor UI to show
-  displayLabel: string; // used to render the actual badge in the table
+  questionType: QuestionType;
+  displayLabel: string;
   questionCount: number;
   isActive: boolean;
 }
@@ -42,16 +42,12 @@ interface AssessmentItem {
   points: number;
 }
 
-// Minimal shape for the course dropdown — courses may come back from the
-// API with either `title` or `name`, so both are supported when rendering.
 interface Course {
   id: number;
   title?: string;
   name?: string;
 }
 
-// Minimal shape for a course's modules, rendered in the list below the
-// course select. Supports either `title` or `name` for the module label.
 interface CourseModule {
   id: number;
   title?: string;
@@ -59,12 +55,6 @@ interface CourseModule {
   description?: string;
 }
 
-// A single archived question, surfaced in the Archive modal. Sourced from
-// GET /admin/assessments (which returns every track assessment together
-// with its items, including archived ones) by keeping only items where
-// isArchived === true. trackName is looked up from the already-loaded
-// `rows` state (matched by assessment id) since the /admin/assessments
-// payload only carries trackId, not the track's display name.
 interface ArchivedQuestionRow {
   id: number;
   questionText: string;
@@ -75,9 +65,6 @@ interface ArchivedQuestionRow {
   archivedAt?: string | null;
 }
 
-// A single learner's attempt at a track assessment, as returned by
-// GET /admin/attempts?assessmentType=track_assessment&assessmentId={id}.
-// Shown in the "Attempts" modal opened from the Actions column.
 interface AttemptRow {
   id: number;
   user?: {
@@ -110,9 +97,6 @@ function emptyItem(): AssessmentItem {
   };
 }
 
-// Options sometimes come back from the API as objects (e.g. { text: "..." })
-// instead of plain strings. This normalizes any shape into a display string
-// so inputs never render "[object Object]".
 function normalizeOptions(raw: unknown): { id: string; text: string }[] {
   if (Array.isArray(raw) && raw.length) {
     return raw.map((opt: any, index) => ({
@@ -129,11 +113,6 @@ function normalizeOptions(raw: unknown): { id: string; text: string }[] {
   ];
 }
 
-// Derives the badge text from the assessment's actual question items,
-// instead of guessing from a count. "No question yet" when the assessment
-// has zero items; the real question type when there's one shared type
-// across items; a comma-joined list of the types present when items have
-// different types (e.g. from a bulk file upload with varied questions).
 function getDisplayLabel(items: any[]): string {
   if (!items || items.length === 0) return "No question yet";
   const labels: Record<string, string> = {
@@ -145,9 +124,6 @@ function getDisplayLabel(items: any[]): string {
   return types.map((t) => labels[t] || t).join(", ");
 }
 
-// Pulls every bit of detail a backend validation error might carry
-// (message, error, errors[], details[], nested field errors) into one
-// readable string, instead of showing a bare "Validation error".
 function extractErrorMessage(d: any, fallback: string): string {
   if (!d) return fallback;
   const parts: string[] = [];
@@ -167,33 +143,9 @@ function extractErrorMessage(d: any, fallback: string): string {
   return unique.length ? unique.join(" — ") : fallback;
 }
 
-// Existing questions (especially ones created via CSV/Excel bulk upload)
-// can store the "correct answer" in a few different shapes depending on
-// where they came from:
-//   - a numeric option index (0-3)                      -> use directly
-//   - a letter ("a"-"d")                                 -> convert to index
-//   - the option's own id (a UUID assigned by the backend
-//     when the question/option was created)              -> match against
-//     the question's own options by id and resolve to index
-//   - the full text of the correct option (bulk uploads) -> match against
-//     the question's own options (case-insensitively) and resolve to index
-//   - true/false as a boolean, "True"/"False", or 0/1     -> normalize to
-//     the lowercase "true"/"false" the toggle expects
-//
-// IMPORTANT: the backend actually stores `correctAnswer` as the *option's
-// own id* (a UUID), not as the numeric index the frontend sends when
-// creating a question. e.g. a saved item looks like:
-//   options: [{ id: "e3813e2e-...", text: "..." }, ...]
-//   correctAnswer: "e3813e2e-..."   <- matches one option's id, NOT "0"/"1"/etc
-// Without the id-matching branch below, the correct-answer radio would
-// silently show nothing selected for anything other than a clean numeric
-// index, even though the question genuinely has a correct answer saved on
-// the backend. This is the same logic used by Module/Course assessments,
-// ported here so Track assessments show the correct answer too.
 function normalizeCorrectAnswer(it: any): string {
   if (it?.correctAnswer == null) return "";
 
-  // TRUE/FALSE
   if (it.questionType === "true_false") {
     if (typeof it.correctAnswer === "boolean") {
       return it.correctAnswer ? "true" : "false";
@@ -207,16 +159,13 @@ function normalizeCorrectAnswer(it: any): string {
     return raw;
   }
 
-  // MULTIPLE CHOICE
   if (it.questionType === "multiple_choice") {
     const options = normalizeOptions(it.options);
 
-    // number
     if (typeof it.correctAnswer === "number") {
       return String(it.correctAnswer);
     }
 
-    // object
     if (typeof it.correctAnswer === "object") {
       const value =
         it.correctAnswer.index ??
@@ -234,23 +183,19 @@ function normalizeCorrectAnswer(it: any): string {
 
     const raw = String(it.correctAnswer).trim();
 
-    // index
     if (/^\d+$/.test(raw)) {
       return raw;
     }
 
-    // A B C D
     if (/^[A-Da-d]$/.test(raw)) {
       return String(raw.toUpperCase().charCodeAt(0) - 65);
     }
 
-    // option id (backend stores the option's own id as the correct answer)
     const idIndex = options.findIndex((o) => o.id === raw);
     if (idIndex >= 0) {
       return String(idIndex);
     }
 
-    // option text
     const index = options.findIndex(
       o => o.text.trim().toLowerCase() === raw.toLowerCase()
     );
@@ -262,26 +207,12 @@ function normalizeCorrectAnswer(it: any): string {
     return "";
   }
 
-  // SHORT ANSWER
   return String(it.correctAnswer);
 }
 
-// Short-answer questions have no single machine-checkable answer — the API
-// validates `correctAnswer` as a number (an option index) for every
-// question, which only makes sense for multiple_choice/true_false. Sending
-// free text there is exactly what produced the
-// `questions.N.correctAnswer: expected number, received string` bulk-save
-// errors. So for short_answer we send `correctAnswer: null` and fold
-// whatever the admin typed into the "Correct Answer" box into `explanation`
-// instead — no text is lost, it just travels in a field the API accepts.
 function buildCorrectAnswerFields(
   item: AssessmentItem
 ): { correctAnswer: number | string | null; explanation: string } {
-  // The API schema documents `explanation` as a plain string field on every
-  // question (see PUT /admin/assessment-items/{id}). Previously this fell
-  // back to `undefined` when the box was empty, which can drop the field
-  // from the JSON body entirely instead of sending "" — always send a
-  // string so the field is present regardless of question type.
   if (item.questionType === "multiple_choice") {
     return { correctAnswer: Number(item.correctAnswer), explanation: item.explanation?.trim() || "" };
   }
@@ -290,13 +221,10 @@ function buildCorrectAnswerFields(
         correctAnswer: item.correctAnswer, 
         explanation: item.explanation?.trim() || "" 
     };
-}
-  // true_false
+  }
   return { correctAnswer: item.correctAnswer, explanation: item.explanation?.trim() || "" };
 }
 
-// Client-side guard so a question with no valid answer never gets sent to
-// the backend as null. Returns an error string, or null if the item is fine.
 function validateItem(item: AssessmentItem, label: string): string | null {
   if (!item.questionText.trim()) return `${label}: question text is required`;
   if (item.questionType === "multiple_choice") {
@@ -313,7 +241,6 @@ function validateItem(item: AssessmentItem, label: string): string | null {
       return `${label}: please mark True or False as correct`;
     }
   } else if (item.questionType === "short_answer") {
-    // correctAnswer is optional for short_answer
   }
   return null;
 }
@@ -325,8 +252,6 @@ export default function TrackAssessments() {
   const [query, setQuery] = useState("");
   const [archiveOpen, setArchiveOpen] = useState(false);
 
-  // Course -> Modules filter section shown above the main table.
-  // Selecting a course fetches and lists its modules below the select.
   const [courses, setCourses] = useState<Course[]>([]);
   const [coursesLoading, setCoursesLoading] = useState(false);
   const [selectedCourseId, setSelectedCourseId] = useState<string>("");
@@ -344,34 +269,18 @@ export default function TrackAssessments() {
     isActive: true,
   });
 
-  // A single unified list drives the editor for every assessment,
-  // regardless of whether it started out as "single", "multiple", or
-  // "upload" (bulk-created), so questions can always be added, edited,
-  // or removed one at a time.
   const [items, setItems] = useState<AssessmentItem[]>([emptyItem()]);
 
-  // CSV/Excel replace is now an optional, collapsed secondary action
-  // instead of the only way to touch a bulk-uploaded assessment's
-  // questions. Choosing a file here takes priority over the editable
-  // list on save (it replaces all questions).
   const [showCsvReplace, setShowCsvReplace] = useState(false);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
 
   const [loadingItems, setLoadingItems] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  // Archived QUESTIONS (individual items with isArchived === true), pulled
-  // from GET /admin/assessments — separate from archived ASSESSMENT
-  // CONFIGS (the `!isActive` rows below). Loaded when the Archive modal is
-  // opened.
   const [archivedQuestions, setArchivedQuestions] = useState<ArchivedQuestionRow[]>([]);
   const [archivedQuestionsLoading, setArchivedQuestionsLoading] = useState(false);
   const [archivedQuestionsError, setArchivedQuestionsError] = useState<string | null>(null);
 
-  // Attempts modal — lists every learner attempt for a track assessment
-  // (GET /admin/attempts?assessmentType=track_assessment&assessmentId={id})
-  // and, per attempt, lazily loads the enriched result
-  // (GET /admin/attempts/{attemptId}/result) when the admin expands it.
   const [attemptsOpen, setAttemptsOpen] = useState(false);
   const [attemptsRow, setAttemptsRow] = useState<TrackAssessmentRow | null>(null);
   const [attemptsList, setAttemptsList] = useState<AttemptRow[]>([]);
@@ -426,7 +335,6 @@ export default function TrackAssessments() {
                 questionCount = items.length;
               }
             } catch {
-              // leave at 0 / empty
             }
 
             const questionType: QuestionType =
@@ -443,7 +351,6 @@ export default function TrackAssessments() {
               isActive: assessment.isActive !== false,
             });
           } catch {
-            // skip
           }
         })
       );
@@ -456,9 +363,6 @@ export default function TrackAssessments() {
     }
   }
 
-  // Fetches the list of courses for the filter dropdown. Mirrors the same
-  // "handle either a bare array or a { data: [...] } envelope" pattern used
-  // for tracks above.
   async function fetchCourses() {
     setCoursesLoading(true);
     try {
@@ -470,15 +374,11 @@ export default function TrackAssessments() {
       const list = Array.isArray(data) ? data : data.data || [];
       setCourses(list);
     } catch {
-      // leave courses empty; the select will just show the placeholder
     } finally {
       setCoursesLoading(false);
     }
   }
 
-  // Fetches modules for the selected course and renders them in the list
-  // below the select. Clearing the select (choosing the placeholder)
-  // clears the module list without hitting the API.
   async function handleCourseSelect(courseId: string) {
     setSelectedCourseId(courseId);
     setCourseModules([]);
@@ -522,13 +422,6 @@ export default function TrackAssessments() {
     );
   }, [activeRows, query]);
 
-  // Loads every archived QUESTION across every track assessment via
-  // GET /admin/assessments (docs: "List all assessments and assessment
-  // items (including archived)"). The endpoint returns each track
-  // assessment together with its `items`; we flatten those and keep only
-  // items where isArchived === true. trackName isn't part of that payload
-  // (only trackId is), so it's looked up from `rows` (matched by
-  // assessment id) which already has that info from fetchTrackAssessments().
   async function fetchArchivedQuestions() {
     setArchivedQuestionsLoading(true);
     setArchivedQuestionsError(null);
@@ -566,17 +459,11 @@ export default function TrackAssessments() {
     }
   }
 
-  // Opens the Archive modal and loads both archived assessment configs
-  // (already in `rows`, via archivedRows above) and archived questions
-  // (fetched fresh from /admin/assessments so the list is always current).
   function openArchive() {
     setArchiveOpen(true);
     fetchArchivedQuestions();
   }
 
-  // Opens the Attempts modal for a row and loads the list of learner
-  // attempts for that assessment via
-  // GET /admin/attempts?assessmentType=track_assessment&assessmentId={id}.
   async function openAttempts(row: TrackAssessmentRow) {
     setAttemptsRow(row);
     setAttemptsOpen(true);
@@ -612,10 +499,6 @@ export default function TrackAssessments() {
     setAttemptDetailError(null);
   }
 
-  // Expands/collapses a single attempt card. On first expand, lazily
-  // fetches the enriched result via
-  // GET /admin/attempts/{attemptId}/result and caches it so re-expanding
-  // doesn't refetch.
   async function toggleAttemptDetail(attemptId: number) {
     if (expandedAttemptId === attemptId) {
       setExpandedAttemptId(null);
@@ -682,9 +565,6 @@ export default function TrackAssessments() {
       });
     }
 
-    // Always load the assessment's questions into the editable list —
-    // including assessments that started out as a bulk CSV/Excel upload.
-    // CSV replace is still available below as an optional secondary action.
     setLoadingItems(true);
     try {
       const res = await fetch(
@@ -748,9 +628,6 @@ export default function TrackAssessments() {
     try {
       await saveAssessmentConfig(editingRow.trackId);
 
-      // A CSV/Excel file (if chosen via the optional "replace" section)
-      // takes priority and replaces all questions; otherwise we save
-      // whatever is in the editable list.
       if (uploadFile) {
         await uploadQuestionsFile(editingRow.id, uploadFile);
       } else {
@@ -773,11 +650,6 @@ export default function TrackAssessments() {
       parentType: PARENT_TYPE,
       questionText: item.questionText,
       questionType: item.questionType,
-      // The API expects a plain array of option text strings, not
-      // {id, text} objects — it regenerates its own option ids/UUIDs from
-      // this array and uses `correctAnswer` (0-based index) to know which
-      // one is correct. Sending objects here produces
-      // "options.N: Invalid input: expected string, received object".
       options:
         item.questionType === "multiple_choice"
           ? item.options.filter((o) => o.text.trim()).map((o) => o.text.trim())
@@ -798,8 +670,6 @@ export default function TrackAssessments() {
     const existing = questionItems.filter((i) => i.id);
     const fresh = questionItems.filter((i) => !i.id);
 
-    // Sequential (not Promise.all) so a failure tells us exactly which
-    // question and why, instead of a generic "one of the questions" alert.
     for (let idx = 0; idx < existing.length; idx++) {
       const item = existing[idx];
       const payload = buildQuestionPayload(item, parentId, idx);
@@ -876,10 +746,6 @@ export default function TrackAssessments() {
     }
   }
 
-  // Permanently deletes the whole track assessment (config + questions) via
-  // DELETE /admin/tracks/{trackId}/assessment. This is what the row-level
-  // trash/"Move to archive" button now calls — it's a real hard delete
-  // against the documented DELETE route, not a soft isActive:false flag.
   async function handleArchive(row: TrackAssessmentRow) {
     if (
       !confirm(
@@ -899,9 +765,6 @@ export default function TrackAssessments() {
     }
   }
 
-  // Restoring an archived track assessment config uses the dedicated
-  // POST /admin/tracks/{trackId}/assessment/restore route (per the API
-  // docs) rather than PUT { isActive: true }.
   async function handleRestore(row: TrackAssessmentRow) {
     try {
       const res = await fetch(`${API_BASE}admin/tracks/${row.trackId}/assessment/restore`, {
@@ -915,10 +778,6 @@ export default function TrackAssessments() {
     }
   }
 
-  // Permanently removes an archived assessment via the same DELETE
-  // /admin/tracks/{trackId}/assessment route used above. Kept as a separate
-  // action in the Archive view for a second, explicit confirmation before a
-  // destructive call.
   async function handleDeletePermanently(row: TrackAssessmentRow) {
     if (
       !confirm(
@@ -938,10 +797,6 @@ export default function TrackAssessments() {
     }
   }
 
-  // Restores a single archived QUESTION via POST
-  // /admin/assessment-items/{id}/restore (distinct from restoring a whole
-  // assessment config above). Removes it from the archived-questions list
-  // and refreshes the main table so its question count/badge stay in sync.
   async function handleRestoreQuestion(item: ArchivedQuestionRow) {
     try {
       const res = await fetch(`${API_BASE}admin/assessment-items/${item.id}/restore`, {
@@ -983,11 +838,6 @@ export default function TrackAssessments() {
     setItems((prev) => [...prev, emptyItem()]);
   }
 
-  // Deletes a single question via DELETE /admin/assessment-items/{id}.
-  // This route archives the question (see "Archive a question" in the API
-  // docs) and is only ever used for individual questions, never for the
-  // whole assessment — that's handled by handleArchive / handleDeletePermanently
-  // above, which hit /admin/tracks/{trackId}/assessment instead.
   async function removeItem(index: number) {
     const item = items[index];
     if (item.id) {
@@ -1007,713 +857,824 @@ export default function TrackAssessments() {
   }
 
   return (
-    <div>
-      {/* Course -> Modules filter. Picking a course fetches and lists its
-          modules below the select; this is purely a browsing aid and does
-          not filter the assessments table below. */}
-      <div className="mb-5 bg-white border border-gray-200/80 rounded-2xl p-5 shadow-sm">
-        <label className="text-xs font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
-          <BookOpen className="w-3.5 h-3.5" />
-          Browse by Course
-        </label>
-        <select
-          value={selectedCourseId}
-          onChange={(e) => handleCourseSelect(e.target.value)}
-          className="w-full max-w-sm px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all"
-          title="select course"
-          disabled={coursesLoading}
-        >
-          <option value="">
-            {coursesLoading ? "Loading courses..." : "Select a course..."}
-          </option>
-          {courses.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.title || c.name || `Course #${c.id}`}
-            </option>
-          ))}
-        </select>
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
 
-        {selectedCourseId && (
-          <div className="mt-3">
-            {modulesLoading && (
-              <p className="text-sm text-gray-400 py-2">Loading modules...</p>
-            )}
-            {!modulesLoading && modulesError && (
-              <p className="text-sm text-red-500 py-2">{modulesError}</p>
-            )}
-            {!modulesLoading && !modulesError && courseModules.length === 0 && (
-              <p className="text-sm text-gray-400 py-2">No modules found for this course.</p>
-            )}
-            {!modulesLoading && !modulesError && courseModules.length > 0 && (
-              <ul className="space-y-1.5">
-                {courseModules.map((m) => (
-                  <li
-                    key={m.id}
-                    className="px-3 py-2 bg-gray-50 border border-gray-100 rounded-lg text-sm text-gray-700"
-                  >
-                    {m.title || m.name || `Module #${m.id}`}
-                    {m.description && (
-                      <p className="text-xs text-gray-400 mt-0.5">{m.description}</p>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
-      </div>
-
-      <div className="flex items-center gap-3 mb-4">
-        <div className="relative max-w-sm flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by title, track or question type..."
-            className="w-full pl-10 pr-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all bg-white shadow-sm"
-          />
-        </div>
-        <button
-          onClick={openArchive}
-          className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium border border-gray-200 rounded-xl text-gray-600 hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm"
-          title="View archive"
-        >
-          <Archive className="w-4 h-4" />
-          Archive
-          {(archivedRows.length > 0 || archivedQuestions.length > 0) && (
-            <span className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 text-[11px] font-semibold rounded-full bg-[#004900]/10 text-[#004900]">
-              {archivedRows.length + archivedQuestions.length}
+        {/* Header Gradient */}
+        <div className="bg-gradient-to-br from-[#004900] via-[#005a00] to-[#006400] rounded-2xl p-4 sm:p-6 lg:p-8 shadow-lg shadow-[#004900]/20 mb-4 sm:mb-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex gap-3 sm:gap-4">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-white/15 backdrop-blur flex items-center justify-center shrink-0">
+                <ClipboardList className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+              </div>
+              <div>
+                <h1 className="text-lg sm:text-xl lg:text-2xl font-bold text-white leading-tight">Track Assessments</h1>
+                <p className="text-xs sm:text-sm text-white/80 mt-1">Manage assessments grouped by track — edit questions, review attempts, archive</p>
+              </div>
+            </div>
+            <span className="inline-flex items-center gap-2 self-start sm:self-auto px-3 sm:px-4 py-1.5 sm:py-2 rounded-full bg-white/15 backdrop-blur text-white text-xs sm:text-sm font-semibold">
+              <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
+              {filteredRows.length} active
             </span>
-          )}
-        </button>
-      </div>
+          </div>
+        </div>
 
-      <div className="bg-white border border-gray-200/80 rounded-2xl shadow-sm overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-gray-50/80 border-b border-gray-200/80 text-left text-gray-500">
-              <th className="px-5 py-3.5 text-xs font-semibold uppercase tracking-wider">ID</th>
-              <th className="px-5 py-3.5 text-xs font-semibold uppercase tracking-wider">Title</th>
-              <th className="px-5 py-3.5 text-xs font-semibold uppercase tracking-wider">Track Name</th>
-              <th className="px-5 py-3.5 text-xs font-semibold uppercase tracking-wider">Question Type</th>
-              <th className="px-5 py-3.5 text-xs font-semibold uppercase tracking-wider text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
+        {/* Course -> Modules filter */}
+        <div className="mb-4 sm:mb-6 bg-white border border-gray-100 rounded-2xl p-4 sm:p-5 lg:p-6 shadow-sm">
+          <label className="text-xs sm:text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
+            <BookOpen className="w-3.5 h-3.5 text-[#004900]" />
+            Browse by Course
+          </label>
+          <select
+            value={selectedCourseId}
+            onChange={(e) => handleCourseSelect(e.target.value)}
+            className="w-full sm:max-w-sm px-4 py-2.5 sm:py-3 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all shadow-sm"
+            title="select course"
+            disabled={coursesLoading}
+          >
+            <option value="">
+              {coursesLoading ? "Loading courses..." : "Select a course..."}
+            </option>
+            {courses.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.title || c.name || `Course #${c.id}`}
+              </option>
+            ))}
+          </select>
+
+          {selectedCourseId && (
+            <div className="mt-3 sm:mt-4">
+              {modulesLoading && (
+                <p className="text-sm text-gray-400 py-2 flex items-center gap-2">
+                  <span className="w-4 h-4 border-2 border-gray-200 border-t-[#004900] rounded-full animate-spin" />
+                  Loading modules...
+                </p>
+              )}
+              {!modulesLoading && modulesError && (
+                <p className="text-sm text-red-500 py-2 bg-red-50 border border-red-200 rounded-xl px-3">{modulesError}</p>
+              )}
+              {!modulesLoading && !modulesError && courseModules.length === 0 && (
+                <p className="text-sm text-gray-400 py-2">No modules found for this course.</p>
+              )}
+              {!modulesLoading && !modulesError && courseModules.length > 0 && (
+                <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3">
+                  {courseModules.map((m) => (
+                    <li
+                      key={m.id}
+                      className="px-3 sm:px-4 py-2.5 sm:py-3 bg-gray-50 border border-gray-100 rounded-xl text-sm text-gray-700 hover:bg-white hover:shadow-sm transition-all"
+                    >
+                      <span className="font-medium">{m.title || m.name || `Module #${m.id}`}</span>
+                      {m.description && (
+                        <p className="text-xs text-gray-400 mt-0.5 line-clamp-2">{m.description}</p>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 mb-4 sm:mb-6">
+          <div className="relative flex-1 sm:max-w-sm">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search by title, track or question type..."
+              className="w-full pl-10 pr-4 py-2.5 sm:py-3 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all bg-white shadow-sm placeholder:text-gray-400"
+            />
+          </div>
+          <button
+            onClick={openArchive}
+            className="inline-flex items-center justify-center gap-2 px-4 sm:px-5 py-2.5 sm:py-3 text-sm font-semibold border border-gray-200 rounded-xl bg-white text-gray-600 hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm w-full sm:w-auto shrink-0"
+            title="View archive"
+          >
+            <Archive className="w-4 h-4" />
+            Archive
+            {(archivedRows.length > 0 || archivedQuestions.length > 0) && (
+              <span className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 text-[11px] font-bold rounded-full bg-[#004900] text-white">
+                {archivedRows.length + archivedQuestions.length}
+              </span>
+            )}
+          </button>
+        </div>
+
+        <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
+          {/* Mobile cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 p-3 sm:p-4 lg:hidden">
             {loading && (
-              <tr>
-                <td colSpan={5} className="px-5 py-16 text-center">
-                  <div className="flex flex-col items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center animate-pulse">
-                      <Search className="w-4 h-4 text-gray-400" />
-                    </div>
-                    <p className="text-sm text-gray-400">Loading track assessments...</p>
-                  </div>
-                </td>
-              </tr>
+              <div className="col-span-full flex flex-col items-center gap-3 py-12 text-gray-400">
+                <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center animate-pulse">
+                  <Search className="w-4 h-4" />
+                </div>
+                <p className="text-sm">Loading track assessments...</p>
+              </div>
             )}
             {!loading && error && (
-              <tr>
-                <td colSpan={5} className="px-5 py-16 text-center">
-                  <div className="flex flex-col items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center">
-                      <X className="w-4 h-4 text-red-400" />
-                    </div>
-                    <p className="text-sm text-red-500">{error}</p>
-                  </div>
-                </td>
-              </tr>
+              <div className="col-span-full flex flex-col items-center gap-3 py-12">
+                <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center">
+                  <X className="w-4 h-4 text-red-400" />
+                </div>
+                <p className="text-sm text-red-500 text-center">{error}</p>
+              </div>
             )}
             {!loading && !error && filteredRows.length === 0 && (
-              <tr>
-                <td colSpan={5} className="px-5 py-16 text-center">
-                  <div className="flex flex-col items-center gap-3">
-                    <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center">
-                      <ClipboardList className="w-5 h-5 text-gray-400" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-gray-500">No track assessments found</p>
-                      <p className="text-xs text-gray-400 mt-1">Try adjusting your search or check back later.</p>
-                    </div>
+              <div className="col-span-full flex flex-col items-center gap-3 py-12">
+                <div className="w-12 h-12 rounded-2xl bg-gray-100 flex items-center justify-center">
+                  <ClipboardList className="w-5 h-5 text-gray-400" />
+                </div>
+                <div className="text-center">
+                  <p className="text-sm font-semibold text-gray-600">No track assessments found</p>
+                  <p className="text-xs text-gray-400 mt-1">Try adjusting your search or check back later.</p>
+                </div>
+              </div>
+            )}
+            {!loading && !error && filteredRows.map((row) => (
+              <div key={row.id} className="border border-gray-100 rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow bg-white">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-gray-900 truncate">{row.title}</p>
+                    <p className="text-xs text-gray-500 mt-0.5 truncate">{row.trackName} · ID {row.id}</p>
                   </div>
-                </td>
-              </tr>
-            )}
-            {!loading &&
-              !error &&
-              filteredRows.map((row) => (
-                <tr key={row.id} className="hover:bg-gray-50/60 transition-colors">
-                  <td className="px-5 py-3.5 text-gray-500">{row.id}</td>
-                  <td className="px-5 py-3.5 font-medium text-gray-900">{row.title}</td>
-                  <td className="px-5 py-3.5 text-gray-600">{row.trackName}</td>
-                  <td className="px-5 py-3.5">
-                    <span
-                      className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${
-                        row.displayLabel === "No question yet"
-                          ? "bg-gray-100 text-gray-500"
-                          : "bg-purple-50 text-purple-700 border border-purple-200/60"
-                      }`}
-                    >
-                      {row.displayLabel}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3.5 text-right">
-                    <div className="inline-flex items-center gap-1">
-                      <button
-                        onClick={() => openEdit(row)}
-                        className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
-                        title="Edit"
-                      >
-                        <Pencil className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => openAttempts(row)}
-                        className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-                        title="View attempts"
-                      >
-                        <ClipboardList className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => handleArchive(row)}
-                        className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
-                        title="Move to archive"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-          </tbody>
-        </table>
-      </div>
-
-      {editingRow && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-2xl p-6 relative max-h-[90vh] overflow-y-auto shadow-2xl">
-            <button
-              onClick={closeEdit}
-              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-200 transition-colors"
-              title="cancel"
-            >
-              <X className="w-4 h-4" />
-            </button>
-            <h3 className="text-lg font-semibold mb-1 text-gray-900">Edit Track Assessment</h3>
-            <div className="flex items-center gap-2 mb-4">
-              <p className="text-sm text-gray-500">{editingRow.trackName}</p>
-              <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
-                {editingRow.displayLabel}
-              </span>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Title</label>
-                <input
-                  value={editForm.title}
-                  onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
-                  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all"
-                  title="title"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Description</label>
-                <textarea
-                  value={editForm.description}
-                  onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all"
-                  rows={2}
-                  title="description"
-                />
-              </div>
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Pass Mark %</label>
-                  <input
-                    type="number"
-                    value={editForm.passMarkPercent}
-                    onChange={(e) =>
-                      setEditForm({ ...editForm, passMarkPercent: Number(e.target.value) })
-                    }
-                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all"
-                    title="pass mark"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Max Attempts</label>
-                  <input
-                    type="number"
-                    value={editForm.maxAttempts}
-                    onChange={(e) =>
-                      setEditForm({ ...editForm, maxAttempts: Number(e.target.value) })
-                    }
-                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all"
-                    title="max attempts"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Time Limit (min)</label>
-                  <input
-                    type="number"
-                    value={editForm.timeLimitMinutes}
-                    onChange={(e) =>
-                      setEditForm({ ...editForm, timeLimitMinutes: Number(e.target.value) })
-                    }
-                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all"
-                    title="time limit"
-                  />
-                </div>
-              </div>
-              <label className="flex items-center gap-2.5 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={editForm.isActive}
-                  onChange={(e) => setEditForm({ ...editForm, isActive: e.target.checked })}
-                  className="w-4 h-4 rounded border-gray-300 accent-[#004900]"
-                />
-                <span className="text-sm text-gray-700">Active</span>
-              </label>
-            </div>
-
-            <hr className="my-5 border-gray-100" />
-
-            {loadingItems && (
-              <p className="text-sm text-gray-400 text-center py-6">Loading questions...</p>
-            )}
-
-            {!loadingItems && (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                    Questions ({items.length})
-                  </p>
-                  <button
-                    onClick={addItem}
-                    className="inline-flex items-center gap-1 text-xs text-[#004900] hover:underline"
+                  <span
+                    className={`inline-flex px-2.5 py-1 rounded-full text-[11px] font-semibold shrink-0 ${
+                      row.displayLabel === "No question yet"
+                        ? "bg-gray-100 text-gray-500"
+                        : "bg-purple-50 text-purple-700 border border-purple-200"
+                    }`}
                   >
-                    <Plus className="w-3.5 h-3.5" /> Add question
+                    {row.displayLabel}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5 mt-3">
+                  <button
+                    onClick={() => openEdit(row)}
+                    className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold bg-[#004900] text-white hover:bg-[#003700] transition-colors"
+                  >
+                    <Pencil className="w-3.5 h-3.5" /> Edit
+                  </button>
+                  <button
+                    onClick={() => openAttempts(row)}
+                    className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold border border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+                  >
+                    <ClipboardList className="w-3.5 h-3.5" /> Attempts
+                  </button>
+                  <button
+                    onClick={() => handleArchive(row)}
+                    className="w-9 h-9 inline-flex items-center justify-center rounded-xl border border-gray-200 text-gray-400 hover:text-red-500 hover:bg-red-50 hover:border-red-200 transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
-                {items.map((item, idx) => (
-                  <div key={item.id ?? `new-${idx}`} className="border border-gray-200 rounded-xl p-3 relative hover:border-gray-300 transition-colors">
-                    {items.length > 1 && (
-                      <button
-                        onClick={() => removeItem(idx)}
-                        className="absolute top-2 right-2 text-gray-400 hover:text-red-500 transition-colors"
-                        title="remove question"
-                      >
-                        <Trash className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                    <p className="text-xs text-gray-400 mb-2">Question {idx + 1}</p>
-                    <SingleQuestionEditor
-                      item={item}
-                      groupName={`track-q-${item.id ?? idx}`}
-                      onChange={(patch) => updateItem(idx, patch)}
-                      onOptionChange={(optionIndex, text) =>
-                        updateItemOption(idx, optionIndex, text)
-                      }
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop table */}
+          <div className="hidden lg:block overflow-x-auto">
+            <table className="w-full text-sm min-w-[720px]">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-100 text-left text-gray-500">
+                  <th className="px-5 py-3.5 text-xs font-semibold uppercase tracking-wider">ID</th>
+                  <th className="px-5 py-3.5 text-xs font-semibold uppercase tracking-wider">Title</th>
+                  <th className="px-5 py-3.5 text-xs font-semibold uppercase tracking-wider">Track Name</th>
+                  <th className="px-5 py-3.5 text-xs font-semibold uppercase tracking-wider">Question Type</th>
+                  <th className="px-5 py-3.5 text-xs font-semibold uppercase tracking-wider text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {loading && (
+                  <tr>
+                    <td colSpan={5} className="px-5 py-16 text-center">
+                      <div className="flex flex-col items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center animate-pulse">
+                          <Search className="w-4 h-4 text-gray-400" />
+                        </div>
+                        <p className="text-sm text-gray-400">Loading track assessments...</p>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                {!loading && error && (
+                  <tr>
+                    <td colSpan={5} className="px-5 py-16 text-center">
+                      <div className="flex flex-col items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center">
+                          <X className="w-4 h-4 text-red-400" />
+                        </div>
+                        <p className="text-sm text-red-500">{error}</p>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                {!loading && !error && filteredRows.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="px-5 py-16 text-center">
+                      <div className="flex flex-col items-center gap-3">
+                        <div className="w-12 h-12 rounded-2xl bg-gray-100 flex items-center justify-center">
+                          <ClipboardList className="w-5 h-5 text-gray-400" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-gray-600">No track assessments found</p>
+                          <p className="text-xs text-gray-400 mt-1">Try adjusting your search or check back later.</p>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                {!loading &&
+                  !error &&
+                  filteredRows.map((row) => (
+                    <tr key={row.id} className="hover:bg-gray-50/60 transition-colors">
+                      <td className="px-5 py-3.5 text-gray-500 font-mono text-xs">{row.id}</td>
+                      <td className="px-5 py-3.5 font-medium text-gray-900">{row.title}</td>
+                      <td className="px-5 py-3.5 text-gray-600">{row.trackName}</td>
+                      <td className="px-5 py-3.5">
+                        <span
+                          className={`inline-flex px-2.5 py-1 rounded-full text-xs font-semibold ${
+                            row.displayLabel === "No question yet"
+                              ? "bg-gray-100 text-gray-500 border border-gray-200"
+                              : "bg-purple-50 text-purple-700 border border-purple-200"
+                          }`}
+                        >
+                          {row.displayLabel}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3.5 text-right">
+                        <div className="inline-flex items-center gap-1">
+                          <button
+                            onClick={() => openEdit(row)}
+                            className="inline-flex items-center justify-center w-8 h-8 rounded-xl text-gray-400 hover:text-[#004900] hover:bg-[#004900]/10 transition-colors"
+                            title="Edit"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => openAttempts(row)}
+                            className="inline-flex items-center justify-center w-8 h-8 rounded-xl text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                            title="View attempts"
+                          >
+                            <ClipboardList className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleArchive(row)}
+                            className="inline-flex items-center justify-center w-8 h-8 rounded-xl text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                            title="Move to archive"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {editingRow && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-4">
+            <div className="bg-white rounded-2xl w-full max-w-2xl xl:max-w-3xl relative max-h-[92vh] sm:max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
+              <div className="bg-gradient-to-br from-[#004900] to-[#006400] px-4 sm:px-6 py-4 sm:py-5 flex items-start justify-between gap-3 shrink-0">
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-base sm:text-lg font-bold text-white leading-tight">Edit Track Assessment</h3>
+                  <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                    <p className="text-xs sm:text-sm text-white/80">{editingRow.trackName}</p>
+                    <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-semibold bg-white/15 text-white backdrop-blur">
+                      {editingRow.displayLabel}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  onClick={closeEdit}
+                  className="w-8 h-8 rounded-xl bg-white/10 hover:bg-white/20 flex items-center justify-center text-white/80 hover:text-white transition-colors shrink-0"
+                  title="cancel"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="overflow-y-auto flex-1 p-4 sm:p-6 space-y-4 sm:space-y-5">
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Title</label>
+                    <input
+                      value={editForm.title}
+                      onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                      className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all shadow-sm"
+                      title="title"
                     />
                   </div>
-                ))}
+                  <div>
+                    <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Description</label>
+                    <textarea
+                      value={editForm.description}
+                      onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                      className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all shadow-sm"
+                      rows={2}
+                      title="description"
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+                    <div>
+                      <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Pass Mark %</label>
+                      <input
+                        type="number"
+                        value={editForm.passMarkPercent}
+                        onChange={(e) =>
+                          setEditForm({ ...editForm, passMarkPercent: Number(e.target.value) })
+                        }
+                        className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all shadow-sm"
+                        title="pass mark"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Max Attempts</label>
+                      <input
+                        type="number"
+                        value={editForm.maxAttempts}
+                        onChange={(e) =>
+                          setEditForm({ ...editForm, maxAttempts: Number(e.target.value) })
+                        }
+                        className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all shadow-sm"
+                        title="max attempts"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Time Limit (min)</label>
+                      <input
+                        type="number"
+                        value={editForm.timeLimitMinutes}
+                        onChange={(e) =>
+                          setEditForm({ ...editForm, timeLimitMinutes: Number(e.target.value) })
+                        }
+                        className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all shadow-sm"
+                        title="time limit"
+                      />
+                    </div>
+                  </div>
+                  <label className="flex items-center gap-2.5 cursor-pointer select-none p-3 rounded-xl border border-gray-200 bg-gray-50/50 hover:bg-white transition-colors w-fit">
+                    <input
+                      type="checkbox"
+                      checked={editForm.isActive}
+                      onChange={(e) => setEditForm({ ...editForm, isActive: e.target.checked })}
+                      className="w-4 h-4 rounded border-gray-300 accent-[#004900]"
+                    />
+                    <span className="text-sm font-medium text-gray-700">Active</span>
+                  </label>
+                </div>
 
-                <div className="pt-2 border-t border-gray-100">
-                  <button
-                    type="button"
-                    onClick={() => setShowCsvReplace((v) => !v)}
-                    className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 hover:underline"
-                  >
-                    <Upload className="w-3.5 h-3.5" />
-                    {showCsvReplace
-                      ? "Cancel CSV / Excel replace"
-                      : "Replace all questions via CSV / Excel upload instead"}
-                  </button>
-                  {showCsvReplace && (
-                    <div className="mt-3">
-                      <label className="flex items-center gap-2 px-3 py-2 border border-dashed border-gray-300 rounded-xl text-sm text-gray-500 cursor-pointer hover:border-[#004900] transition-colors">
-                        <Upload className="w-4 h-4" />
-                        {uploadFile ? uploadFile.name : "Choose .csv or .xlsx file"}
-                        <input
-                          type="file"
-                          accept=".csv,.xlsx,.xls"
-                          className="hidden"
-                          onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
-                        />
-                      </label>
-                      <p className="text-xs text-gray-400 mt-2">
-                        Required columns: question_text, question_type, correct_answer.
-                        Optional: option_a–d, explanation, points. Max 5MB. Uploading a file
-                        here replaces every question above on save.
+                <hr className="border-gray-100" />
+
+                {loadingItems && (
+                  <p className="text-sm text-gray-400 text-center py-8 flex flex-col items-center gap-2">
+                    <span className="w-6 h-6 border-2 border-gray-200 border-t-[#004900] rounded-full animate-spin" />
+                    Loading questions...
+                  </p>
+                )}
+
+                {!loadingItems && (
+                  <div className="space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <p className="text-xs font-bold text-gray-600 uppercase tracking-wider">
+                        Questions ({items.length})
                       </p>
-                      {uploadFile && (
-                        <button
-                          type="button"
-                          onClick={() => setUploadFile(null)}
-                          className="text-xs text-red-500 hover:underline mt-1"
-                        >
-                          Clear selected file
-                        </button>
+                      <button
+                        onClick={addItem}
+                        className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-[#004900] text-white hover:bg-[#003700] transition-colors w-full sm:w-auto"
+                      >
+                        <Plus className="w-3.5 h-3.5" /> Add question
+                      </button>
+                    </div>
+                    {items.map((item, idx) => (
+                      <div key={item.id ?? `new-${idx}`} className="border border-gray-200 rounded-2xl p-3 sm:p-4 relative hover:border-gray-300 hover:shadow-sm transition-all bg-gray-50/30">
+                        {items.length > 1 && (
+                          <button
+                            onClick={() => removeItem(idx)}
+                            className="absolute top-3 right-3 w-7 h-7 rounded-xl bg-white border border-gray-200 flex items-center justify-center text-gray-400 hover:text-red-500 hover:border-red-200 hover:bg-red-50 transition-colors"
+                            title="remove question"
+                          >
+                            <Trash className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        <p className="text-xs font-bold text-[#004900] mb-3 pr-8">Question {idx + 1}</p>
+                        <SingleQuestionEditor
+                          item={item}
+                          groupName={`track-q-${item.id ?? idx}`}
+                          onChange={(patch) => updateItem(idx, patch)}
+                          onOptionChange={(optionIndex, text) =>
+                            updateItemOption(idx, optionIndex, text)
+                          }
+                        />
+                      </div>
+                    ))}
+
+                    <div className="pt-2 border-t border-gray-100">
+                      <button
+                        type="button"
+                        onClick={() => setShowCsvReplace((v) => !v)}
+                        className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-[#004900] transition-colors"
+                      >
+                        <Upload className="w-3.5 h-3.5" />
+                        {showCsvReplace
+                          ? "Cancel CSV / Excel replace"
+                          : "Replace all questions via CSV / Excel upload instead"}
+                      </button>
+                      {showCsvReplace && (
+                        <div className="mt-3">
+                          <label className="flex flex-col sm:flex-row items-center gap-2 px-3 py-3 border-2 border-dashed border-gray-200 rounded-xl text-sm text-gray-500 cursor-pointer hover:border-[#004900]/30 hover:bg-[#004900]/[0.02] transition-colors">
+                            <Upload className="w-4 h-4 shrink-0" />
+                            <span className="truncate text-xs sm:text-sm">{uploadFile ? uploadFile.name : "Choose .csv or .xlsx file"}</span>
+                            <input
+                              type="file"
+                              accept=".csv,.xlsx,.xls"
+                              className="hidden"
+                              onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                            />
+                          </label>
+                          <p className="text-xs text-gray-400 mt-2 leading-relaxed">
+                            Required columns: question_text, question_type, correct_answer.
+                            Optional: option_a–d, explanation, points. Max 5MB. Uploading a file
+                            here replaces every question above on save.
+                          </p>
+                          {uploadFile && (
+                            <button
+                              type="button"
+                              onClick={() => setUploadFile(null)}
+                              className="text-xs font-medium text-red-500 hover:underline mt-2"
+                            >
+                              Clear selected file
+                            </button>
+                          )}
+                        </div>
                       )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 p-4 sm:p-6 border-t border-gray-100 bg-gray-50/50 shrink-0">
+                <button
+                  onClick={closeEdit}
+                  className="w-full sm:w-auto px-5 py-2.5 text-sm rounded-xl border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 transition-colors font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveEdit}
+                  disabled={saving || loadingItems}
+                  className="w-full sm:w-auto px-6 py-2.5 text-sm rounded-xl bg-gradient-to-br from-[#004900] to-[#006400] text-white hover:shadow-lg hover:shadow-[#004900]/20 disabled:opacity-50 transition-all font-semibold"
+                >
+                  {saving ? "Saving..." : "Save Changes"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {archiveOpen && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-4">
+            <div className="bg-white rounded-2xl w-full max-w-4xl xl:max-w-5xl relative max-h-[92vh] sm:max-h-[85vh] overflow-hidden flex flex-col shadow-2xl">
+              <div className="bg-gradient-to-br from-[#004900] to-[#006400] px-4 sm:px-6 py-4 sm:py-5 shrink-0">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-base sm:text-lg font-bold text-white">Assessment Archive</h3>
+                    <p className="text-xs sm:text-sm text-white/80 mt-1">
+                      Archived track assessments and archived individual questions.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setArchiveOpen(false)}
+                    className="w-8 h-8 rounded-xl bg-white/10 hover:bg-white/20 flex items-center justify-center text-white/80 hover:text-white transition-colors shrink-0"
+                    title="close"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="overflow-y-auto flex-1 p-4 sm:p-6 space-y-6">
+                <div>
+                  <p className="text-xs font-bold text-gray-600 uppercase tracking-wider mb-3">
+                    Archived Questions
+                  </p>
+                  {archivedQuestionsLoading && (
+                    <p className="text-sm text-gray-400 text-center py-8 flex flex-col items-center gap-2">
+                      <span className="w-6 h-6 border-2 border-gray-200 border-t-[#004900] rounded-full animate-spin" />
+                      Loading archived questions...
+                    </p>
+                  )}
+                  {!archivedQuestionsLoading && archivedQuestionsError && (
+                    <p className="text-sm text-red-500 text-center py-6 bg-red-50 border border-red-200 rounded-xl">{archivedQuestionsError}</p>
+                  )}
+                  {!archivedQuestionsLoading &&
+                    !archivedQuestionsError &&
+                    archivedQuestions.length === 0 && (
+                      <p className="text-sm text-gray-400 text-center py-6 bg-gray-50 border border-gray-100 rounded-xl">
+                        No archived questions.
+                      </p>
+                    )}
+                  {!archivedQuestionsLoading &&
+                    !archivedQuestionsError &&
+                    archivedQuestions.length > 0 && (
+                      <div className="border border-gray-200 rounded-2xl overflow-hidden">
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm min-w-[520px]">
+                            <thead>
+                              <tr className="bg-gray-50 border-b border-gray-200 text-left text-gray-500">
+                                <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider">Question</th>
+                                <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider">Assessment</th>
+                                <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider">Track</th>
+                                <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-right">Actions</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-50">
+                              {archivedQuestions.map((q) => (
+                                <tr key={q.id} className="hover:bg-gray-50/60 transition-colors">
+                                  <td
+                                    className="px-4 py-3 text-gray-700 max-w-[180px] sm:max-w-xs truncate"
+                                    title={q.questionText}
+                                  >
+                                    {q.questionText || `Question #${q.id}`}
+                                  </td>
+                                  <td className="px-4 py-3 text-gray-600 text-xs sm:text-sm">{q.assessmentTitle}</td>
+                                  <td className="px-4 py-3 text-gray-600 text-xs sm:text-sm">{q.trackName}</td>
+                                  <td className="px-4 py-3 text-right">
+                                    <button
+                                      onClick={() => handleRestoreQuestion(q)}
+                                      className="inline-flex items-center justify-center w-8 h-8 rounded-xl text-[#004900] hover:bg-green-50 border border-transparent hover:border-green-200 transition-colors"
+                                      title="Restore question"
+                                    >
+                                      <RotateCcw className="w-4 h-4" />
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                </div>
+
+                <hr className="border-gray-100" />
+
+                <div>
+                  <p className="text-xs font-bold text-gray-600 uppercase tracking-wider mb-3">
+                    Archived Assessments
+                  </p>
+                  {archivedRows.length === 0 ? (
+                    <p className="text-sm text-gray-400 text-center py-8 bg-gray-50 border border-gray-100 rounded-xl">Archive is empty.</p>
+                  ) : (
+                    <div className="border border-gray-200 rounded-2xl overflow-hidden">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm min-w-[560px]">
+                          <thead>
+                            <tr className="bg-gray-50 border-b border-gray-200 text-left text-gray-500">
+                              <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider">ID</th>
+                              <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider">Title</th>
+                              <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider">Track Name</th>
+                              <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider">Question Type</th>
+                              <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-right">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-50">
+                            {archivedRows.map((row) => (
+                              <tr key={row.id} className="hover:bg-gray-50/60 transition-colors">
+                                <td className="px-4 py-3 text-gray-500 font-mono text-xs">{row.id}</td>
+                                <td className="px-4 py-3 font-medium text-gray-900">{row.title}</td>
+                                <td className="px-4 py-3 text-gray-600">{row.trackName}</td>
+                                <td className="px-4 py-3">
+                                  <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-600 border border-gray-200">
+                                    {row.displayLabel}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3 text-right">
+                                  <div className="inline-flex items-center gap-1">
+                                    <button
+                                      onClick={() => handleRestore(row)}
+                                      className="inline-flex items-center justify-center w-8 h-8 rounded-xl text-[#004900] hover:bg-green-50 border border-transparent hover:border-green-200 transition-colors"
+                                      title="Restore"
+                                    >
+                                      <RotateCcw className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                      onClick={() => handleDeletePermanently(row)}
+                                      className="inline-flex items-center justify-center w-8 h-8 rounded-xl text-red-500 hover:bg-red-50 border border-transparent hover:border-red-200 transition-colors"
+                                      title="Delete permanently"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
                   )}
                 </div>
               </div>
-            )}
-
-            <div className="flex justify-end gap-3 mt-6">
-              <button
-                onClick={closeEdit}
-                className="px-4 py-2.5 text-sm rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors font-medium"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSaveEdit}
-                disabled={saving || loadingItems}
-                className="px-4 py-2.5 text-sm rounded-xl bg-[#004900] text-white hover:bg-[#003600] disabled:opacity-50 shadow-sm shadow-[#004900]/20 transition-all font-medium"
-              >
-                {saving ? "Saving..." : "Save Changes"}
-              </button>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {archiveOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-4xl p-6 relative max-h-[85vh] overflow-y-auto shadow-2xl">
-            <button
-              onClick={() => setArchiveOpen(false)}
-              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-200 transition-colors"
-              title="close"
-            >
-              <X className="w-4 h-4" />
-            </button>
-            <h3 className="text-lg font-semibold mb-1 text-gray-900">Assessment Archive</h3>
-            <p className="text-sm text-gray-500 mb-4">
-              Archived track assessments and archived individual questions. Restore either to
-              make it active again.
-            </p>
+        {attemptsOpen && (
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-4">
+            <div className="bg-white rounded-2xl w-full max-w-3xl relative max-h-[92vh] sm:max-h-[85vh] overflow-hidden flex flex-col shadow-2xl">
+              <div className="bg-gradient-to-br from-[#004900] to-[#006400] px-4 sm:px-6 py-4 sm:py-5 shrink-0">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex gap-3 flex-1 min-w-0">
+                    <div className="w-10 h-10 rounded-2xl bg-white/15 backdrop-blur flex items-center justify-center shrink-0 hidden sm:flex">
+                      <ClipboardList className="w-5 h-5 text-white" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-base sm:text-lg font-bold text-white">Attempts</h3>
+                      <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                        <p className="text-xs sm:text-sm text-white/80 truncate">{attemptsRow?.title}</p>
+                        <span className="text-white/40 hidden sm:inline">•</span>
+                        <p className="text-xs sm:text-sm text-white/80 truncate">{attemptsRow?.trackName}</p>
+                        {!attemptsLoading && !attemptsError && (
+                          <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-white/15 text-white backdrop-blur">
+                            {attemptsList.length} attempt{attemptsList.length === 1 ? "" : "s"}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={closeAttempts}
+                    className="w-8 h-8 rounded-xl bg-white/10 hover:bg-white/20 flex items-center justify-center text-white/80 hover:text-white transition-colors shrink-0"
+                    title="close"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
 
-            {/* Archived QUESTIONS — sourced from GET /admin/assessments,
-                filtered to items with isArchived === true. Restored via
-                POST /admin/assessment-items/{id}/restore. */}
-            <div className="mb-6">
-              <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">
-                Archived Questions
-              </p>
-              {archivedQuestionsLoading && (
-                <p className="text-sm text-gray-400 text-center py-6">
-                  Loading archived questions...
-                </p>
-              )}
-              {!archivedQuestionsLoading && archivedQuestionsError && (
-                <p className="text-sm text-red-500 text-center py-6">{archivedQuestionsError}</p>
-              )}
-              {!archivedQuestionsLoading &&
-                !archivedQuestionsError &&
-                archivedQuestions.length === 0 && (
-                  <p className="text-sm text-gray-400 text-center py-6">
-                    No archived questions.
+              <div className="overflow-y-auto flex-1 p-4 sm:p-6">
+                {attemptsLoading && (
+                  <p className="text-sm text-gray-400 text-center py-10 flex flex-col items-center gap-2">
+                    <span className="w-6 h-6 border-2 border-gray-200 border-t-[#004900] rounded-full animate-spin" />
+                    Loading attempts...
                   </p>
                 )}
-              {!archivedQuestionsLoading &&
-                !archivedQuestionsError &&
-                archivedQuestions.length > 0 && (
-                  <div className="border border-gray-200 rounded-xl overflow-hidden">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="bg-gray-50 border-b border-gray-200 text-left text-gray-500">
-                          <th className="px-4 py-3 font-medium">Question</th>
-                          <th className="px-4 py-3 font-medium">Assessment</th>
-                          <th className="px-4 py-3 font-medium">Track</th>
-                          <th className="px-4 py-3 font-medium text-right">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {archivedQuestions.map((q) => (
-                          <tr key={q.id} className="border-b border-gray-100 hover:bg-gray-50">
-                            <td
-                              className="px-4 py-3 text-gray-700 max-w-xs truncate"
-                              title={q.questionText}
-                            >
-                              {q.questionText || `Question #${q.id}`}
-                            </td>
-                            <td className="px-4 py-3 text-gray-700">{q.assessmentTitle}</td>
-                            <td className="px-4 py-3 text-gray-700">{q.trackName}</td>
-                            <td className="px-4 py-3 text-right">
-                              <button
-                                onClick={() => handleRestoreQuestion(q)}
-                                className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-[#004900] hover:bg-green-50"
-                                title="Restore question"
-                              >
-                                <RotateCcw className="w-4 h-4" />
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                {!attemptsLoading && attemptsError && (
+                  <p className="text-sm text-red-500 text-center py-10 bg-red-50 border border-red-200 rounded-xl">{attemptsError}</p>
                 )}
-            </div>
+                {!attemptsLoading && !attemptsError && attemptsList.length === 0 && (
+                  <p className="text-sm text-gray-400 text-center py-10 bg-gray-50 border border-gray-100 rounded-xl">
+                    No learner attempts yet for this assessment.
+                  </p>
+                )}
 
-            <hr className="my-5 border-gray-100" />
+                {!attemptsLoading && !attemptsError && attemptsList.length > 0 && (
+                  <div className="space-y-3">
+                    {attemptsList.map((attempt) => {
+                      const isExpanded = expandedAttemptId === attempt.id;
+                      const fullName = attempt.user?.fullName || `User #${attempt.user?.id ?? "—"}`;
+                      const initials =
+                        fullName
+                          .split(" ")
+                          .map((p) => p[0])
+                          .filter(Boolean)
+                          .slice(0, 2)
+                          .join("")
+                          .toUpperCase() || "?";
+                      const detail = attemptDetails[attempt.id];
 
-            {/* Archived ASSESSMENT CONFIGS — restored via
-                POST /admin/tracks/{trackId}/assessment/restore. */}
-            <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">
-              Archived Assessments
-            </p>
-            {archivedRows.length === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-10">Archive is empty.</p>
-            ) : (
-              <div className="border border-gray-200 rounded-xl overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-gray-50 border-b border-gray-200 text-left text-gray-500">
-                      <th className="px-4 py-3 font-medium">ID</th>
-                      <th className="px-4 py-3 font-medium">Title</th>
-                      <th className="px-4 py-3 font-medium">Track Name</th>
-                      <th className="px-4 py-3 font-medium">Question Type</th>
-                      <th className="px-4 py-3 font-medium text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {archivedRows.map((row) => (
-                      <tr key={row.id} className="border-b border-gray-100 hover:bg-gray-50">
-                        <td className="px-4 py-3 text-gray-700">{row.id}</td>
-                        <td className="px-4 py-3 font-medium text-gray-900">{row.title}</td>
-                        <td className="px-4 py-3 text-gray-700">{row.trackName}</td>
-                        <td className="px-4 py-3">
-                          <span className="inline-flex px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-700">
-                            {row.displayLabel}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-right">
+                      return (
+                        <div
+                          key={attempt.id}
+                          className="border border-gray-200 rounded-2xl overflow-hidden bg-white hover:shadow-sm transition-shadow"
+                        >
                           <button
-                            onClick={() => handleRestore(row)}
-                            className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-[#004900] hover:bg-green-50 mr-1"
-                            title="Restore"
+                            type="button"
+                            onClick={() => toggleAttemptDetail(attempt.id)}
+                            className="w-full flex items-center gap-3 p-3 sm:p-4 text-left hover:bg-gray-50/60 transition-colors"
                           >
-                            <RotateCcw className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handleDeletePermanently(row)}
-                            className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-red-500 hover:bg-red-50"
-                            title="Delete permanently"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Attempts modal — opened from the "View attempts" button in the
-          Actions column. Shows every learner attempt for the selected
-          track assessment as an expandable card: click a card to lazily
-          load and reveal that attempt's enriched, question-by-question
-          result. */}
-      {attemptsOpen && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl w-full max-w-3xl p-6 relative max-h-[85vh] overflow-y-auto">
-            <button
-              onClick={closeAttempts}
-              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
-              title="close"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <div className="flex items-center gap-2 mb-1">
-              <ClipboardList className="w-5 h-5 text-[#004900]" />
-              <h3 className="text-lg font-semibold">Attempts</h3>
-            </div>
-            <div className="flex items-center gap-2 mb-5 flex-wrap">
-              <p className="text-sm text-gray-500">{attemptsRow?.title}</p>
-              <span className="text-gray-300">•</span>
-              <p className="text-sm text-gray-500">{attemptsRow?.trackName}</p>
-              {!attemptsLoading && !attemptsError && (
-                <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-full text-[11px] bg-gray-100 text-gray-600 ml-auto">
-                  {attemptsList.length} attempt{attemptsList.length === 1 ? "" : "s"}
-                </span>
-              )}
-            </div>
-
-            {attemptsLoading && (
-              <p className="text-sm text-gray-400 text-center py-10">Loading attempts...</p>
-            )}
-            {!attemptsLoading && attemptsError && (
-              <p className="text-sm text-red-500 text-center py-10">{attemptsError}</p>
-            )}
-            {!attemptsLoading && !attemptsError && attemptsList.length === 0 && (
-              <p className="text-sm text-gray-400 text-center py-10">
-                No learner attempts yet for this assessment.
-              </p>
-            )}
-
-            {!attemptsLoading && !attemptsError && attemptsList.length > 0 && (
-              <div className="space-y-3">
-                {attemptsList.map((attempt) => {
-                  const isExpanded = expandedAttemptId === attempt.id;
-                  const fullName = attempt.user?.fullName || `User #${attempt.user?.id ?? "—"}`;
-                  const initials =
-                    fullName
-                      .split(" ")
-                      .map((p) => p[0])
-                      .filter(Boolean)
-                      .slice(0, 2)
-                      .join("")
-                      .toUpperCase() || "?";
-                  const detail = attemptDetails[attempt.id];
-
-                  return (
-                    <div
-                      key={attempt.id}
-                      className="border border-gray-200 rounded-lg overflow-hidden"
-                    >
-                      <button
-                        type="button"
-                        onClick={() => toggleAttemptDetail(attempt.id)}
-                        className="w-full flex items-center gap-3 p-3 text-left hover:bg-gray-50"
-                      >
-                        <div className="w-9 h-9 rounded-full bg-[#004900]/10 text-[#004900] flex items-center justify-center text-xs font-semibold shrink-0">
-                          {initials}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-gray-900 truncate">
-                            {fullName}
-                          </p>
-                          <p className="text-xs text-gray-400 truncate">
-                            {attempt.user?.email || "—"}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          {attempt.status && (
-                            <span className="text-xs text-gray-500 capitalize">
-                              {attempt.status}
-                            </span>
-                          )}
-                          <span
-                            className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
-                              attempt.passed
-                                ? "bg-green-50 text-green-700"
-                                : "bg-red-50 text-red-600"
-                            }`}
-                          >
-                            {attempt.percentage != null ? `${attempt.percentage}%` : "—"}
-                          </span>
-                          <span
-                            className={`text-gray-400 transition-transform inline-block ${
-                              isExpanded ? "rotate-180" : ""
-                            }`}
-                          >
-                            ▾
-                          </span>
-                        </div>
-                      </button>
-
-                      {isExpanded && (
-                        <div className="border-t border-gray-100 bg-gray-50/60 p-3">
-                          {attemptDetailLoadingId === attempt.id && (
-                            <p className="text-xs text-gray-400 text-center py-4">
-                              Loading answers...
-                            </p>
-                          )}
-                          {attemptDetailLoadingId !== attempt.id &&
-                            attemptDetailError &&
-                            !detail && (
-                              <p className="text-xs text-red-500 text-center py-4">
-                                {attemptDetailError}
+                            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-[#004900]/10 to-[#006400]/10 text-[#004900] flex items-center justify-center text-xs font-bold shrink-0 border border-[#004900]/10">
+                              {initials}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold text-gray-900 truncate">
+                                {fullName}
                               </p>
-                            )}
-                          {detail && (
-                            <div className="space-y-2">
-                              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 mb-2">
-                                <span>
-                                  Score:{" "}
-                                  <strong className="text-gray-700">
-                                    {detail.score ?? "—"}
-                                  </strong>
+                              <p className="text-xs text-gray-400 truncate">
+                                {attempt.user?.email || "—"}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              {attempt.status && (
+                                <span className="hidden sm:inline text-xs text-gray-500 capitalize bg-gray-50 border border-gray-100 rounded-full px-2 py-0.5">
+                                  {attempt.status}
                                 </span>
-                                <span>
-                                  Percentage:{" "}
-                                  <strong className="text-gray-700">
-                                    {detail.percentage ?? "—"}%
-                                  </strong>
-                                </span>
-                                <span>
-                                  Result:{" "}
-                                  <strong
-                                    className={
-                                      detail.passed ? "text-green-700" : "text-red-600"
-                                    }
-                                  >
-                                    {detail.passed ? "Passed" : "Failed"}
-                                  </strong>
-                                </span>
-                              </div>
-                              {(detail.answers || []).map((ans: any, i: number) => (
-                                <div
-                                  key={ans.id ?? ans.answerId ?? i}
-                                  className="bg-white border border-gray-200 rounded-lg p-2.5"
-                                >
-                                  <p className="text-xs font-medium text-gray-700 mb-1">
-                                    {i + 1}.{" "}
-                                    {ans.questionText || ans.question || `Question ${i + 1}`}
-                                  </p>
-                                  <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-[11px] text-gray-500">
-                                    <span>
-                                      Answer given:{" "}
-                                      <span className="text-gray-700">
-                                        {ans.givenAnswer ?? ans.selectedAnswer ?? ans.answer ?? "—"}
-                                      </span>
-                                    </span>
-                                    <span>
-                                      Correct answer:{" "}
-                                      <span className="text-gray-700">
-                                        {ans.correctAnswer ?? ans.correctAnswerText ?? "—"}
-                                      </span>
-                                    </span>
-                                    {typeof ans.isCorrect === "boolean" && (
-                                      <span
-                                        className={
-                                          ans.isCorrect
-                                            ? "text-green-600 font-medium"
-                                            : "text-red-500 font-medium"
-                                        }
-                                      >
-                                        {ans.isCorrect ? "Correct" : "Incorrect"}
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                              ))}
-                              {(!detail.answers || detail.answers.length === 0) && (
-                                <p className="text-xs text-gray-400 text-center py-2">
-                                  No answer details available.
+                              )}
+                              <span
+                                className={`inline-flex px-2 sm:px-2.5 py-1 rounded-full text-xs font-bold ${
+                                  attempt.passed
+                                    ? "bg-green-50 text-green-700 border border-green-200"
+                                    : "bg-red-50 text-red-600 border border-red-200"
+                                }`}
+                              >
+                                {attempt.percentage != null ? `${attempt.percentage}%` : "—"}
+                              </span>
+                              <span
+                                className={`w-7 h-7 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-center text-gray-400 transition-transform text-xs ${
+                                  isExpanded ? "rotate-180" : ""
+                                }`}
+                              >
+                                ▾
+                              </span>
+                            </div>
+                          </button>
+
+                          {isExpanded && (
+                            <div className="border-t border-gray-100 bg-gray-50/60 p-3 sm:p-4">
+                              {attemptDetailLoadingId === attempt.id && (
+                                <p className="text-xs text-gray-400 text-center py-4 flex items-center justify-center gap-2">
+                                  <span className="w-4 h-4 border-2 border-gray-200 border-t-[#004900] rounded-full animate-spin" />
+                                  Loading answers...
                                 </p>
+                              )}
+                              {attemptDetailLoadingId !== attempt.id &&
+                                attemptDetailError &&
+                                !detail && (
+                                  <p className="text-xs text-red-500 text-center py-4 bg-red-50 border border-red-200 rounded-xl">
+                                    {attemptDetailError}
+                                  </p>
+                                )}
+                              {detail && (
+                                <div className="space-y-2.5">
+                                  <div className="flex flex-wrap gap-2 text-xs">
+                                    <span className="px-2.5 py-1 rounded-full bg-white border border-gray-200 text-gray-600">
+                                      Score: <strong className="text-gray-900">{detail.score ?? "—"}</strong>
+                                    </span>
+                                    <span className="px-2.5 py-1 rounded-full bg-white border border-gray-200 text-gray-600">
+                                      Percentage: <strong className="text-gray-900">{detail.percentage ?? "—"}%</strong>
+                                    </span>
+                                    <span className={`px-2.5 py-1 rounded-full border text-xs font-bold ${detail.passed ? "bg-green-50 text-green-700 border-green-200" : "bg-red-50 text-red-600 border-red-200"}`}>
+                                      {detail.passed ? "Passed" : "Failed"}
+                                    </span>
+                                  </div>
+                                  {(detail.answers || []).map((ans: any, i: number) => (
+                                    <div
+                                      key={ans.id ?? ans.answerId ?? i}
+                                      className="bg-white border border-gray-200 rounded-xl p-3"
+                                    >
+                                      <p className="text-xs font-semibold text-gray-700 mb-1.5">
+                                        {i + 1}.{" "}
+                                        {ans.questionText || ans.question || `Question ${i + 1}`}
+                                      </p>
+                                      <div className="flex flex-col sm:flex-row sm:flex-wrap gap-1 sm:gap-x-4 sm:gap-y-1 text-[11px] sm:text-xs text-gray-500">
+                                        <span>
+                                          Answer given:{" "}
+                                          <span className="text-gray-700 font-medium">
+                                            {ans.givenAnswer ?? ans.selectedAnswer ?? ans.answer ?? "—"}
+                                          </span>
+                                        </span>
+                                        <span>
+                                          Correct answer:{" "}
+                                          <span className="text-gray-700 font-medium">
+                                            {ans.correctAnswer ?? ans.correctAnswerText ?? "—"}
+                                          </span>
+                                        </span>
+                                        {typeof ans.isCorrect === "boolean" && (
+                                          <span
+                                            className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-bold border w-fit ${
+                                              ans.isCorrect
+                                                ? "bg-green-50 text-green-700 border-green-200"
+                                                : "bg-red-50 text-red-500 border-red-200"
+                                            }`}
+                                          >
+                                            {ans.isCorrect ? "Correct" : "Incorrect"}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ))}
+                                  {(!detail.answers || detail.answers.length === 0) && (
+                                    <p className="text-xs text-gray-400 text-center py-4 bg-white border border-gray-100 rounded-xl">
+                                      No answer details available.
+                                    </p>
+                                  )}
+                                </div>
                               )}
                             </div>
                           )}
                         </div>
-                      )}
-                    </div>
-                  );
-                })}
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-            )}
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
@@ -1730,26 +1691,27 @@ function SingleQuestionEditor({
   onOptionChange: (optionIndex: number, text: string) => void;
 }) {
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 sm:space-y-4">
       <div>
-        <label className="text-xs font-medium text-gray-600">Question Text</label>
+        <label className="text-xs font-semibold text-gray-700">Question Text</label>
         <textarea
           value={item.questionText}
           onChange={(e) => onChange({ questionText: e.target.value })}
-          className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+          className="w-full mt-1.5 px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all shadow-sm"
           rows={2}
           title="question text"
+          placeholder="Enter question..."
         />
       </div>
 
       <div>
-        <label className="text-xs font-medium text-gray-600">Question Type</label>
+        <label className="text-xs font-semibold text-gray-700">Question Type</label>
         <select
           value={item.questionType}
           onChange={(e) =>
             onChange({ questionType: e.target.value as AssessmentItem["questionType"] })
           }
-          className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+          className="w-full mt-1.5 px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all shadow-sm"
           title="question type select"
         >
           <option value="multiple_choice">Multiple Choice</option>
@@ -1758,37 +1720,32 @@ function SingleQuestionEditor({
         </select>
       </div>
 
-      {/* Correct answer is marked inline. isCorrect is derived by comparing
-          the OPTION'S INDEX (not its id) against item.correctAnswer, since
-          item.correctAnswer is always kept as a stringified index ("0".."3")
-          on the client — regardless of whether the option's own `id` is a
-          locally-generated placeholder ("1".."4") or a backend UUID. Comparing
-          against `opt.id` directly was the bug: it never matched either shape. */}
       {item.questionType === "multiple_choice" && (
         <div>
-          <label className="text-xs font-medium text-gray-600 mb-1 block">
+          <label className="text-xs font-semibold text-gray-700 mb-2 block">
             Options — mark the correct one
           </label>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
             {item.options.map((opt, idx) => {
               const isCorrect = String(idx) === item.correctAnswer;
 
               return (
-                <div key={idx} className="flex items-end gap-2">
-                  <div className="flex-1">
-                    <label className="text-xs text-gray-500">
+                <div key={idx} className={`flex items-end gap-2 p-2 rounded-xl border transition-colors ${isCorrect ? "bg-[#004900]/5 border-[#004900]/20" : "bg-white border-gray-100"}`}>
+                  <div className="flex-1 min-w-0">
+                    <label className="text-[11px] font-semibold text-gray-500">
                       Option {String.fromCharCode(65 + idx)}
                     </label>
                     <input
                       value={opt.text}
                       onChange={(e) => onOptionChange(idx, e.target.value)}
-                      className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                      className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] bg-white"
                       title={`option ${idx}`}
+                      placeholder={`Option ${String.fromCharCode(65 + idx)}`}
                     />
                   </div>
                   <label
-                    className={`flex items-center gap-1 pb-2 cursor-pointer select-none text-xs ${
-                      isCorrect ? "text-[#004900] font-medium" : "text-gray-400"
+                    className={`flex items-center gap-1.5 pb-2 cursor-pointer select-none text-xs whitespace-nowrap px-2 py-1 rounded-full border transition-colors ${
+                      isCorrect ? "text-[#004900] font-semibold bg-white border-[#004900]/20" : "text-gray-400 border-transparent hover:bg-gray-50"
                     }`}
                     title="Mark as correct answer"
                   >
@@ -1810,17 +1767,17 @@ function SingleQuestionEditor({
 
       {item.questionType === "true_false" && (
         <div>
-          <label className="text-xs font-medium text-gray-600 mb-1 block">
+          <label className="text-xs font-semibold text-gray-700 mb-2 block">
             Correct Answer
           </label>
-          <div className="flex gap-2">
+          <div className="grid grid-cols-2 gap-2 sm:gap-3">
             <button
               type="button"
               onClick={() => onChange({ correctAnswer: "true" })}
-              className={`flex-1 px-3 py-2 text-sm rounded-lg border transition-colors ${
+              className={`px-3 py-2.5 text-sm font-semibold rounded-xl border transition-all ${
                 item.correctAnswer === "true"
-                  ? "bg-[#004900] text-white border-[#004900]"
-                  : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                  ? "bg-[#004900] text-white border-[#004900] shadow"
+                  : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
               }`}
             >
               True
@@ -1828,10 +1785,10 @@ function SingleQuestionEditor({
             <button
               type="button"
               onClick={() => onChange({ correctAnswer: "false" })}
-              className={`flex-1 px-3 py-2 text-sm rounded-lg border transition-colors ${
+              className={`px-3 py-2.5 text-sm font-semibold rounded-xl border transition-all ${
                 item.correctAnswer === "false"
-                  ? "bg-[#004900] text-white border-[#004900]"
-                  : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                  ? "bg-[#004900] text-white border-[#004900] shadow"
+                  : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
               }`}
             >
               False
@@ -1842,14 +1799,15 @@ function SingleQuestionEditor({
 
       {item.questionType === "short_answer" && (
         <div>
-          <label className="text-xs font-medium text-gray-600">Correct Answer</label>
+          <label className="text-xs font-semibold text-gray-700">Correct Answer</label>
           <input
             value={item.correctAnswer}
             onChange={(e) => onChange({ correctAnswer: e.target.value })}
-            className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+            className="w-full mt-1.5 px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all shadow-sm"
             title="correct answer"
+            placeholder="Expected answer"
           />
-          <p className="text-[11px] text-gray-400 mt-1">
+          <p className="text-[11px] text-gray-400 mt-1.5 leading-relaxed">
             Short-answer questions aren't auto-graded on the backend, so this text is saved
             inside the explanation field as "Expected answer: …" instead of as a literal
             correct-answer value.
@@ -1857,26 +1815,28 @@ function SingleQuestionEditor({
         </div>
       )}
 
-      <div>
-        <label className="text-xs font-medium text-gray-600">Points</label>
-        <input
-          type="number"
-          value={item.points}
-          onChange={(e) => onChange({ points: Number(e.target.value) })}
-          className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm max-w-35"
-          title="points"
-        />
-      </div>
-
-      <div>
-        <label className="text-xs font-medium text-gray-600">Explanation (optional)</label>
-        <textarea
-          value={item.explanation}
-          onChange={(e) => onChange({ explanation: e.target.value })}
-          className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
-          rows={2}
-          title="explanation"
-        />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <label className="text-xs font-semibold text-gray-700">Points</label>
+          <input
+            type="number"
+            value={item.points}
+            onChange={(e) => onChange({ points: Number(e.target.value) })}
+            className="w-full mt-1.5 px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all shadow-sm max-w-full sm:max-w-[140px]"
+            title="points"
+          />
+        </div>
+        <div className="sm:col-span-1">
+          <label className="text-xs font-semibold text-gray-700">Explanation (optional)</label>
+          <textarea
+            value={item.explanation}
+            onChange={(e) => onChange({ explanation: e.target.value })}
+            className="w-full mt-1.5 px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all shadow-sm"
+            rows={2}
+            title="explanation"
+            placeholder="Explain the answer..."
+          />
+        </div>
       </div>
     </div>
   );

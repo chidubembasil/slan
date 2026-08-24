@@ -20,14 +20,15 @@ type Course = {
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 const statusBadge: Record<CourseStatus, string> = {
-  published: "bg-green-100 text-green-700",
-  draft: "bg-yellow-100 text-yellow-700",
-  archived: "bg-gray-100 text-gray-500",
+  published: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200",
+  draft: "bg-amber-50 text-amber-700 ring-1 ring-amber-200",
+  archived: "bg-gray-100 text-gray-500 ring-1 ring-gray-200",
 };
 
 function Badge({ status }: { status: CourseStatus }) {
   return (
-    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${statusBadge[status]}`}>
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] sm:text-xs font-semibold capitalize shadow-sm ${statusBadge[status]}`}>
+      <span className="w-1.5 h-1.5 rounded-full bg-current opacity-60" />
       {status}
     </span>
   );
@@ -37,14 +38,14 @@ function Modal({ title, onClose, children, wide }: {
   title: string; onClose: () => void; children: React.ReactNode; wide?: boolean;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 lg:p-6">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
       <div className={`relative bg-white rounded-2xl shadow-2xl w-full ${wide ? "max-w-3xl" : "max-w-2xl"} max-h-[90vh] overflow-y-auto`}>
-        <div className="bg-[#004900] px-6 py-4 flex items-center justify-between rounded-t-2xl sticky top-0 z-10">
-          <h2 className="text-white font-semibold text-base">{title}</h2>
-          <button onClick={onClose} className="text-white/70 hover:text-white text-xl leading-none">✕</button>
+        <div className="bg-gradient-to-r from-[#004900] to-[#006400] px-4 sm:px-6 py-4 sm:py-5 flex items-center justify-between rounded-t-2xl sticky top-0 z-10">
+          <h2 className="text-white font-semibold text-sm sm:text-base pr-4 leading-tight">{title}</h2>
+          <button onClick={onClose} className="shrink-0 w-8 h-8 rounded-full bg-white/15 hover:bg-white/25 text-white flex items-center justify-center transition-colors text-sm leading-none">✕</button>
         </div>
-        <div className="p-6">{children}</div>
+        <div className="p-4 sm:p-6 lg:p-7">{children}</div>
       </div>
     </div>
   );
@@ -56,15 +57,18 @@ function ConfirmModal({ message, onConfirm, onCancel, loading }: {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onCancel} />
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
-        <p className="text-sm text-gray-700 mb-6">{message}</p>
-        <div className="flex gap-3 justify-end">
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5 sm:p-6">
+        <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-red-50 flex items-center justify-center mx-auto sm:mx-0 mb-3 sm:mb-4">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /></svg>
+        </div>
+        <p className="text-sm text-gray-700 mb-6 leading-relaxed text-center sm:text-left">{message}</p>
+        <div className="flex flex-col sm:flex-row gap-3 sm:justify-end">
           <button onClick={onCancel}
-            className="px-4 py-2 rounded-lg text-sm border border-gray-300 text-gray-600 hover:bg-gray-50">
+            className="px-4 py-2.5 rounded-xl text-sm border border-gray-300 text-gray-600 hover:bg-gray-50 font-medium order-2 sm:order-1">
             Cancel
           </button>
           <button onClick={onConfirm} disabled={loading}
-            className="px-4 py-2 rounded-lg text-sm bg-red-600 text-white hover:bg-red-700 disabled:opacity-60">
+            className="px-4 py-2.5 rounded-xl text-sm bg-red-600 text-white hover:bg-red-700 disabled:opacity-60 font-medium shadow-md shadow-red-200 order-1 sm:order-2">
             {loading ? "Deleting..." : "Delete"}
           </button>
         </div>
@@ -75,7 +79,7 @@ function ConfirmModal({ message, onConfirm, onCancel, loading }: {
 
 // ── shared input styles ───────────────────────────────────────────────────────
 
-const inputCls = "w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900]";
+const inputCls = "w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all shadow-sm placeholder:text-gray-400";
 const textareaCls = inputCls + " resize-none";
 const statusOptions = ["draft", "published", "archived"] as const;
 
@@ -121,29 +125,33 @@ function EditCourseForm({ course, onDone }: { course: Course; onDone: () => void
   };
 
   return (
-    <div className="space-y-4">
-      <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1.5">Title <span className="text-red-500">*</span></label>
-        <input value={form.title} onChange={e => set("title", e.target.value)} className={inputCls} aria-label="input" />
+    <div className="space-y-4 sm:space-y-5">
+      <div className="grid grid-cols-1 gap-4 sm:gap-5">
+        <div>
+          <label className="block text-xs font-semibold text-gray-700 mb-1.5">Title <span className="text-red-500">*</span></label>
+          <input value={form.title} onChange={e => set("title", e.target.value)} className={inputCls} aria-label="input" />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-gray-700 mb-1.5">Short Description</label>
+          <input value={form.shortDescription} onChange={e => set("shortDescription", e.target.value)} className={inputCls} aria-label="input" />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-gray-700 mb-1.5">Description</label>
+          <textarea rows={3} value={form.description} onChange={e => set("description", e.target.value)} className={textareaCls} aria-label="input" />
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-semibold text-gray-700 mb-1.5">Status</label>
+            <select value={form.status} onChange={e => set("status", e.target.value)} className={inputCls} aria-label="select">
+              {statusOptions.map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
+            </select>
+          </div>
+        </div>
       </div>
-      <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1.5">Short Description</label>
-        <input value={form.shortDescription} onChange={e => set("shortDescription", e.target.value)} className={inputCls} aria-label="input" />
-      </div>
-      <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1.5">Description</label>
-        <textarea rows={3} value={form.description} onChange={e => set("description", e.target.value)} className={textareaCls} aria-label="input" />
-      </div>
-      <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1.5">Status</label>
-        <select value={form.status} onChange={e => set("status", e.target.value)} className={inputCls} aria-label="select">
-          {statusOptions.map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
-        </select>
-      </div>
-      {error && <p className="text-xs text-red-600">{error}</p>}
-      <div className="flex gap-3 pt-1">
+      {error && <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{error}</p>}
+      <div className="flex flex-col sm:flex-row gap-3 pt-1">
         <button onClick={handleSave} disabled={loading}
-          className="bg-[#004900] text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-[#003700] disabled:opacity-60">
+          className="bg-gradient-to-r from-[#004900] to-[#006400] text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:from-[#003700] hover:to-[#004900] disabled:opacity-60 shadow-md shadow-[#004900]/20 transition-all w-full sm:w-auto">
           {loading ? "Saving..." : "Save Changes"}
         </button>
       </div>
@@ -212,16 +220,16 @@ function QuestionEditor({
   };
 
   return (
-    <div className="border border-gray-200 rounded-xl p-4 space-y-3 bg-gray-50/50">
+    <div className="border border-gray-200 rounded-2xl p-4 sm:p-5 space-y-3 sm:space-y-4 bg-white shadow-sm">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Question {index + 1}</span>
+        <span className="inline-flex items-center gap-2 text-xs font-bold text-[#004900] uppercase tracking-wide bg-[#004900]/5 px-2.5 py-1 rounded-full">Question {index + 1}</span>
         {showRemove && (
-          <button onClick={onRemove} className="text-xs text-red-500 hover:text-red-700">Remove</button>
+          <button onClick={onRemove} className="text-xs font-medium text-red-500 hover:text-red-700 px-2.5 py-1 rounded-full hover:bg-red-50 transition-colors">Remove</button>
         )}
       </div>
 
       <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1">Question Text <span className="text-red-500">*</span></label>
+        <label className="block text-xs font-semibold text-gray-700 mb-1.5">Question Text <span className="text-red-500">*</span></label>
         <textarea
           rows={2}
           value={q.questionText}
@@ -231,9 +239,9 @@ function QuestionEditor({
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
         <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1">Type</label>
+          <label className="block text-xs font-semibold text-gray-700 mb-1.5">Type</label>
           <select value={q.questionType} onChange={e => set("questionType", e.target.value)} className={inputCls} title="select">
             <option value="multiple_choice">Multiple Choice</option>
             <option value="true_false">True / False</option>
@@ -241,18 +249,18 @@ function QuestionEditor({
           </select>
         </div>
         <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1">Points</label>
+          <label className="block text-xs font-semibold text-gray-700 mb-1.5">Points</label>
           <input type="number" min={1} value={q.points} onChange={e => set("points", Number(e.target.value))} className={inputCls} title="input"/>
         </div>
       </div>
 
       {q.questionType === "multiple_choice" && (
         <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1.5">Options</label>
-          <div className="space-y-2">
+          <label className="block text-xs font-semibold text-gray-700 mb-1.5">Options</label>
+          <div className="grid grid-cols-1 gap-2">
             {q.options.map((opt, i) => (
               <div key={opt.id} className="flex items-center gap-2">
-                <span className="text-xs font-mono font-bold text-gray-400 w-4">{opt.id.toUpperCase()}</span>
+                <span className="text-xs font-mono font-bold text-gray-400 w-5 h-8 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center shrink-0">{opt.id.toUpperCase()}</span>
                 <input
                   value={opt.text}
                   onChange={e => setOption(i, e.target.value)}
@@ -267,7 +275,7 @@ function QuestionEditor({
 
       {q.questionType === "true_false" && (
         <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1">Correct Answer</label>
+          <label className="block text-xs font-semibold text-gray-700 mb-1.5">Correct Answer</label>
           <select value={q.correctAnswer} onChange={e => set("correctAnswer", e.target.value)} className={inputCls} title="select">
             <option value="">Select…</option>
             <option value="true">True</option>
@@ -278,7 +286,7 @@ function QuestionEditor({
 
       {q.questionType === "multiple_choice" && (
         <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1">Correct Answer</label>
+          <label className="block text-xs font-semibold text-gray-700 mb-1.5">Correct Answer</label>
           <select value={q.correctAnswer} onChange={e => set("correctAnswer", e.target.value)} className={inputCls} title="select">
             <option value="">Select option…</option>
             {q.options.map(opt => (
@@ -290,13 +298,13 @@ function QuestionEditor({
 
       {q.questionType === "short_answer" && (
         <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1">Correct Answer</label>
+          <label className="block text-xs font-semibold text-gray-700 mb-1.5">Correct Answer</label>
           <input value={q.correctAnswer} onChange={e => set("correctAnswer", e.target.value)} className={inputCls} placeholder="Expected answer" />
         </div>
       )}
 
       <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1">Explanation <span className="text-gray-400">(optional)</span></label>
+        <label className="block text-xs font-semibold text-gray-700 mb-1.5">Explanation <span className="text-gray-400 font-normal">(optional)</span></label>
         <input value={q.explanation} onChange={e => set("explanation", e.target.value)} className={inputCls} placeholder="Why this is the correct answer" />
       </div>
     </div>
@@ -500,16 +508,16 @@ function AddAssessmentModal({
   return (
     <Modal title={`Add Assessment to "${course.title}"`} onClose={onClose} wide>
       {/* Step tabs */}
-      <div className="flex gap-0 mb-6 border border-gray-200 rounded-xl overflow-hidden">
+      <div className="flex flex-col sm:flex-row gap-0 mb-6 border border-gray-200 rounded-2xl overflow-hidden">
         <button
           onClick={() => step === 2 && setStep(1)}
-          className={`flex-1 py-2.5 text-sm font-medium transition-colors ${step === 1 ? "bg-[#004900] text-white" : "bg-white text-gray-400 cursor-pointer hover:bg-gray-50"}`}
+          className={`flex-1 py-2.5 sm:py-3 px-4 text-sm font-semibold transition-colors ${step === 1 ? "bg-gradient-to-r from-[#004900] to-[#006400] text-white shadow-sm" : "bg-white text-gray-400 cursor-pointer hover:bg-gray-50"}`}
         >
           1 · Assessment Details
         </button>
         <button
           disabled={step === 1 && !assessmentId}
-          className={`flex-1 py-2.5 text-sm font-medium transition-colors ${step === 2 ? "bg-[#004900] text-white" : "bg-white text-gray-400"} disabled:cursor-not-allowed`}
+          className={`flex-1 py-2.5 sm:py-3 px-4 text-sm font-semibold transition-colors ${step === 2 ? "bg-gradient-to-r from-[#004900] to-[#006400] text-white shadow-sm" : "bg-white text-gray-400"} disabled:cursor-not-allowed`}
         >
           2 · Questions
         </button>
@@ -517,29 +525,31 @@ function AddAssessmentModal({
 
       {/* ── STEP 1 ── */}
       {step === 1 && (
-        <div className="space-y-4">
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1.5">Title <span className="text-red-500">*</span></label>
-            <input
-              value={config.title}
-              onChange={e => setC("title", e.target.value)}
-              placeholder="e.g. Course Final Assessment"
-              className={inputCls}
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1.5">Description <span className="text-red-500">*</span></label>
-            <textarea
-              rows={3}
-              value={config.description}
-              onChange={e => setC("description", e.target.value)}
-              placeholder="What this assessment covers"
-              className={textareaCls}
-            />
-          </div>
-          <div className="grid grid-cols-3 gap-4">
+        <div className="space-y-4 sm:space-y-5">
+          <div className="grid grid-cols-1 gap-4">
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1.5">Time Limit (mins)</label>
+              <label className="block text-xs font-semibold text-gray-700 mb-1.5">Title <span className="text-red-500">*</span></label>
+              <input
+                value={config.title}
+                onChange={e => setC("title", e.target.value)}
+                placeholder="e.g. Course Final Assessment"
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 mb-1.5">Description <span className="text-red-500">*</span></label>
+              <textarea
+                rows={3}
+                value={config.description}
+                onChange={e => setC("description", e.target.value)}
+                placeholder="What this assessment covers"
+                className={textareaCls}
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 mb-1.5">Time Limit (mins)</label>
               <input
                 type="number" min={0}
                 value={config.timeLimitMinutes}
@@ -549,27 +559,27 @@ function AddAssessmentModal({
               />
             </div>
           </div>
-          <label className="flex items-center gap-2.5 cursor-pointer select-none">
+          <label className="flex items-center gap-2.5 cursor-pointer select-none bg-gray-50 border border-gray-100 rounded-xl px-3 py-2.5 w-fit">
             <input
               type="checkbox"
               checked={config.isActive}
               onChange={e => setC("isActive", e.target.checked)}
               className="w-4 h-4 rounded border-gray-300 accent-[#004900]"
             />
-            <span className="text-sm text-gray-700">Active immediately</span>
+            <span className="text-sm font-medium text-gray-700">Active immediately</span>
           </label>
 
-          {configError && <p className="text-xs text-red-600">{configError}</p>}
+          {configError && <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{configError}</p>}
 
-          <div className="flex gap-3 pt-2">
+          <div className="flex flex-col sm:flex-row gap-3 pt-2">
             <button
               onClick={handleSaveConfig}
               disabled={configLoading}
-              className="bg-[#004900] text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-[#003700] disabled:opacity-60 flex items-center gap-2"
+              className="bg-gradient-to-r from-[#004900] to-[#006400] text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:from-[#003700] hover:to-[#004900] disabled:opacity-60 flex items-center justify-center gap-2 shadow-md shadow-[#004900]/20 transition-all w-full sm:w-auto"
             >
               {configLoading ? "Saving…" : "Save & Add Questions →"}
             </button>
-            <button onClick={onClose} className="px-5 py-2.5 rounded-lg text-sm border border-gray-300 text-gray-600 hover:bg-gray-50">
+            <button onClick={onClose} className="px-5 py-2.5 rounded-xl text-sm border border-gray-200 text-gray-600 hover:bg-gray-50 font-medium w-full sm:w-auto">
               Cancel
             </button>
           </div>
@@ -581,8 +591,8 @@ function AddAssessmentModal({
         <div className="space-y-5">
           {/* Mode selector */}
           <div>
-            <p className="text-xs font-medium text-gray-700 mb-2">How do you want to add questions?</p>
-            <div className="grid grid-cols-3 gap-2">
+            <p className="text-xs font-semibold text-gray-700 mb-2">How do you want to add questions?</p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
               {(["single", "bulk", "file"] as QuestionMode[]).map(m => (
                 <button
                   key={m}
@@ -591,10 +601,10 @@ function AddAssessmentModal({
                     if (m !== "file") setQuestions([emptyQuestion()]);
                     setFileRef(null);
                   }}
-                  className={`py-2.5 px-3 rounded-xl text-xs font-medium border transition-all ${
+                  className={`py-3 px-3 rounded-xl text-xs font-semibold border transition-all text-center ${
                     mode === m
-                      ? "border-[#004900] bg-[#004900]/5 text-[#004900]"
-                      : "border-gray-200 text-gray-500 hover:border-gray-300"
+                      ? "border-[#004900] bg-[#004900]/5 text-[#004900] shadow-sm"
+                      : "border-gray-200 text-gray-500 hover:border-gray-300 bg-white"
                   }`}
                 >
                   {m === "single" && "Single Choice"}
@@ -621,7 +631,7 @@ function AddAssessmentModal({
               {mode === "bulk" && (
                 <button
                   onClick={addQuestion}
-                  className="w-full py-2.5 border-2 border-dashed border-gray-200 rounded-xl text-xs font-medium text-gray-400 hover:border-[#004900]/40 hover:text-[#004900] transition-colors"
+                  className="w-full py-3 border-2 border-dashed border-gray-200 rounded-xl text-xs font-semibold text-gray-500 hover:border-[#004900]/40 hover:text-[#004900] hover:bg-[#004900]/5 transition-colors"
                 >
                   + Add Another Question
                 </button>
@@ -632,20 +642,22 @@ function AddAssessmentModal({
           {/* File upload mode */}
           {mode === "file" && (
             <div className="space-y-4">
-              <div className="border-2 border-dashed border-gray-200 rounded-xl p-6 text-center hover:border-[#004900]/30 transition-colors">
-                <svg className="mx-auto mb-3 text-gray-300" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                  <polyline points="14 2 14 8 20 8" />
-                  <line x1="12" y1="11" x2="12" y2="17" />
-                  <polyline points="9 14 12 11 15 14" />
-                </svg>
-                <p className="text-sm text-gray-500 mb-1">
+              <div className="border-2 border-dashed border-gray-200 rounded-2xl p-6 sm:p-8 text-center hover:border-[#004900]/30 transition-colors bg-gray-50/30">
+                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-white border border-gray-100 shadow-sm flex items-center justify-center mx-auto mb-3">
+                  <svg className="text-gray-400" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                    <polyline points="14 2 14 8 20 8" />
+                    <line x1="12" y1="11" x2="12" y2="17" />
+                    <polyline points="9 14 12 11 15 14" />
+                  </svg>
+                </div>
+                <p className="text-sm text-gray-600 mb-1 font-medium break-all px-2">
                   {fileRef ? fileRef.name : "Drop a CSV or Excel file here, or click to browse"}
                 </p>
-                <p className="text-xs text-gray-400 mb-3">Max 5 MB · .csv, .xlsx</p>
+                <p className="text-xs text-gray-400 mb-4">Max 5 MB · .csv, .xlsx</p>
                 <button
                   onClick={() => fileInputRef.current?.click()}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium bg-[#004900] text-white hover:bg-[#003700]"
+                  className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-xs font-semibold bg-gradient-to-r from-[#004900] to-[#006400] text-white hover:from-[#003700] hover:to-[#004900] shadow-md shadow-[#004900]/20 transition-all"
                 >
                   Choose File
                 </button>
@@ -659,20 +671,20 @@ function AddAssessmentModal({
                 />
               </div>
 
-              <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
-                <p className="text-xs font-semibold text-blue-700 mb-1.5">Required columns</p>
+              <div className="bg-blue-50/70 border border-blue-100 rounded-2xl p-4 sm:p-5">
+                <p className="text-xs font-bold text-blue-700 mb-1.5">Required columns</p>
                 <div className="flex flex-wrap gap-1.5">
                   {["question_text", "question_type", "correct_answer"].map(col => (
-                    <code key={col} className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-xs">{col}</code>
+                    <code key={col} className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs font-medium">{col}</code>
                   ))}
                 </div>
-                <p className="text-xs font-semibold text-blue-700 mt-2.5 mb-1.5">Optional columns</p>
+                <p className="text-xs font-bold text-blue-700 mt-3 mb-1.5">Optional columns</p>
                 <div className="flex flex-wrap gap-1.5">
                   {["option_a", "option_b", "option_c", "option_d", "explanation", "points"].map(col => (
-                    <code key={col} className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-xs">{col}</code>
+                    <code key={col} className="bg-white text-blue-700 border border-blue-100 px-2 py-1 rounded-full text-xs font-medium">{col}</code>
                   ))}
                 </div>
-                <p className="text-xs text-blue-600 mt-2">
+                <p className="text-xs text-blue-600 mt-3 leading-relaxed">
                   <strong>question_type</strong> values: multiple_choice, true_false, short_answer<br />
                   <strong>correct_answer</strong>: a / b / c / d for MCQ; true / false for true_false
                 </p>
@@ -680,17 +692,17 @@ function AddAssessmentModal({
             </div>
           )}
 
-          {qError && <p className="text-xs text-red-600">{qError}</p>}
+          {qError && <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{qError}</p>}
 
-          <div className="flex gap-3 pt-2">
+          <div className="flex flex-col sm:flex-row gap-3 pt-2">
             <button
               onClick={handleSubmitQuestions}
               disabled={qLoading}
-              className="bg-[#004900] text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-[#003700] disabled:opacity-60"
+              className="bg-gradient-to-r from-[#004900] to-[#006400] text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:from-[#003700] hover:to-[#004900] disabled:opacity-60 shadow-md shadow-[#004900]/20 transition-all order-1 sm:order-1 w-full sm:w-auto"
             >
               {qLoading ? "Submitting…" : mode === "file" ? "Upload & Save" : "Save Questions"}
             </button>
-            <button onClick={() => setStep(1)} className="px-5 py-2.5 rounded-lg text-sm border border-gray-300 text-gray-600 hover:bg-gray-50">
+            <button onClick={() => setStep(1)} className="px-5 py-2.5 rounded-xl text-sm border border-gray-200 text-gray-600 hover:bg-gray-50 font-medium order-2 sm:order-2 w-full sm:w-auto">
               ← Back
             </button>
           </div>
@@ -774,32 +786,39 @@ export default function ManageCourses() {
     : courses.filter((c) => c.id === selectedCourseId);
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto px-6 py-8">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 p-4 sm:p-6 lg:p-8">
+      <div className="max-w-7xl mx-auto">
 
         {/* Header */}
-        <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Manage Courses</h1>
-            <p className="text-sm text-gray-500 mt-0.5">Top-level containers for the SLAN curriculum</p>
-          </div>
-          <div className="flex items-center gap-3">
-            {!loading && !fetchError && courses.length > 0 && (
-              <select
-                value={selectedCourseId}
-                onChange={(e) => setSelectedCourseId(e.target.value === "all" ? "all" : Number(e.target.value))}
-                className="px-3.5 py-2 border border-gray-200 rounded-xl text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all shadow-sm"
-                aria-label="Filter by course"
-              >
-                <option value="all">All courses</option>
-                {courses.map((c) => (
-                  <option key={c.id} value={c.id}>{c.title}</option>
-                ))}
-              </select>
-            )}
-            <span className="text-sm text-gray-400 whitespace-nowrap">
-              {filteredCourses.length} course{filteredCourses.length !== 1 ? "s" : ""}
-            </span>
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-6 lg:p-8 mb-6">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div className="flex items-start gap-3 sm:gap-4">
+              <div className="hidden sm:flex w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-[#004900] to-[#006400] items-center justify-center shadow-md shadow-[#004900]/20 shrink-0">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+              </div>
+              <div className="min-w-0">
+                <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900 tracking-tight">Manage Courses</h1>
+                <p className="text-xs sm:text-sm text-gray-500 mt-1">Top-level containers for the SLAN curriculum</p>
+              </div>
+            </div>
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full lg:w-auto">
+              {!loading && !fetchError && courses.length > 0 && (
+                <select
+                  value={selectedCourseId}
+                  onChange={(e) => setSelectedCourseId(e.target.value === "all" ? "all" : Number(e.target.value))}
+                  className="w-full sm:w-auto sm:min-w-[180px] px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all shadow-sm"
+                  aria-label="Filter by course"
+                >
+                  <option value="all">All courses</option>
+                  {courses.map((c) => (
+                    <option key={c.id} value={c.id}>{c.title}</option>
+                  ))}
+                </select>
+              )}
+              <span className="inline-flex items-center justify-center px-3 py-2 rounded-xl bg-gray-50 border border-gray-100 text-xs sm:text-sm font-medium text-gray-500 whitespace-nowrap">
+                {filteredCourses.length} course{filteredCourses.length !== 1 ? "s" : ""}
+              </span>
+            </div>
           </div>
         </div>
 
@@ -807,139 +826,152 @@ export default function ManageCourses() {
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
 
           {loading && (
-            <div className="flex flex-col items-center justify-center py-20 gap-3 text-gray-400 text-sm">
-              <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center animate-pulse">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+            <div className="flex flex-col items-center justify-center py-16 sm:py-20 gap-3 text-gray-400 text-sm px-4">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-gray-100 flex items-center justify-center animate-pulse">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
               </div>
               Loading courses...
             </div>
           )}
 
           {!loading && fetchError && (
-            <div className="flex flex-col items-center justify-center py-20 gap-3">
-              <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+            <div className="flex flex-col items-center justify-center py-16 sm:py-20 gap-3 px-4">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-red-50 flex items-center justify-center">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
               </div>
-              <p className="text-sm text-red-600">{fetchError}</p>
-              <button onClick={fetchCourses} className="text-sm text-[#004900] underline">Retry</button>
+              <p className="text-sm text-red-600 text-center">{fetchError}</p>
+              <button onClick={fetchCourses} className="text-sm font-medium text-[#004900] hover:underline">Retry</button>
             </div>
           )}
 
           {!loading && !fetchError && filteredCourses.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-20 gap-3">
-              <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+            <div className="flex flex-col items-center justify-center py-16 sm:py-20 gap-3 px-4">
+              <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-gray-50 border border-gray-100 flex items-center justify-center">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
               </div>
               <div className="text-center">
-                <p className="text-sm font-medium text-gray-500">{courses.length === 0 ? "No courses found" : "No course matches this selection"}</p>
+                <p className="text-sm font-semibold text-gray-600">{courses.length === 0 ? "No courses found" : "No course matches this selection"}</p>
                 <p className="text-xs text-gray-400 mt-1">{courses.length === 0 ? "Create your first course to get started." : "Try changing the filter."}</p>
               </div>
             </div>
           )}
 
           {!loading && !fetchError && filteredCourses.length > 0 && (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50 border-b border-gray-100">
-                    <th className="text-left px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide w-12">ID</th>
-                    <th className="text-left px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Course Name</th>
-                    <th className="text-left px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
-                    <th className="text-left px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Tracks</th>
-                    <th className="text-right px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {filteredCourses.map((course) => (
-                    <tr key={course.id} className="hover:bg-gray-50/60 transition-colors">
-                      <td className="px-6 py-4 text-gray-400 font-mono text-xs">{course.id}</td>
-                      <td className="px-6 py-4">
-                        <div className="font-medium text-gray-900">{course.title}</div>
-                        {course.shortDescription && (
-                          <div className="text-xs text-gray-400 mt-0.5 line-clamp-1 max-w-xs">
-                            {course.shortDescription}
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-6 py-4">
-                        <Badge status={course.status} />
-                      </td>
-                      <td className="px-6 py-4 text-gray-500">
-                        {course.trackCount ?? "—"}
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center justify-end gap-2 flex-wrap">
-
-                          {/* Add Track */}
-                          <button
-                            onClick={() => setModal({ type: "addTrack", course })}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-[#004900] text-white hover:bg-[#003700] transition-colors"
-                          >
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                              <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-                            </svg>
-                            Add Track
-                          </button>
-
-                          {/* Add Assessment */}
-                          {/* <button
-                            onClick={() => setModal({ type: "addAssessment", course })}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-purple-600 text-white hover:bg-purple-700 transition-colors"
-                          >
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                              <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
-                              <rect x="9" y="3" width="6" height="4" rx="1" />
-                              <line x1="9" y1="12" x2="15" y2="12" />
-                              <line x1="9" y1="16" x2="13" y2="16" />
-                            </svg>
-                            Add Assessment
-                          </button> */}
-
-                          {/* View */}
-                          <button
-                            onClick={() => setModal({ type: "view", course })}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
-                          >
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                              <circle cx="12" cy="12" r="3" />
-                            </svg>
-                            View
-                          </button>
-
-                          {/* Edit */}
-                          <button
-                            onClick={() => setModal({ type: "edit", course })}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-blue-200 text-blue-600 hover:bg-blue-50 transition-colors"
-                          >
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                            </svg>
-                            Edit
-                          </button>
-
-                          {/* Delete */}
-                          <button
-                            onClick={() => setModal({ type: "delete", course })}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-red-200 text-red-600 hover:bg-red-50 transition-colors"
-                          >
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <polyline points="3 6 5 6 21 6" />
-                              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                              <path d="M10 11v6M14 11v6" />
-                              <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-                            </svg>
-                            Delete
-                          </button>
-
-                        </div>
-                      </td>
+            <>
+              {/* Desktop / tablet table */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full text-sm min-w-[760px]">
+                  <thead>
+                    <tr className="bg-gray-50/80 border-b border-gray-100">
+                      <th className="text-left px-4 lg:px-6 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider w-16">ID</th>
+                      <th className="text-left px-4 lg:px-6 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">Course Name</th>
+                      <th className="text-left px-4 lg:px-6 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
+                      <th className="text-left px-4 lg:px-6 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">Tracks</th>
+                      <th className="text-right px-4 lg:px-6 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {filteredCourses.map((course) => (
+                      <tr key={course.id} className="hover:bg-gray-50/60 transition-colors group">
+                        <td className="px-4 lg:px-6 py-4 text-gray-400 font-mono text-xs">{course.id}</td>
+                        <td className="px-4 lg:px-6 py-4">
+                          <div className="font-semibold text-gray-900 group-hover:text-[#004900] transition-colors line-clamp-1">{course.title}</div>
+                          {course.shortDescription && (
+                            <div className="text-xs text-gray-400 mt-0.5 line-clamp-1 max-w-sm">
+                              {course.shortDescription}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-4 lg:px-6 py-4">
+                          <Badge status={course.status} />
+                        </td>
+                        <td className="px-4 lg:px-6 py-4">
+                          <span className="inline-flex items-center justify-center min-w-7 h-7 px-2 rounded-lg bg-gray-50 border border-gray-100 text-xs font-semibold text-gray-600">
+                            {course.trackCount ?? "—"}
+                          </span>
+                        </td>
+                        <td className="px-4 lg:px-6 py-4">
+                          <div className="flex items-center justify-end gap-1.5 lg:gap-2 flex-wrap">
+                            {/* Add Track */}
+                            <button
+                              onClick={() => setModal({ type: "addTrack", course })}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-gradient-to-r from-[#004900] to-[#006400] text-white hover:from-[#003700] hover:to-[#004900] shadow-sm shadow-[#004900]/20 transition-all"
+                            >
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+                              </svg>
+                              Add Track
+                            </button>
+                            {/* View */}
+                            <button
+                              onClick={() => setModal({ type: "view", course })}
+                              className="inline-flex items-center gap-1 lg:gap-1.5 px-2.5 lg:px-3 py-1.5 rounded-xl text-xs font-semibold border border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300 transition-colors"
+                            >
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                <circle cx="12" cy="12" r="3" />
+                              </svg>
+                              <span className="hidden lg:inline">View</span>
+                            </button>
+                            {/* Edit */}
+                            <button
+                              onClick={() => setModal({ type: "edit", course })}
+                              className="inline-flex items-center gap-1 lg:gap-1.5 px-2.5 lg:px-3 py-1.5 rounded-xl text-xs font-semibold border border-blue-200 text-blue-600 hover:bg-blue-50 transition-colors"
+                            >
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                              </svg>
+                              <span className="hidden lg:inline">Edit</span>
+                            </button>
+                            {/* Delete */}
+                            <button
+                              onClick={() => setModal({ type: "delete", course })}
+                              className="inline-flex items-center gap-1 lg:gap-1.5 px-2.5 lg:px-3 py-1.5 rounded-xl text-xs font-semibold border border-red-200 text-red-600 hover:bg-red-50 transition-colors"
+                            >
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <polyline points="3 6 5 6 21 6" />
+                                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                                <path d="M10 11v6M14 11v6" />
+                                <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                              </svg>
+                              <span className="hidden lg:inline">Delete</span>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile stacked cards */}
+              <div className="md:hidden divide-y divide-gray-100">
+                {filteredCourses.map((course) => (
+                  <div key={course.id} className="p-4 sm:p-5 space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-[11px] font-mono text-gray-400 bg-gray-50 border border-gray-100 px-2 py-0.5 rounded-full">#{course.id}</span>
+                          <Badge status={course.status} />
+                        </div>
+                        <h3 className="font-semibold text-gray-900 text-sm leading-tight break-words">{course.title}</h3>
+                        {course.shortDescription && (
+                          <p className="text-xs text-gray-500 mt-1 line-clamp-2">{course.shortDescription}</p>
+                        )}
+                        <p className="text-xs text-gray-400 mt-2">Tracks: <span className="font-semibold text-gray-600">{course.trackCount ?? "—"}</span></p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button onClick={() => setModal({ type: "addTrack", course })} className="col-span-2 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-gradient-to-r from-[#004900] to-[#006400] text-white shadow-sm">+ Add Track</button>
+                      <button onClick={() => setModal({ type: "view", course })} className="px-3 py-2 rounded-xl text-xs font-semibold border border-gray-200 text-gray-600 bg-white">View</button>
+                      <button onClick={() => setModal({ type: "edit", course })} className="px-3 py-2 rounded-xl text-xs font-semibold border border-blue-200 text-blue-600 bg-blue-50/50">Edit</button>
+                      <button onClick={() => setModal({ type: "delete", course })} className="col-span-2 px-3 py-2 rounded-xl text-xs font-semibold border border-red-200 text-red-600 bg-red-50/50">Delete</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
           )}
         </div>
       </div>
@@ -999,29 +1031,29 @@ export default function ManageCourses() {
           onClose={() => setModal({ type: "none" })}
         >
           <div className="space-y-4 text-sm">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-xs text-gray-400 mb-1">ID</p>
-                <p className="font-mono font-medium text-gray-800">{modal.course.id}</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="bg-gray-50 border border-gray-100 rounded-xl p-3 sm:p-4">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">ID</p>
+                <p className="font-mono font-semibold text-gray-800 text-sm">{modal.course.id}</p>
               </div>
-              <div>
-                <p className="text-xs text-gray-400 mb-1">Status</p>
+              <div className="bg-gray-50 border border-gray-100 rounded-xl p-3 sm:p-4">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Status</p>
                 <Badge status={modal.course.status} />
               </div>
             </div>
-            <div>
-              <p className="text-xs text-gray-400 mb-1">Title</p>
-              <p className="font-medium text-gray-800">{modal.course.title}</p>
+            <div className="bg-white border border-gray-100 rounded-xl p-3 sm:p-4">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Title</p>
+              <p className="font-semibold text-gray-900 break-words">{modal.course.title}</p>
             </div>
-            <div>
-              <p className="text-xs text-gray-400 mb-1">Short Description</p>
-              <p className="text-gray-700">{modal.course.shortDescription || "—"}</p>
+            <div className="bg-white border border-gray-100 rounded-xl p-3 sm:p-4">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Short Description</p>
+              <p className="text-gray-700 leading-relaxed break-words">{modal.course.shortDescription || "—"}</p>
             </div>
             {modal.course.thumbnail && (
               <div>
-                <p className="text-xs text-gray-400 mb-2">Thumbnail</p>
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Thumbnail</p>
                 <img src={modal.course.thumbnail} alt="thumbnail"
-                  className="w-full max-w-xs rounded-xl object-cover border border-gray-100" />
+                  className="w-full rounded-2xl object-cover border border-gray-100 shadow-sm max-h-64" />
               </div>
             )}
           </div>
@@ -1040,11 +1072,13 @@ export default function ManageCourses() {
 
       {/* Toast */}
       {toast && (
-        <div className="fixed bottom-6 right-6 bg-[#004900] text-white px-5 py-3 rounded-xl shadow-lg flex items-center gap-3 z-50">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
-            <polyline points="20 6 9 17 4 12" />
-          </svg>
-          <span className="text-sm font-medium">{toast}</span>
+        <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 bg-gradient-to-r from-[#004900] to-[#006400] text-white px-4 sm:px-5 py-3 rounded-2xl shadow-xl flex items-center gap-3 z-50 max-w-[calc(100vw-2rem)]">
+          <span className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-white/20 flex items-center justify-center shrink-0">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+          </span>
+          <span className="text-xs sm:text-sm font-medium leading-tight">{toast}</span>
         </div>
       )}
     </div>

@@ -28,8 +28,8 @@ interface ModuleAssessmentRow {
   moduleName: string;
   trackId: number | null;
   trackName: string;
-  questionType: QuestionType; // used to decide which editor UI to show
-  displayLabel: string; // used to render the actual badge in the table
+  questionType: QuestionType;
+  displayLabel: string;
   questionCount: number;
   isActive: boolean;
 }
@@ -48,13 +48,6 @@ interface AssessmentItem {
   points: number;
 }
 
-// A single archived question, surfaced in the Archive modal. Sourced from
-// GET /admin/assessments (which returns every module assessment together
-// with its items, including archived ones) by keeping only items where
-// isArchived === true. moduleName / trackName are looked up from the
-// already-loaded `rows` state (matched by assessment id) since the
-// /admin/assessments payload only carries moduleId, not the module's
-// display name.
 interface ArchivedQuestionRow {
   id: number;
   questionText: string;
@@ -66,9 +59,6 @@ interface ArchivedQuestionRow {
   archivedAt?: string | null;
 }
 
-// A single learner's attempt at a module assessment, as returned by
-// GET /admin/attempts?assessmentType=module_assessment&assessmentId={id}.
-// Shown in the "Attempts" modal opened from the Actions column.
 interface AttemptRow {
   id: number;
   user?: {
@@ -101,9 +91,6 @@ function emptyItem(): AssessmentItem {
   };
 }
 
-// Options sometimes come back from the API as objects (e.g. { text: "..." })
-// instead of plain strings. This normalizes any shape into a display string
-// so inputs never render "[object Object]".
 function normalizeOptions(raw: unknown): { id: string; text: string }[] {
   if (Array.isArray(raw) && raw.length) {
     return raw.map((opt: any, index) => ({
@@ -119,11 +106,6 @@ function normalizeOptions(raw: unknown): { id: string; text: string }[] {
     { id: "4", text: "" },
   ];
 }
-// Derives the badge text from the assessment's actual question items,
-// instead of guessing from a count. "No question yet" when the assessment
-// has zero items; the real question type when there's one shared type
-// across items; a comma-joined list of the types present when items have
-// different types (e.g. from a bulk file upload with varied questions).
 function getDisplayLabel(items: any[]): string {
   if (!items || items.length === 0) return "No question yet";
   const labels: Record<string, string> = {
@@ -135,9 +117,6 @@ function getDisplayLabel(items: any[]): string {
   return types.map((t) => labels[t] || t).join(", ");
 }
 
-// Pulls every bit of detail a backend validation error might carry
-// (message, error, errors[], details[], nested field errors) into one
-// readable string, instead of showing a bare "Validation error".
 function extractErrorMessage(d: any, fallback: string): string {
   if (!d) return fallback;
   const parts: string[] = [];
@@ -157,32 +136,9 @@ function extractErrorMessage(d: any, fallback: string): string {
   return unique.length ? unique.join(" — ") : fallback;
 }
 
-// Existing questions (especially ones created via CSV/Excel bulk upload)
-// can store the "correct answer" in a few different shapes depending on
-// where they came from:
-//   - a numeric option index (0-3)                      -> use directly
-//   - a letter ("a"-"d")                                 -> convert to index
-//   - the option's own id (a UUID assigned by the backend
-//     when the question/option was created)              -> match against
-//     the question's own options by id and resolve to index
-//   - the full text of the correct option (bulk uploads) -> match against
-//     the question's own options (case-insensitively) and resolve to index
-//   - true/false as a boolean, "True"/"False", or 0/1     -> normalize to
-//     the lowercase "true"/"false" the toggle expects
-//
-// IMPORTANT: the backend actually stores `correctAnswer` as the *option's
-// own id* (a UUID), not as the numeric index the frontend sends when
-// creating a question. e.g. a saved item looks like:
-//   options: [{ id: "e3813e2e-...", text: "..." }, ...]
-//   correctAnswer: "e3813e2e-..."   <- matches one option's id, NOT "0"/"1"/etc
-// Without the id-matching branch below, the correct-answer radio would
-// silently show nothing selected for anything other than a clean numeric
-// index, even though the question genuinely has a correct answer saved on
-// the backend.
 function normalizeCorrectAnswer(it: any): string {
   if (it?.correctAnswer == null) return "";
 
-  // TRUE/FALSE
   if (it.questionType === "true_false") {
     if (typeof it.correctAnswer === "boolean") {
       return it.correctAnswer ? "true" : "false";
@@ -196,16 +152,13 @@ function normalizeCorrectAnswer(it: any): string {
     return raw;
   }
 
-  // MULTIPLE CHOICE
   if (it.questionType === "multiple_choice") {
     const options = normalizeOptions(it.options);
 
-    // number
     if (typeof it.correctAnswer === "number") {
       return String(it.correctAnswer);
     }
 
-    // object
     if (typeof it.correctAnswer === "object") {
       const value =
         it.correctAnswer.index ??
@@ -223,23 +176,19 @@ function normalizeCorrectAnswer(it: any): string {
 
     const raw = String(it.correctAnswer).trim();
 
-    // index
     if (/^\d+$/.test(raw)) {
       return raw;
     }
 
-    // A B C D
     if (/^[A-Da-d]$/.test(raw)) {
       return String(raw.toUpperCase().charCodeAt(0) - 65);
     }
 
-    // option id (backend stores the option's own id as the correct answer)
     const idIndex = options.findIndex((o) => o.id === raw);
     if (idIndex >= 0) {
       return String(idIndex);
     }
 
-    // option text
     const index = options.findIndex(
       o => o.text.trim().toLowerCase() === raw.toLowerCase()
     );
@@ -251,25 +200,11 @@ function normalizeCorrectAnswer(it: any): string {
     return "";
   }
 
-  // SHORT ANSWER
   return String(it.correctAnswer);
 }
-// Short-answer questions have no single machine-checkable answer — the API
-// validates `correctAnswer` as a number (an option index) for every
-// question, which only makes sense for multiple_choice/true_false. Sending
-// free text there is exactly what produced the
-// `questions.N.correctAnswer: expected number, received string` bulk-save
-// errors. So for short_answer we send `correctAnswer: null` and fold
-// whatever the admin typed into the "Correct Answer" box into `explanation`
-// instead — no text is lost, it just travels in a field the API accepts.
 function buildCorrectAnswerFields(
   item: AssessmentItem
 ): { correctAnswer: number | string | null; explanation: string } {
-  // The API schema documents `explanation` as a plain string field on every
-  // question (see PUT /admin/assessment-items/{id}). Previously this fell
-  // back to `undefined` when the box was empty, which can drop the field
-  // from the JSON body entirely instead of sending "" — always send a
-  // string so the field is present regardless of question type.
   if (item.questionType === "multiple_choice") {
     return { correctAnswer: Number(item.correctAnswer), explanation: item.explanation?.trim() || "" };
   }
@@ -278,13 +213,10 @@ function buildCorrectAnswerFields(
         correctAnswer: item.correctAnswer, 
         explanation: item.explanation?.trim() || "" 
     };
-}
-  // true_false
+  }
   return { correctAnswer: item.correctAnswer, explanation: item.explanation?.trim() || "" };
 }
 
-// Client-side guard so a question with no valid answer never gets sent to
-// the backend as null. Returns an error string, or null if the item is fine.
 function validateItem(item: AssessmentItem, label: string): string | null {
   if (!item.questionText.trim()) return `${label}: question text is required`;
   if (item.questionType === "multiple_choice") {
@@ -301,7 +233,6 @@ function validateItem(item: AssessmentItem, label: string): string | null {
       return `${label}: please mark True or False as correct`;
     }
   } else if (item.questionType === "short_answer") {
-    // correctAnswer is optional for short_answer
   }
   return null;
 }
@@ -313,9 +244,6 @@ export default function ModuleAssessments() {
   const [query, setQuery] = useState("");
   const [archiveOpen, setArchiveOpen] = useState(false);
 
-  // All tracks, used to populate the track filter select. Selecting a
-  // track filters the (active) table down to modules under that track;
-  // "All tracks" (empty string) shows everything, same as before.
   const [tracks, setTracks] = useState<Track[]>([]);
   const [selectedTrackId, setSelectedTrackId] = useState<string>("");
 
@@ -329,34 +257,18 @@ export default function ModuleAssessments() {
     isActive: true,
   });
 
-  // A single unified list drives the editor for every assessment,
-  // regardless of whether it started out as "single", "multiple", or
-  // "upload" (bulk-created), so questions can always be added, edited,
-  // or removed one at a time.
   const [items, setItems] = useState<AssessmentItem[]>([emptyItem()]);
 
-  // CSV/Excel replace is now an optional, collapsed secondary action
-  // instead of the only way to touch a bulk-uploaded assessment's
-  // questions. Choosing a file here takes priority over the editable
-  // list on save (it replaces all questions).
   const [showCsvReplace, setShowCsvReplace] = useState(false);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
 
   const [loadingItems, setLoadingItems] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  // Archived QUESTIONS (individual items with isArchived === true), pulled
-  // from GET /admin/assessments — separate from archived ASSESSMENT
-  // CONFIGS (the `!isActive` rows below). Loaded when the Archive modal is
-  // opened.
   const [archivedQuestions, setArchivedQuestions] = useState<ArchivedQuestionRow[]>([]);
   const [archivedQuestionsLoading, setArchivedQuestionsLoading] = useState(false);
   const [archivedQuestionsError, setArchivedQuestionsError] = useState<string | null>(null);
 
-  // Attempts modal — lists every learner attempt for a module assessment
-  // (GET /admin/attempts?assessmentType=module_assessment&assessmentId={id})
-  // and, per attempt, lazily loads the enriched result
-  // (GET /admin/attempts/{attemptId}/result) when the admin expands it.
   const [attemptsOpen, setAttemptsOpen] = useState(false);
   const [attemptsRow, setAttemptsRow] = useState<ModuleAssessmentRow | null>(null);
   const [attemptsList, setAttemptsList] = useState<AttemptRow[]>([]);
@@ -386,7 +298,6 @@ export default function ModuleAssessments() {
       const tracksData = await tracksRes.json();
       const trackList = Array.isArray(tracksData) ? tracksData : tracksData.data || [];
 
-      // Keep a simple id/name list around for the filter select.
       setTracks(
         trackList.map((t: any) => ({
           id: t.id,
@@ -404,9 +315,6 @@ export default function ModuleAssessments() {
             const data = await res.json();
             const mods = Array.isArray(data) ? data : data.data || [];
             const trackName = track.title || track.name || `Track #${track.id}`;
-            // Tag each module with the track it came from so the row (and
-            // the archive table) can show which track it belongs to, and
-            // so the filter select can match on trackId.
             return mods.map((m: any) => ({ ...m, __trackName: trackName, __trackId: track.id }));
           } catch {
             return [];
@@ -440,7 +348,6 @@ export default function ModuleAssessments() {
                 questionCount = itemsForRow.length;
               }
             } catch {
-              // leave at 0 / empty
             }
 
             const questionType: QuestionType =
@@ -459,7 +366,6 @@ export default function ModuleAssessments() {
               isActive: assessment.isActive !== false,
             });
           } catch {
-            // skip
           }
         })
       );
@@ -472,14 +378,6 @@ export default function ModuleAssessments() {
     }
   }
 
-  // Loads every archived QUESTION across every module assessment via
-  // GET /admin/assessments (docs: "List all assessments and assessment
-  // items (including archived)"). The endpoint returns each module
-  // assessment together with its `items`; we flatten those and keep only
-  // items where isArchived === true. moduleName / trackName aren't part of
-  // that payload (only moduleId is), so they're looked up from `rows`
-  // (matched by assessment id, i.e. mod.id) which already has that info
-  // from fetchModuleAssessments().
   async function fetchArchivedQuestions() {
     setArchivedQuestionsLoading(true);
     setArchivedQuestionsError(null);
@@ -542,17 +440,11 @@ export default function ModuleAssessments() {
     });
   }, [activeRows, query, selectedTrackId]);
 
-  // Opens the Archive modal and loads both archived assessment configs
-  // (already in `rows`, via archivedRows above) and archived questions
-  // (fetched fresh from /admin/assessments so the list is always current).
   function openArchive() {
     setArchiveOpen(true);
     fetchArchivedQuestions();
   }
 
-  // Opens the Attempts modal for a row and loads the list of learner
-  // attempts for that assessment via
-  // GET /admin/attempts?assessmentType=module_assessment&assessmentId={id}.
   async function openAttempts(row: ModuleAssessmentRow) {
     setAttemptsRow(row);
     setAttemptsOpen(true);
@@ -588,10 +480,6 @@ export default function ModuleAssessments() {
     setAttemptDetailError(null);
   }
 
-  // Expands/collapses a single attempt card. On first expand, lazily
-  // fetches the enriched result via
-  // GET /admin/attempts/{attemptId}/result and caches it so re-expanding
-  // doesn't refetch.
   async function toggleAttemptDetail(attemptId: number) {
     if (expandedAttemptId === attemptId) {
       setExpandedAttemptId(null);
@@ -659,9 +547,6 @@ export default function ModuleAssessments() {
       });
     }
 
-    // Always load the assessment's questions into the editable list —
-    // including assessments that started out as a bulk CSV/Excel upload.
-    // CSV replace is still available below as an optional secondary action.
     setLoadingItems(true);
     try {
       const res = await fetch(
@@ -719,9 +604,6 @@ export default function ModuleAssessments() {
     try {
       await saveAssessmentConfig(editingRow.moduleId);
 
-      // A CSV/Excel file (if chosen via the optional "replace" section)
-      // takes priority and replaces all questions; otherwise we save
-      // whatever is in the editable list.
       if (uploadFile) {
         await uploadQuestionsFile(editingRow.id, uploadFile);
       } else {
@@ -744,11 +626,6 @@ export default function ModuleAssessments() {
       parentType: PARENT_TYPE,
       questionText: item.questionText,
       questionType: item.questionType,
-      // The API expects a plain array of option text strings, not
-      // {id, text} objects — it regenerates its own option ids/UUIDs from
-      // this array and uses `correctAnswer` (0-based index) to know which
-      // one is correct. Sending objects here produces
-      // "options.N: Invalid input: expected string, received object".
       options:
         item.questionType === "multiple_choice"
           ? item.options.filter((o) => o.text.trim()).map((o) => o.text.trim())
@@ -769,8 +646,6 @@ export default function ModuleAssessments() {
     const existing = questionItems.filter((i) => i.id);
     const fresh = questionItems.filter((i) => !i.id);
 
-    // Sequential (not Promise.all) so a failure tells us exactly which
-    // question and why, instead of a generic "one of the questions" alert.
     for (let idx = 0; idx < existing.length; idx++) {
       const item = existing[idx];
       const payload = buildQuestionPayload(item, parentId, idx);
@@ -847,9 +722,6 @@ export default function ModuleAssessments() {
     }
   }
 
-  // Archiving hits the DELETE /admin/modules/{moduleId}/assessment route
-  // directly (per the API docs, DELETE on this route archives the whole
-  // module assessment config) rather than PUT { isActive: false }.
   async function handleArchive(row: ModuleAssessmentRow) {
     if (!confirm(`Move assessment "${row.title}" for ${row.moduleName} to the archive?`)) return;
     try {
@@ -864,9 +736,6 @@ export default function ModuleAssessments() {
     }
   }
 
-  // Restoring an archived module assessment config uses the dedicated
-  // POST /admin/modules/{moduleId}/assessment/restore route (per the API
-  // docs) rather than PUT { isActive: true }.
   async function handleRestore(row: ModuleAssessmentRow) {
     try {
       const res = await fetch(`${API_BASE}admin/modules/${row.moduleId}/assessment/restore`, {
@@ -880,14 +749,6 @@ export default function ModuleAssessments() {
     }
   }
 
-  // Permanently removes an archived assessment. This is a hard delete (not
-  // the same as archiving) — it's only exposed from the Archive view so it
-  // never happens by accident from the main table.
-  // NOTE: assumes a DELETE endpoint exists at admin/modules/{moduleId}/assessment.
-  // Confirm this against your backend before relying on it — the API docs
-  // screenshot we had only showed DELETE documented for individual
-  // assessment-items (admin/assessment-items/{id}), not for the assessment
-  // container itself.
   async function handleDeletePermanently(row: ModuleAssessmentRow) {
     if (
       !confirm(
@@ -907,10 +768,6 @@ export default function ModuleAssessments() {
     }
   }
 
-  // Restores a single archived QUESTION via POST
-  // /admin/assessment-items/{id}/restore (distinct from restoring a whole
-  // assessment config above). Removes it from the archived-questions list
-  // and refreshes the main table so its question count/badge stay in sync.
   async function handleRestoreQuestion(item: ArchivedQuestionRow) {
     try {
       const res = await fetch(`${API_BASE}admin/assessment-items/${item.id}/restore`, {
@@ -952,9 +809,6 @@ export default function ModuleAssessments() {
     setItems((prev) => [...prev, emptyItem()]);
   }
 
-  // Deleting an individual question always uses the assessment-items route
-  // (this archives the question — see "Archive a question" in the API
-  // docs), never the parent assessment archive routes above.
   async function removeItem(index: number) {
     const item = items[index];
     if (item.id) {
@@ -974,331 +828,438 @@ export default function ModuleAssessments() {
   }
 
   return (
-    <div>
-      <div className="flex items-center gap-3 mb-4">
-        <div className="relative max-w-sm flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by title, module or question type..."
-            className="w-full pl-10 pr-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all bg-white shadow-sm"
-          />
-        </div>
-        <select
-          value={selectedTrackId}
-          onChange={(e) => setSelectedTrackId(e.target.value)}
-          className="px-4 py-2.5 text-sm border border-gray-200 rounded-xl text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all"
-          title="Filter by track"
-        >
-          <option value="">All Tracks</option>
-          {tracks.map((t) => (
-            <option key={t.id} value={String(t.id)}>
-              {t.name}
-            </option>
-          ))}
-        </select>
-        <button
-          onClick={openArchive}
-          className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium border border-gray-200 rounded-xl text-gray-600 hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm"
-          title="View archive"
-        >
-          <Archive className="w-4 h-4" />
-          Archive
-          {(archivedRows.length > 0 || archivedQuestions.length > 0) && (
-            <span className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 text-[11px] font-semibold rounded-full bg-[#004900]/10 text-[#004900]">
-              {archivedRows.length + archivedQuestions.length}
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 -m-4 sm:-m-6 lg:-m-8 p-4 sm:p-6 lg:p-8">
+      <div className="max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="flex flex-col gap-3 sm:gap-4 mb-4 sm:mb-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <h1 className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900 tracking-tight">Module Assessments</h1>
+              <p className="text-xs sm:text-sm text-gray-500 mt-1">Manage assessments grouped by module and track</p>
+            </div>
+            <span className="hidden sm:inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-[#004900]/10 text-[#004900] border border-[#004900]/10 self-start sm:self-auto">
+              {filteredRows.length} assessment{filteredRows.length !== 1 ? "s" : ""}
             </span>
-          )}
-        </button>
-      </div>
+          </div>
 
-      <div className="bg-white border border-gray-200/80 rounded-2xl shadow-sm overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-gray-50/80 border-b border-gray-200/80 text-left text-gray-500">
-              <th className="px-5 py-3.5 text-xs font-semibold uppercase tracking-wider">ID</th>
-              <th className="px-5 py-3.5 text-xs font-semibold uppercase tracking-wider">Title</th>
-              <th className="px-5 py-3.5 text-xs font-semibold uppercase tracking-wider">Module Name</th>
-              <th className="px-5 py-3.5 text-xs font-semibold uppercase tracking-wider">Track</th>
-              <th className="px-5 py-3.5 text-xs font-semibold uppercase tracking-wider">Question Type</th>
-              <th className="px-5 py-3.5 text-xs font-semibold uppercase tracking-wider text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
+          {/* Toolbar - stack on mobile, row on desktop */}
+          <div className="flex flex-col lg:flex-row gap-3">
+            <div className="relative flex-1 w-full lg:max-w-sm">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search by title, module or question type..."
+                className="w-full pl-10 pr-4 py-2.5 text-sm border border-gray-200 rounded-xl sm:rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all bg-white shadow-sm"
+              />
+            </div>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <select
+                value={selectedTrackId}
+                onChange={(e) => setSelectedTrackId(e.target.value)}
+                className="w-full sm:w-auto sm:min-w-[160px] px-4 py-2.5 text-sm border border-gray-200 rounded-xl bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all shadow-sm"
+                title="Filter by track"
+              >
+                <option value="">All Tracks</option>
+                {tracks.map((t) => (
+                  <option key={t.id} value={String(t.id)}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={openArchive}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium border border-gray-200 rounded-xl bg-white text-gray-600 hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm"
+                title="View archive"
+              >
+                <Archive className="w-4 h-4" />
+                Archive
+                {(archivedRows.length > 0 || archivedQuestions.length > 0) && (
+                  <span className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 text-[11px] font-semibold rounded-full bg-[#004900]/10 text-[#004900]">
+                    {archivedRows.length + archivedQuestions.length}
+                  </span>
+                )}
+              </button>
+            </div>
+          </div>
+          <div className="sm:hidden text-xs text-gray-400">{filteredRows.length} assessment{filteredRows.length !== 1 ? "s" : ""} • {tracks.length} tracks</div>
+        </div>
+
+        {/* Content card */}
+        <div className="bg-white border border-gray-200/80 rounded-2xl shadow-sm overflow-hidden">
+          {/* Desktop table */}
+          <div className="hidden lg:block overflow-x-auto">
+            <table className="w-full text-sm min-w-[720px]">
+              <thead>
+                <tr className="bg-gray-50/80 border-b border-gray-200/80 text-left text-gray-500">
+                  <th className="px-5 py-3.5 text-xs font-semibold uppercase tracking-wider">ID</th>
+                  <th className="px-5 py-3.5 text-xs font-semibold uppercase tracking-wider">Title</th>
+                  <th className="px-5 py-3.5 text-xs font-semibold uppercase tracking-wider">Module Name</th>
+                  <th className="px-5 py-3.5 text-xs font-semibold uppercase tracking-wider">Track</th>
+                  <th className="px-5 py-3.5 text-xs font-semibold uppercase tracking-wider">Question Type</th>
+                  <th className="px-5 py-3.5 text-xs font-semibold uppercase tracking-wider text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {loading && (
+                  <tr>
+                    <td colSpan={6} className="px-5 py-16 text-center">
+                      <div className="flex flex-col items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center animate-pulse">
+                          <Search className="w-4 h-4 text-gray-400" />
+                        </div>
+                        <p className="text-sm text-gray-400">Loading module assessments...</p>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                {!loading && error && (
+                  <tr>
+                    <td colSpan={6} className="px-5 py-16 text-center">
+                      <div className="flex flex-col items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center">
+                          <X className="w-4 h-4 text-red-400" />
+                        </div>
+                        <p className="text-sm text-red-500">{error}</p>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                {!loading && !error && filteredRows.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="px-5 py-16 text-center">
+                      <div className="flex flex-col items-center gap-3">
+                        <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center">
+                          <ClipboardList className="w-5 h-5 text-gray-400" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-gray-500">No module assessments found</p>
+                          <p className="text-xs text-gray-400 mt-1">Try adjusting your search or filters.</p>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                {!loading &&
+                  !error &&
+                  filteredRows.map((row) => (
+                    <tr key={row.id} className="hover:bg-gray-50/60 transition-colors">
+                      <td className="px-5 py-3.5 text-gray-500 font-mono text-xs">{row.id}</td>
+                      <td className="px-5 py-3.5 font-medium text-gray-900 max-w-[220px] truncate" title={row.title}>{row.title}</td>
+                      <td className="px-5 py-3.5 text-gray-600 max-w-[180px] truncate" title={row.moduleName}>{row.moduleName}</td>
+                      <td className="px-5 py-3.5 text-gray-600">
+                        <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-100">{row.trackName}</span>
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <span
+                          className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${
+                            row.displayLabel === "No question yet"
+                              ? "bg-gray-100 text-gray-500"
+                              : "bg-purple-50 text-purple-700 border border-purple-200/60"
+                          }`}
+                        >
+                          {row.displayLabel}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3.5 text-right">
+                        <div className="inline-flex items-center gap-1">
+                          <button
+                            onClick={() => openEdit(row)}
+                            className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+                            title="Edit"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => openAttempts(row)}
+                            className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                            title="View attempts"
+                          >
+                            <ClipboardList className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleArchive(row)}
+                            className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                            title="Move to archive"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Tablet horizontal scroll */}
+          <div className="hidden md:block lg:hidden overflow-x-auto">
+            <table className="w-full text-sm min-w-[640px]">
+              <thead>
+                <tr className="bg-gray-50/80 border-b border-gray-200/80 text-left text-gray-500">
+                  <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider">Title</th>
+                  <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider">Module</th>
+                  <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider">Type</th>
+                  <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {!loading && !error && filteredRows.map((row) => (
+                  <tr key={row.id} className="hover:bg-gray-50/60">
+                    <td className="px-4 py-3">
+                      <div className="font-medium text-gray-900 truncate max-w-[160px]">{row.title}</div>
+                      <div className="text-xs text-gray-400">{row.trackName}</div>
+                    </td>
+                    <td className="px-4 py-3 text-gray-600 text-sm truncate max-w-[140px]">{row.moduleName}</td>
+                    <td className="px-4 py-3"><span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${row.displayLabel === "No question yet" ? "bg-gray-100 text-gray-500" : "bg-purple-50 text-purple-700 border border-purple-200/60"}`}>{row.displayLabel}</span></td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="inline-flex items-center gap-1">
+                        <button onClick={() => openEdit(row)} className="w-8 h-8 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 inline-flex items-center justify-center"><Pencil className="w-4 h-4" /></button>
+                        <button onClick={() => openAttempts(row)} className="w-8 h-8 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 inline-flex items-center justify-center"><ClipboardList className="w-4 h-4" /></button>
+                        <button onClick={() => handleArchive(row)} className="w-8 h-8 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 inline-flex items-center justify-center"><Trash2 className="w-4 h-4" /></button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {loading && <tr><td colSpan={4} className="px-4 py-12 text-center text-sm text-gray-400">Loading...</td></tr>}
+                {!loading && !error && filteredRows.length===0 && <tr><td colSpan={4} className="px-4 py-12 text-center"><p className="text-sm text-gray-500">No module assessments found</p></td></tr>}
+                {!loading && error && <tr><td colSpan={4} className="px-4 py-12 text-center text-sm text-red-500">{error}</td></tr>}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Mobile cards */}
+          <div className="md:hidden divide-y divide-gray-100">
             {loading && (
-              <tr>
-                <td colSpan={6} className="px-5 py-16 text-center">
-                  <div className="flex flex-col items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center animate-pulse">
-                      <Search className="w-4 h-4 text-gray-400" />
-                    </div>
-                    <p className="text-sm text-gray-400">Loading module assessments...</p>
-                  </div>
-                </td>
-              </tr>
+              <div className="flex flex-col items-center gap-3 py-12 px-4">
+                <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center animate-pulse"><Search className="w-4 h-4 text-gray-400" /></div>
+                <p className="text-sm text-gray-400">Loading module assessments...</p>
+              </div>
             )}
             {!loading && error && (
-              <tr>
-                <td colSpan={6} className="px-5 py-16 text-center">
-                  <div className="flex flex-col items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center">
-                      <X className="w-4 h-4 text-red-400" />
-                    </div>
-                    <p className="text-sm text-red-500">{error}</p>
-                  </div>
-                </td>
-              </tr>
+              <div className="flex flex-col items-center gap-3 py-12 px-4">
+                <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center"><X className="w-4 h-4 text-red-400" /></div>
+                <p className="text-sm text-red-500 text-center">{error}</p>
+              </div>
             )}
             {!loading && !error && filteredRows.length === 0 && (
-              <tr>
-                <td colSpan={6} className="px-5 py-16 text-center">
-                  <div className="flex flex-col items-center gap-3">
-                    <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center">
-                      <ClipboardList className="w-5 h-5 text-gray-400" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-gray-500">No module assessments found</p>
-                      <p className="text-xs text-gray-400 mt-1">Try adjusting your search or filters.</p>
-                    </div>
-                  </div>
-                </td>
-              </tr>
+              <div className="flex flex-col items-center gap-3 py-12 px-4 text-center">
+                <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center"><ClipboardList className="w-5 h-5 text-gray-400" /></div>
+                <p className="text-sm font-medium text-gray-500">No module assessments found</p>
+                <p className="text-xs text-gray-400">Try adjusting your search or filters.</p>
+              </div>
             )}
-            {!loading &&
-              !error &&
-              filteredRows.map((row) => (
-                <tr key={row.id} className="hover:bg-gray-50/60 transition-colors">
-                  <td className="px-5 py-3.5 text-gray-500">{row.id}</td>
-                  <td className="px-5 py-3.5 font-medium text-gray-900">{row.title}</td>
-                  <td className="px-5 py-3.5 text-gray-600">{row.moduleName}</td>
-                  <td className="px-5 py-3.5 text-gray-600">{row.trackName}</td>
-                  <td className="px-5 py-3.5">
-                    <span
-                      className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${
-                        row.displayLabel === "No question yet"
-                          ? "bg-gray-100 text-gray-500"
-                          : "bg-purple-50 text-purple-700 border border-purple-200/60"
-                      }`}
-                    >
-                      {row.displayLabel}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3.5 text-right">
-                    <div className="inline-flex items-center gap-1">
-                      <button
-                        onClick={() => openEdit(row)}
-                        className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
-                        title="Edit"
-                      >
-                        <Pencil className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => openAttempts(row)}
-                        className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-                        title="View attempts"
-                      >
-                        <ClipboardList className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => handleArchive(row)}
-                        className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
-                        title="Move to archive"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-          </tbody>
-        </table>
+            {!loading && !error && filteredRows.map((row) => (
+              <div key={row.id} className="p-4 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-sm font-semibold text-gray-900 truncate">{row.title}</h3>
+                    <p className="text-xs text-gray-500 truncate mt-0.5">{row.moduleName} • <span className="text-blue-600">{row.trackName}</span></p>
+                  </div>
+                  <span className="text-xs font-mono text-gray-400 shrink-0">#{row.id}</span>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${row.displayLabel === "No question yet" ? "bg-gray-100 text-gray-500" : "bg-purple-50 text-purple-700 border border-purple-200/60"}`}>{row.displayLabel}</span>
+                  <span className="text-xs text-gray-400">{row.questionCount} question{row.questionCount!==1?"s":""}</span>
+                </div>
+                <div className="flex items-center gap-2 pt-1">
+                  <button onClick={() => openEdit(row)} className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium bg-gray-900 text-white hover:bg-black"><Pencil className="w-3.5 h-3.5" /> Edit</button>
+                  <button onClick={() => openAttempts(row)} className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium border border-gray-200 text-gray-700 hover:bg-gray-50"><ClipboardList className="w-3.5 h-3.5" /> Attempts</button>
+                  <button onClick={() => handleArchive(row)} className="w-9 h-9 inline-flex items-center justify-center rounded-xl border border-red-100 text-red-500 hover:bg-red-50"><Trash2 className="w-4 h-4" /></button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
 
       {editingRow && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-2xl p-6 relative max-h-[90vh] overflow-y-auto shadow-2xl">
-            <button
-              onClick={closeEdit}
-              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-200 transition-colors"
-              title="cancel"
-            >
-              <X className="w-4 h-4" />
-            </button>
-            <h3 className="text-lg font-semibold mb-1 text-gray-900">Edit Module Assessment</h3>
-            <div className="flex items-center gap-2 mb-4">
-              <p className="text-sm text-gray-500">{editingRow.moduleName}</p>
-              <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
-                {editingRow.displayLabel}
-              </span>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Title</label>
-                <input
-                  value={editForm.title}
-                  onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
-                  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all"
-                  title="title"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Description</label>
-                <textarea
-                  value={editForm.description}
-                  onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all"
-                  rows={2}
-                  title="description"
-                />
-              </div>
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Pass Mark %</label>
-                  <input
-                    type="number"
-                    value={editForm.passMarkPercent}
-                    onChange={(e) =>
-                      setEditForm({ ...editForm, passMarkPercent: Number(e.target.value) })
-                    }
-                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all"
-                    title="pass mark"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Max Attempts</label>
-                  <input
-                    type="number"
-                    value={editForm.maxAttempts}
-                    onChange={(e) =>
-                      setEditForm({ ...editForm, maxAttempts: Number(e.target.value) })
-                    }
-                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all"
-                    title="max attempts"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Time Limit (min)</label>
-                  <input
-                    type="number"
-                    value={editForm.timeLimitMinutes}
-                    onChange={(e) =>
-                      setEditForm({ ...editForm, timeLimitMinutes: Number(e.target.value) })
-                    }
-                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all"
-                    title="time limit"
-                  />
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-4">
+          <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[92vh] sm:max-h-[90vh] overflow-hidden shadow-2xl flex flex-col">
+            <div className="bg-gradient-to-r from-[#004900] to-[#006400] px-4 sm:px-6 py-4 flex items-start justify-between gap-4 shrink-0">
+              <div className="min-w-0 flex-1">
+                <h3 className="text-base sm:text-lg font-semibold text-white leading-tight truncate pr-2">Edit Module Assessment</h3>
+                <div className="flex flex-wrap items-center gap-2 mt-1">
+                  <p className="text-xs sm:text-sm text-white/80 truncate">{editingRow.moduleName}</p>
+                  <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-white/15 text-white border border-white/20">{editingRow.displayLabel}</span>
                 </div>
               </div>
-              <label className="flex items-center gap-2.5 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={editForm.isActive}
-                  onChange={(e) => setEditForm({ ...editForm, isActive: e.target.checked })}
-                  className="w-4 h-4 rounded border-gray-300 accent-[#004900]"
-                />
-                <span className="text-sm text-gray-700">Active</span>
-              </label>
-            </div>
-
-            <hr className="my-5 border-gray-100" />
-
-            {loadingItems && (
-              <p className="text-sm text-gray-400 text-center py-6">Loading questions...</p>
-            )}
-
-            {!loadingItems && (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                    Questions ({items.length})
-                  </p>
-                  <button
-                    onClick={addItem}
-                    className="inline-flex items-center gap-1 text-xs text-[#004900] hover:underline"
-                  >
-                    <Plus className="w-3.5 h-3.5" /> Add question
-                  </button>
-                </div>
-                {items.map((item, idx) => (
-                  <div key={item.id ?? `new-${idx}`} className="border border-gray-200 rounded-xl p-3 relative hover:border-gray-300 transition-colors">
-                    {items.length > 1 && (
-                      <button
-                        onClick={() => removeItem(idx)}
-                        className="absolute top-2 right-2 text-gray-400 hover:text-red-500 transition-colors"
-                        title="remove question"
-                      >
-                        <Trash className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                    <p className="text-xs text-gray-400 mb-2">Question {idx + 1}</p>
-                    <SingleQuestionEditor
-                      item={item}
-                      groupName={`module-q-${item.id ?? idx}`}
-                      onChange={(patch) => updateItem(idx, patch)}
-                      onOptionChange={(optionIndex, text) =>
-                        updateItemOption(idx, optionIndex, text)
-                      }
-                    />
-                  </div>
-                ))}
-
-                <div className="pt-2 border-t border-gray-100">
-                  <button
-                    type="button"
-                    onClick={() => setShowCsvReplace((v) => !v)}
-                    className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 hover:underline"
-                  >
-                    <Upload className="w-3.5 h-3.5" />
-                    {showCsvReplace
-                      ? "Cancel CSV / Excel replace"
-                      : "Replace all questions via CSV / Excel upload instead"}
-                  </button>
-                  {showCsvReplace && (
-                    <div className="mt-3">
-                      <label className="flex items-center gap-2 px-3 py-2 border border-dashed border-gray-300 rounded-xl text-sm text-gray-500 cursor-pointer hover:border-[#004900] transition-colors">
-                        <Upload className="w-4 h-4" />
-                        {uploadFile ? uploadFile.name : "Choose .csv or .xlsx file"}
-                        <input
-                          type="file"
-                          accept=".csv,.xlsx,.xls"
-                          className="hidden"
-                          onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
-                        />
-                      </label>
-                      <p className="text-xs text-gray-400 mt-2">
-                        Required columns: question_text, question_type, correct_answer.
-                        Optional: option_a–d, explanation, points. Max 5MB. Uploading a file
-                        here replaces every question above on save.
-                      </p>
-                      {uploadFile && (
-                        <button
-                          type="button"
-                          onClick={() => setUploadFile(null)}
-                          className="text-xs text-red-500 hover:underline mt-1"
-                        >
-                          Clear selected file
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            <div className="flex justify-end gap-3 mt-6">
               <button
                 onClick={closeEdit}
-                className="px-4 py-2.5 text-sm rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors font-medium"
+                className="w-8 h-8 rounded-xl bg-white/10 flex items-center justify-center text-white/80 hover:text-white hover:bg-white/15 transition-colors shrink-0"
+                title="cancel"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
+              <div className="space-y-4">
+                <div>
+                  <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Title</label>
+                  <input
+                    value={editForm.title}
+                    onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                    className="w-full px-3 sm:px-4 py-2 sm:py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all"
+                    title="title"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Description</label>
+                  <textarea
+                    value={editForm.description}
+                    onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                    className="w-full px-3 sm:px-4 py-2 sm:py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all"
+                    rows={2}
+                    title="description"
+                  />
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+                  <div>
+                    <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Pass Mark %</label>
+                    <input
+                      type="number"
+                      value={editForm.passMarkPercent}
+                      onChange={(e) =>
+                        setEditForm({ ...editForm, passMarkPercent: Number(e.target.value) })
+                      }
+                      className="w-full px-3 sm:px-4 py-2 sm:py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all"
+                      title="pass mark"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Max Attempts</label>
+                    <input
+                      type="number"
+                      value={editForm.maxAttempts}
+                      onChange={(e) =>
+                        setEditForm({ ...editForm, maxAttempts: Number(e.target.value) })
+                      }
+                      className="w-full px-3 sm:px-4 py-2 sm:py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all"
+                      title="max attempts"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Time Limit (min)</label>
+                    <input
+                      type="number"
+                      value={editForm.timeLimitMinutes}
+                      onChange={(e) =>
+                        setEditForm({ ...editForm, timeLimitMinutes: Number(e.target.value) })
+                      }
+                      className="w-full px-3 sm:px-4 py-2 sm:py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] transition-all"
+                      title="time limit"
+                    />
+                  </div>
+                </div>
+                <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={editForm.isActive}
+                    onChange={(e) => setEditForm({ ...editForm, isActive: e.target.checked })}
+                    className="w-4 h-4 rounded border-gray-300 accent-[#004900]"
+                  />
+                  <span className="text-sm text-gray-700">Active</span>
+                </label>
+              </div>
+
+              <hr className="border-gray-100" />
+
+              {loadingItems && (
+                <p className="text-sm text-gray-400 text-center py-6">Loading questions...</p>
+              )}
+
+              {!loadingItems && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                      Questions ({items.length})
+                    </p>
+                    <button
+                      onClick={addItem}
+                      className="inline-flex items-center gap-1 text-xs font-medium text-[#004900] hover:underline"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Add question
+                    </button>
+                  </div>
+                  {items.map((item, idx) => (
+                    <div key={item.id ?? `new-${idx}`} className="border border-gray-200 rounded-xl sm:rounded-2xl p-3 sm:p-4 relative hover:border-gray-300 transition-colors bg-gray-50/30">
+                      {items.length > 1 && (
+                        <button
+                          onClick={() => removeItem(idx)}
+                          className="absolute top-2 right-2 sm:top-3 sm:right-3 w-7 h-7 rounded-lg bg-white border border-gray-200 flex items-center justify-center text-gray-400 hover:text-red-500 hover:border-red-200 transition-colors"
+                          title="remove question"
+                        >
+                          <Trash className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      <p className="text-xs font-medium text-gray-500 mb-2 sm:mb-3 pr-8">Question {idx + 1}</p>
+                      <SingleQuestionEditor
+                        item={item}
+                        groupName={`module-q-${item.id ?? idx}`}
+                        onChange={(patch) => updateItem(idx, patch)}
+                        onOptionChange={(optionIndex, text) =>
+                          updateItemOption(idx, optionIndex, text)
+                        }
+                      />
+                    </div>
+                  ))}
+
+                  <div className="pt-2 border-t border-gray-100">
+                    <button
+                      type="button"
+                      onClick={() => setShowCsvReplace((v) => !v)}
+                      className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-gray-700 hover:underline"
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      {showCsvReplace
+                        ? "Cancel CSV / Excel replace"
+                        : "Replace all questions via CSV / Excel upload instead"}
+                    </button>
+                    {showCsvReplace && (
+                      <div className="mt-3">
+                        <label className="flex items-center gap-2 px-3 py-2.5 border-2 border-dashed border-gray-200 rounded-xl text-sm text-gray-500 cursor-pointer hover:border-[#004900]/30 hover:bg-[#004900]/5 transition-colors">
+                          <Upload className="w-4 h-4 shrink-0" />
+                          <span className="truncate">{uploadFile ? uploadFile.name : "Choose .csv or .xlsx file"}</span>
+                          <input
+                            type="file"
+                            accept=".csv,.xlsx,.xls"
+                            className="hidden"
+                            onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                          />
+                        </label>
+                        <p className="text-xs text-gray-400 mt-2 leading-relaxed">
+                          Required columns: question_text, question_type, correct_answer.
+                          Optional: option_a–d, explanation, points. Max 5MB. Uploading a file
+                          here replaces every question above on save.
+                        </p>
+                        {uploadFile && (
+                          <button
+                            type="button"
+                            onClick={() => setUploadFile(null)}
+                            className="text-xs text-red-500 hover:underline mt-1"
+                          >
+                            Clear selected file
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 p-4 sm:p-6 border-t border-gray-100 shrink-0 bg-white">
+              <button
+                onClick={closeEdit}
+                className="w-full sm:w-auto px-4 py-2.5 text-sm rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors font-medium"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSaveEdit}
                 disabled={saving || loadingItems}
-                className="px-4 py-2.5 text-sm rounded-xl bg-[#004900] text-white hover:bg-[#003600] disabled:opacity-50 shadow-sm shadow-[#004900]/20 transition-all font-medium"
+                className="w-full sm:w-auto px-5 py-2.5 text-sm rounded-xl bg-gradient-to-r from-[#004900] to-[#006400] text-white hover:from-[#003700] hover:to-[#004900] disabled:opacity-50 shadow-sm shadow-[#004900]/20 transition-all font-medium"
               >
                 {saving ? "Saving..." : "Save Changes"}
               </button>
@@ -1308,342 +1269,360 @@ export default function ModuleAssessments() {
       )}
 
       {archiveOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-4xl p-6 relative max-h-[85vh] overflow-y-auto shadow-2xl">
-            <button
-              onClick={() => setArchiveOpen(false)}
-              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-200 transition-colors"
-              title="close"
-            >
-              <X className="w-4 h-4" />
-            </button>
-            <h3 className="text-lg font-semibold mb-1 text-gray-900">Assessment Archive</h3>
-            <p className="text-sm text-gray-500 mb-4">
-              Archived module assessments and archived individual questions. Restore either to
-              make it active again.
-            </p>
-
-            {/* Archived QUESTIONS — sourced from GET /admin/assessments,
-                filtered to items with isArchived === true. Restored via
-                POST /admin/assessment-items/{id}/restore. */}
-            <div className="mb-6">
-              <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">
-                Archived Questions
-              </p>
-              {archivedQuestionsLoading && (
-                <p className="text-sm text-gray-400 text-center py-6">
-                  Loading archived questions...
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-4">
+          <div className="bg-white rounded-2xl w-full max-w-4xl max-h-[90vh] sm:max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
+            <div className="px-4 sm:px-6 py-4 sm:py-5 border-b border-gray-100 flex items-start justify-between gap-4 shrink-0">
+              <div>
+                <h3 className="text-base sm:text-lg font-semibold text-gray-900">Assessment Archive</h3>
+                <p className="text-xs sm:text-sm text-gray-500 mt-1 leading-relaxed">
+                  Archived module assessments and archived individual questions. Restore either to make it active again.
                 </p>
-              )}
-              {!archivedQuestionsLoading && archivedQuestionsError && (
-                <p className="text-sm text-red-500 text-center py-6">{archivedQuestionsError}</p>
-              )}
-              {!archivedQuestionsLoading &&
-                !archivedQuestionsError &&
-                archivedQuestions.length === 0 && (
+              </div>
+              <button
+                onClick={() => setArchiveOpen(false)}
+                className="w-8 h-8 rounded-xl bg-gray-100 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-200 transition-colors shrink-0"
+                title="close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
+              <div>
+                <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">
+                  Archived Questions
+                </p>
+                {archivedQuestionsLoading && (
                   <p className="text-sm text-gray-400 text-center py-6">
-                    No archived questions.
+                    Loading archived questions...
                   </p>
                 )}
-              {!archivedQuestionsLoading &&
-                !archivedQuestionsError &&
-                archivedQuestions.length > 0 && (
-                  <div className="border border-gray-200 rounded-xl overflow-hidden">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="bg-gray-50 border-b border-gray-200 text-left text-gray-500">
-                          <th className="px-4 py-3 font-medium">Question</th>
-                          <th className="px-4 py-3 font-medium">Assessment</th>
-                          <th className="px-4 py-3 font-medium">Module</th>
-                          <th className="px-4 py-3 font-medium">Track</th>
-                          <th className="px-4 py-3 font-medium text-right">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {archivedQuestions.map((q) => (
-                          <tr key={q.id} className="border-b border-gray-100 hover:bg-gray-50">
-                            <td
-                              className="px-4 py-3 text-gray-700 max-w-xs truncate"
-                              title={q.questionText}
-                            >
-                              {q.questionText || `Question #${q.id}`}
-                            </td>
-                            <td className="px-4 py-3 text-gray-700">{q.assessmentTitle}</td>
-                            <td className="px-4 py-3 text-gray-700">{q.moduleName}</td>
-                            <td className="px-4 py-3 text-gray-700">{q.trackName}</td>
-                            <td className="px-4 py-3 text-right">
-                              <button
-                                onClick={() => handleRestoreQuestion(q)}
-                                className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-[#004900] hover:bg-green-50"
-                                title="Restore question"
-                              >
-                                <RotateCcw className="w-4 h-4" />
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                {!archivedQuestionsLoading && archivedQuestionsError && (
+                  <p className="text-sm text-red-500 text-center py-6">{archivedQuestionsError}</p>
                 )}
-            </div>
-
-            <hr className="my-5 border-gray-100" />
-
-            {/* Archived ASSESSMENT CONFIGS — restored via
-                POST /admin/modules/{moduleId}/assessment/restore. */}
-            <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">
-              Archived Assessments
-            </p>
-            {archivedRows.length === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-10">Archive is empty.</p>
-            ) : (
-              <div className="border border-gray-200 rounded-xl overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-gray-50 border-b border-gray-200 text-left text-gray-500">
-                      <th className="px-4 py-3 font-medium">ID</th>
-                      <th className="px-4 py-3 font-medium">Title</th>
-                      <th className="px-4 py-3 font-medium">Module Name</th>
-                      <th className="px-4 py-3 font-medium">Track</th>
-                      <th className="px-4 py-3 font-medium">Question Type</th>
-                      <th className="px-4 py-3 font-medium text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {archivedRows.map((row) => (
-                      <tr key={row.id} className="border-b border-gray-100 hover:bg-gray-50">
-                        <td className="px-4 py-3 text-gray-700">{row.id}</td>
-                        <td className="px-4 py-3 font-medium text-gray-900">{row.title}</td>
-                        <td className="px-4 py-3 text-gray-700">{row.moduleName}</td>
-                        <td className="px-4 py-3 text-gray-700">{row.trackName}</td>
-                        <td className="px-4 py-3">
-                          <span className="inline-flex px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-700">
-                            {row.displayLabel}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <button
-                            onClick={() => handleRestore(row)}
-                            className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-[#004900] hover:bg-green-50 mr-1"
-                            title="Restore"
-                          >
-                            <RotateCcw className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handleDeletePermanently(row)}
-                            className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-red-500 hover:bg-red-50"
-                            title="Delete permanently"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                {!archivedQuestionsLoading &&
+                  !archivedQuestionsError &&
+                  archivedQuestions.length === 0 && (
+                    <p className="text-sm text-gray-400 text-center py-6 border border-dashed border-gray-200 rounded-xl">
+                      No archived questions.
+                    </p>
+                  )}
+                {!archivedQuestionsLoading &&
+                  !archivedQuestionsError &&
+                  archivedQuestions.length > 0 && (
+                    <>
+                      {/* Desktop */}
+                      <div className="hidden sm:block border border-gray-200 rounded-xl overflow-hidden overflow-x-auto">
+                        <table className="w-full text-sm min-w-[520px]">
+                          <thead>
+                            <tr className="bg-gray-50 border-b border-gray-200 text-left text-gray-500">
+                              <th className="px-4 py-3 font-medium text-xs uppercase tracking-wide">Question</th>
+                              <th className="px-4 py-3 font-medium text-xs uppercase tracking-wide">Assessment</th>
+                              <th className="px-4 py-3 font-medium text-xs uppercase tracking-wide">Module</th>
+                              <th className="px-4 py-3 font-medium text-xs uppercase tracking-wide">Track</th>
+                              <th className="px-4 py-3 font-medium text-xs uppercase tracking-wide text-right">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {archivedQuestions.map((q) => (
+                              <tr key={q.id} className="border-b border-gray-100 hover:bg-gray-50">
+                                <td
+                                  className="px-4 py-3 text-gray-700 max-w-[180px] truncate"
+                                  title={q.questionText}
+                                >
+                                  {q.questionText || `Question #${q.id}`}
+                                </td>
+                                <td className="px-4 py-3 text-gray-700 truncate max-w-[120px]">{q.assessmentTitle}</td>
+                                <td className="px-4 py-3 text-gray-700 truncate max-w-[120px]">{q.moduleName}</td>
+                                <td className="px-4 py-3 text-gray-700">{q.trackName}</td>
+                                <td className="px-4 py-3 text-right">
+                                  <button
+                                    onClick={() => handleRestoreQuestion(q)}
+                                    className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-[#004900] hover:bg-green-50 border border-transparent hover:border-green-200"
+                                    title="Restore question"
+                                  >
+                                    <RotateCcw className="w-4 h-4" />
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      {/* Mobile */}
+                      <div className="sm:hidden space-y-3">
+                        {archivedQuestions.map((q) => (
+                          <div key={q.id} className="border border-gray-200 rounded-xl p-3 space-y-2">
+                            <p className="text-sm font-medium text-gray-900 line-clamp-2">{q.questionText || `Question #${q.id}`}</p>
+                            <div className="flex flex-wrap gap-1.5 text-xs">
+                              <span className="px-2 py-1 rounded-full bg-gray-100 text-gray-600">{q.assessmentTitle}</span>
+                              <span className="px-2 py-1 rounded-full bg-blue-50 text-blue-700">{q.moduleName}</span>
+                              <span className="px-2 py-1 rounded-full bg-purple-50 text-purple-700">{q.trackName}</span>
+                            </div>
+                            <button onClick={() => handleRestoreQuestion(q)} className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium bg-[#004900] text-white"><RotateCcw className="w-3.5 h-3.5" /> Restore Question</button>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
               </div>
-            )}
+
+              <hr className="border-gray-100" />
+
+              <div>
+                <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">
+                  Archived Assessments
+                </p>
+                {archivedRows.length === 0 ? (
+                  <p className="text-sm text-gray-400 text-center py-10 border border-dashed border-gray-200 rounded-xl">Archive is empty.</p>
+                ) : (
+                  <>
+                    <div className="hidden sm:block border border-gray-200 rounded-xl overflow-hidden overflow-x-auto">
+                      <table className="w-full text-sm min-w-[560px]">
+                        <thead>
+                          <tr className="bg-gray-50 border-b border-gray-200 text-left text-gray-500">
+                            <th className="px-4 py-3 font-medium text-xs uppercase tracking-wide">ID</th>
+                            <th className="px-4 py-3 font-medium text-xs uppercase tracking-wide">Title</th>
+                            <th className="px-4 py-3 font-medium text-xs uppercase tracking-wide">Module Name</th>
+                            <th className="px-4 py-3 font-medium text-xs uppercase tracking-wide">Track</th>
+                            <th className="px-4 py-3 font-medium text-xs uppercase tracking-wide">Question Type</th>
+                            <th className="px-4 py-3 font-medium text-xs uppercase tracking-wide text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {archivedRows.map((row) => (
+                            <tr key={row.id} className="border-b border-gray-100 hover:bg-gray-50">
+                              <td className="px-4 py-3 text-gray-700 font-mono text-xs">{row.id}</td>
+                              <td className="px-4 py-3 font-medium text-gray-900 max-w-[140px] truncate">{row.title}</td>
+                              <td className="px-4 py-3 text-gray-700 max-w-[120px] truncate">{row.moduleName}</td>
+                              <td className="px-4 py-3 text-gray-700">{row.trackName}</td>
+                              <td className="px-4 py-3">
+                                <span className="inline-flex px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-700">
+                                  {row.displayLabel}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-right">
+                                <button
+                                  onClick={() => handleRestore(row)}
+                                  className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-[#004900] hover:bg-green-50 mr-1"
+                                  title="Restore"
+                                >
+                                  <RotateCcw className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => handleDeletePermanently(row)}
+                                  className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-red-500 hover:bg-red-50"
+                                  title="Delete permanently"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="sm:hidden space-y-3">
+                      {archivedRows.map((row) => (
+                        <div key={row.id} className="border border-gray-200 rounded-xl p-3 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <h4 className="text-sm font-semibold text-gray-900 truncate pr-2">{row.title}</h4>
+                            <span className="text-xs font-mono text-gray-400">#{row.id}</span>
+                          </div>
+                          <p className="text-xs text-gray-500">{row.moduleName} • {row.trackName}</p>
+                          <span className="inline-flex px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-700">{row.displayLabel}</span>
+                          <div className="flex gap-2 pt-1">
+                            <button onClick={() => handleRestore(row)} className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium bg-[#004900] text-white"><RotateCcw className="w-3.5 h-3.5" /> Restore</button>
+                            <button onClick={() => handleDeletePermanently(row)} className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium border border-red-200 text-red-600"><Trash2 className="w-3.5 h-3.5" /> Delete</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Attempts modal — opened from the "View attempts" button in the
-          Actions column. Shows every learner attempt for the selected
-          module assessment as an expandable card: click a card to lazily
-          load and reveal that attempt's enriched, question-by-question
-          result. */}
       {attemptsOpen && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl w-full max-w-3xl p-6 relative max-h-[85vh] overflow-y-auto">
-            <button
-              onClick={closeAttempts}
-              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
-              title="close"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <div className="flex items-center gap-2 mb-1">
-              <ClipboardList className="w-5 h-5 text-[#004900]" />
-              <h3 className="text-lg font-semibold">Attempts</h3>
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-4">
+          <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[92vh] sm:max-h-[85vh] flex flex-col overflow-hidden shadow-2xl">
+            <div className="px-4 sm:px-6 py-4 border-b border-gray-100 flex items-start justify-between gap-4 shrink-0">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="w-8 h-8 rounded-xl bg-[#004900]/10 flex items-center justify-center shrink-0">
+                    <ClipboardList className="w-4 h-4 text-[#004900]" />
+                  </span>
+                  <h3 className="text-base sm:text-lg font-semibold text-gray-900">Attempts</h3>
+                  {!attemptsLoading && !attemptsError && (
+                    <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-600">
+                      {attemptsList.length} attempt{attemptsList.length === 1 ? "" : "s"}
+                    </span>
+                  )}
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5 mt-2 text-xs text-gray-500">
+                  <span className="font-medium text-gray-700 truncate">{attemptsRow?.title}</span>
+                  <span className="text-gray-300 hidden sm:inline">•</span>
+                  <span className="truncate">{attemptsRow?.moduleName}</span>
+                  <span className="text-gray-300 hidden sm:inline">•</span>
+                  <span className="truncate">{attemptsRow?.trackName}</span>
+                </div>
+                {!attemptsLoading && !attemptsError && (
+                  <span className="sm:hidden inline-flex mt-2 px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-600">
+                    {attemptsList.length} attempt{attemptsList.length === 1 ? "" : "s"}
+                  </span>
+                )}
+              </div>
+              <button
+                onClick={closeAttempts}
+                className="w-8 h-8 rounded-xl bg-gray-100 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-200 transition-colors shrink-0"
+                title="close"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
-            <div className="flex items-center gap-2 mb-5 flex-wrap">
-              <p className="text-sm text-gray-500">{attemptsRow?.title}</p>
-              <span className="text-gray-300">•</span>
-              <p className="text-sm text-gray-500">{attemptsRow?.moduleName}</p>
-              <span className="text-gray-300">•</span>
-              <p className="text-sm text-gray-500">{attemptsRow?.trackName}</p>
-              {!attemptsLoading && !attemptsError && (
-                <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-full text-[11px] bg-gray-100 text-gray-600 ml-auto">
-                  {attemptsList.length} attempt{attemptsList.length === 1 ? "" : "s"}
-                </span>
+
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+              {attemptsLoading && (
+                <p className="text-sm text-gray-400 text-center py-10">Loading attempts...</p>
               )}
-            </div>
+              {!attemptsLoading && attemptsError && (
+                <p className="text-sm text-red-500 text-center py-10">{attemptsError}</p>
+              )}
+              {!attemptsLoading && !attemptsError && attemptsList.length === 0 && (
+                <div className="text-center py-10">
+                  <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-3"><ClipboardList className="w-5 h-5 text-gray-400" /></div>
+                  <p className="text-sm text-gray-400">No learner attempts yet for this assessment.</p>
+                </div>
+              )}
 
-            {attemptsLoading && (
-              <p className="text-sm text-gray-400 text-center py-10">Loading attempts...</p>
-            )}
-            {!attemptsLoading && attemptsError && (
-              <p className="text-sm text-red-500 text-center py-10">{attemptsError}</p>
-            )}
-            {!attemptsLoading && !attemptsError && attemptsList.length === 0 && (
-              <p className="text-sm text-gray-400 text-center py-10">
-                No learner attempts yet for this assessment.
-              </p>
-            )}
+              {!attemptsLoading && !attemptsError && attemptsList.length > 0 && (
+                <div className="space-y-3">
+                  {attemptsList.map((attempt) => {
+                    const isExpanded = expandedAttemptId === attempt.id;
+                    const fullName = attempt.user?.fullName || `User #${attempt.user?.id ?? "—"}`;
+                    const initials =
+                      fullName
+                        .split(" ")
+                        .map((p) => p[0])
+                        .filter(Boolean)
+                        .slice(0, 2)
+                        .join("")
+                        .toUpperCase() || "?";
+                    const detail = attemptDetails[attempt.id];
 
-            {!attemptsLoading && !attemptsError && attemptsList.length > 0 && (
-              <div className="space-y-3">
-                {attemptsList.map((attempt) => {
-                  const isExpanded = expandedAttemptId === attempt.id;
-                  const fullName = attempt.user?.fullName || `User #${attempt.user?.id ?? "—"}`;
-                  const initials =
-                    fullName
-                      .split(" ")
-                      .map((p) => p[0])
-                      .filter(Boolean)
-                      .slice(0, 2)
-                      .join("")
-                      .toUpperCase() || "?";
-                  const detail = attemptDetails[attempt.id];
-
-                  return (
-                    <div
-                      key={attempt.id}
-                      className="border border-gray-200 rounded-lg overflow-hidden"
-                    >
-                      <button
-                        type="button"
-                        onClick={() => toggleAttemptDetail(attempt.id)}
-                        className="w-full flex items-center gap-3 p-3 text-left hover:bg-gray-50"
+                    return (
+                      <div
+                        key={attempt.id}
+                        className="border border-gray-200 rounded-xl sm:rounded-2xl overflow-hidden"
                       >
-                        <div className="w-9 h-9 rounded-full bg-[#004900]/10 text-[#004900] flex items-center justify-center text-xs font-semibold shrink-0">
-                          {initials}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-gray-900 truncate">
-                            {fullName}
-                          </p>
-                          <p className="text-xs text-gray-400 truncate">
-                            {attempt.user?.email || "—"}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          {attempt.status && (
-                            <span className="text-xs text-gray-500 capitalize">
-                              {attempt.status}
-                            </span>
-                          )}
-                          <span
-                            className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
-                              attempt.passed
-                                ? "bg-green-50 text-green-700"
-                                : "bg-red-50 text-red-600"
-                            }`}
-                          >
-                            {attempt.percentage != null ? `${attempt.percentage}%` : "—"}
-                          </span>
-                          <span
-                            className={`text-gray-400 transition-transform inline-block ${
-                              isExpanded ? "rotate-180" : ""
-                            }`}
-                          >
-                            ▾
-                          </span>
-                        </div>
-                      </button>
-
-                      {isExpanded && (
-                        <div className="border-t border-gray-100 bg-gray-50/60 p-3">
-                          {attemptDetailLoadingId === attempt.id && (
-                            <p className="text-xs text-gray-400 text-center py-4">
-                              Loading answers...
+                        <button
+                          type="button"
+                          onClick={() => toggleAttemptDetail(attempt.id)}
+                          className="w-full flex items-center gap-3 p-3 sm:p-3.5 text-left hover:bg-gray-50 transition-colors"
+                        >
+                          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#004900] to-[#006400] text-white flex items-center justify-center text-xs font-semibold shrink-0">
+                            {initials}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-900 truncate">
+                              {fullName}
                             </p>
-                          )}
-                          {attemptDetailLoadingId !== attempt.id &&
-                            attemptDetailError &&
-                            !detail && (
-                              <p className="text-xs text-red-500 text-center py-4">
-                                {attemptDetailError}
+                            <p className="text-xs text-gray-400 truncate">
+                              {attempt.user?.email || "—"}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            {attempt.status && (
+                              <span className="hidden sm:inline text-xs text-gray-500 capitalize">
+                                {attempt.status}
+                              </span>
+                            )}
+                            <span
+                              className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${
+                                attempt.passed
+                                  ? "bg-green-50 text-green-700 border border-green-200"
+                                  : "bg-red-50 text-red-600 border border-red-200"
+                              }`}
+                            >
+                              {attempt.percentage != null ? `${attempt.percentage}%` : "—"}
+                            </span>
+                            <span
+                              className={`w-7 h-7 rounded-lg bg-gray-100 flex items-center justify-center text-gray-400 transition-transform text-xs ${
+                                isExpanded ? "rotate-180" : ""
+                              }`}
+                            >
+                              ▾
+                            </span>
+                          </div>
+                        </button>
+
+                        {isExpanded && (
+                          <div className="border-t border-gray-100 bg-gray-50/60 p-3 sm:p-4">
+                            {attemptDetailLoadingId === attempt.id && (
+                              <p className="text-xs text-gray-400 text-center py-4">
+                                Loading answers...
                               </p>
                             )}
-                          {detail && (
-                            <div className="space-y-2">
-                              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 mb-2">
-                                <span>
-                                  Score:{" "}
-                                  <strong className="text-gray-700">
-                                    {detail.score ?? "—"}
-                                  </strong>
-                                </span>
-                                <span>
-                                  Percentage:{" "}
-                                  <strong className="text-gray-700">
-                                    {detail.percentage ?? "—"}%
-                                  </strong>
-                                </span>
-                                <span>
-                                  Result:{" "}
-                                  <strong
-                                    className={
-                                      detail.passed ? "text-green-700" : "text-red-600"
-                                    }
-                                  >
-                                    {detail.passed ? "Passed" : "Failed"}
-                                  </strong>
-                                </span>
-                              </div>
-                              {(detail.answers || []).map((ans: any, i: number) => (
-                                <div
-                                  key={ans.id ?? ans.answerId ?? i}
-                                  className="bg-white border border-gray-200 rounded-lg p-2.5"
-                                >
-                                  <p className="text-xs font-medium text-gray-700 mb-1">
-                                    {i + 1}.{" "}
-                                    {ans.questionText || ans.question || `Question ${i + 1}`}
-                                  </p>
-                                  <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-[11px] text-gray-500">
-                                    <span>
-                                      Answer given:{" "}
-                                      <span className="text-gray-700">
-                                        {ans.givenAnswer ?? ans.selectedAnswer ?? ans.answer ?? "—"}
-                                      </span>
-                                    </span>
-                                    <span>
-                                      Correct answer:{" "}
-                                      <span className="text-gray-700">
-                                        {ans.correctAnswer ?? ans.correctAnswerText ?? "—"}
-                                      </span>
-                                    </span>
-                                    {typeof ans.isCorrect === "boolean" && (
-                                      <span
-                                        className={
-                                          ans.isCorrect
-                                            ? "text-green-600 font-medium"
-                                            : "text-red-500 font-medium"
-                                        }
-                                      >
-                                        {ans.isCorrect ? "Correct" : "Incorrect"}
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                              ))}
-                              {(!detail.answers || detail.answers.length === 0) && (
-                                <p className="text-xs text-gray-400 text-center py-2">
-                                  No answer details available.
+                            {attemptDetailLoadingId !== attempt.id &&
+                              attemptDetailError &&
+                              !detail && (
+                                <p className="text-xs text-red-500 text-center py-4">
+                                  {attemptDetailError}
                                 </p>
                               )}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+                            {detail && (
+                              <div className="space-y-2">
+                                <div className="flex flex-wrap gap-2 text-xs text-gray-500 mb-3">
+                                  <span className="px-2.5 py-1 rounded-full bg-white border border-gray-200">
+                                    Score: <strong className="text-gray-700">{detail.score ?? "—"}</strong>
+                                  </span>
+                                  <span className="px-2.5 py-1 rounded-full bg-white border border-gray-200">
+                                    Percentage: <strong className="text-gray-700">{detail.percentage ?? "—"}%</strong>
+                                  </span>
+                                  <span className={`px-2.5 py-1 rounded-full border ${detail.passed ? "bg-green-50 text-green-700 border-green-200" : "bg-red-50 text-red-600 border-red-200"}`}>
+                                    <strong>{detail.passed ? "Passed" : "Failed"}</strong>
+                                  </span>
+                                </div>
+                                {(detail.answers || []).map((ans: any, i: number) => (
+                                  <div
+                                    key={ans.id ?? ans.answerId ?? i}
+                                    className="bg-white border border-gray-200 rounded-xl p-3"
+                                  >
+                                    <p className="text-xs sm:text-sm font-medium text-gray-700 mb-1.5 line-clamp-3">
+                                      {i + 1}. {ans.questionText || ans.question || `Question ${i + 1}`}
+                                    </p>
+                                    <div className="flex flex-col sm:flex-row sm:flex-wrap gap-1 sm:gap-x-4 gap-y-0.5 text-xs text-gray-500">
+                                      <span>
+                                        Answer given: <span className="text-gray-700 font-medium">{ans.givenAnswer ?? ans.selectedAnswer ?? ans.answer ?? "—"}</span>
+                                      </span>
+                                      <span>
+                                        Correct answer: <span className="text-gray-700 font-medium">{ans.correctAnswer ?? ans.correctAnswerText ?? "—"}</span>
+                                      </span>
+                                      {typeof ans.isCorrect === "boolean" && (
+                                        <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium w-fit ${ans.isCorrect ? "bg-green-50 text-green-600" : "bg-red-50 text-red-500"}`}>
+                                          {ans.isCorrect ? "Correct" : "Incorrect"}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                ))}
+                                {(!detail.answers || detail.answers.length === 0) && (
+                                  <p className="text-xs text-gray-400 text-center py-2">
+                                    No answer details available.
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -1669,7 +1648,7 @@ function SingleQuestionEditor({
         <textarea
           value={item.questionText}
           onChange={(e) => onChange({ questionText: e.target.value })}
-          className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+          className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] bg-white"
           rows={2}
           title="question text"
         />
@@ -1680,7 +1659,7 @@ function SingleQuestionEditor({
         <select
           value={item.questionType}
           onChange={(e) => onChange({ questionType: e.target.value as AssessmentItem["questionType"] })}
-          className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+          className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900]"
           title="question type select"
         >
           <option value="multiple_choice">Multiple Choice</option>
@@ -1689,34 +1668,28 @@ function SingleQuestionEditor({
         </select>
       </div>
 
-      {/* Correct answer is marked inline. isCorrect is derived by comparing
-          the OPTION'S INDEX (not its id) against item.correctAnswer, since
-          item.correctAnswer is always kept as a stringified index ("0".."3")
-          on the client — regardless of whether the option's own `id` is a
-          locally-generated placeholder ("1".."4") or a backend UUID. Comparing
-          against `opt.id` directly was the bug: it never matched either shape. */}
       {item.questionType === "multiple_choice" && (
         <div>
           <label className="text-xs font-medium text-gray-600 mb-1 block">
             Options — mark the correct one
           </label>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
             {item.options.map((opt, idx) => {
               const isCorrect = String(idx) === item.correctAnswer;
 
               return (
                 <div key={idx} className="flex items-end gap-2">
-                  <div className="flex-1">
+                  <div className="flex-1 min-w-0">
                     <label className="text-xs text-gray-500">Option {String.fromCharCode(65 + idx)}</label>
                     <input
                       value={opt.text}
                       onChange={(e) => onOptionChange(idx, e.target.value)}
-                      className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                      className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900] bg-white"
                       title={`option ${idx}`}
                     />
                   </div>
                   <label
-                    className={`flex items-center gap-1 pb-2 cursor-pointer select-none text-xs ${
+                    className={`flex items-center gap-1 pb-2 cursor-pointer select-none text-xs shrink-0 ${
                       isCorrect ? "text-[#004900] font-medium" : "text-gray-400"
                     }`}
                     title="Mark as correct answer"
@@ -1746,10 +1719,10 @@ function SingleQuestionEditor({
             <button
               type="button"
               onClick={() => onChange({ correctAnswer: "true" })}
-              className={`flex-1 px-3 py-2 text-sm rounded-lg border transition-colors ${
+              className={`flex-1 px-3 py-2.5 text-sm rounded-xl border transition-colors font-medium ${
                 item.correctAnswer === "true"
-                  ? "bg-[#004900] text-white border-[#004900]"
-                  : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                  ? "bg-[#004900] text-white border-[#004900] shadow-sm"
+                  : "border-gray-200 text-gray-600 hover:bg-gray-50 bg-white"
               }`}
             >
               True
@@ -1757,10 +1730,10 @@ function SingleQuestionEditor({
             <button
               type="button"
               onClick={() => onChange({ correctAnswer: "false" })}
-              className={`flex-1 px-3 py-2 text-sm rounded-lg border transition-colors ${
+              className={`flex-1 px-3 py-2.5 text-sm rounded-xl border transition-colors font-medium ${
                 item.correctAnswer === "false"
-                  ? "bg-[#004900] text-white border-[#004900]"
-                  : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                  ? "bg-[#004900] text-white border-[#004900] shadow-sm"
+                  : "border-gray-200 text-gray-600 hover:bg-gray-50 bg-white"
               }`}
             >
               False
@@ -1775,10 +1748,10 @@ function SingleQuestionEditor({
           <input
             value={item.correctAnswer}
             onChange={(e) => onChange({ correctAnswer: e.target.value })}
-            className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+            className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900]"
             title="correct answer"
           />
-          <p className="text-[11px] text-gray-400 mt-1">
+          <p className="text-[11px] text-gray-400 mt-1 leading-relaxed">
             Short-answer questions aren't auto-graded on the backend, so this text is saved
             inside the explanation field as "Expected answer: …" instead of as a literal
             correct-answer value.
@@ -1786,15 +1759,18 @@ function SingleQuestionEditor({
         </div>
       )}
 
-      <div>
-        <label className="text-xs font-medium text-gray-600">Points</label>
-        <input
-          type="number"
-          value={item.points}
-          onChange={(e) => onChange({ points: Number(e.target.value) })}
-          className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm max-w-35"
-          title="points"
-        />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <label className="text-xs font-medium text-gray-600">Points</label>
+          <input
+            type="number"
+            value={item.points}
+            onChange={(e) => onChange({ points: Number(e.target.value) })}
+            className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-xl text-sm max-w-full sm:max-w-36 bg-white focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900]"
+            title="points"
+          />
+        </div>
+        <div className="hidden sm:block" />
       </div>
 
       <div>
@@ -1802,7 +1778,7 @@ function SingleQuestionEditor({
         <textarea
           value={item.explanation}
           onChange={(e) => onChange({ explanation: e.target.value })}
-          className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+          className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900]"
           rows={2}
           title="explanation"
         />
