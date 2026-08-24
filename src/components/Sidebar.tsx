@@ -46,13 +46,13 @@ export default function SideBar({ isOpen, onClose, collapsed = false, onToggleCo
 
   return (
     <>
-      {isOpen && (
+      {/* {isOpen && (
         <div
           className="fixed inset-0 bg-black/40 backdrop-blur-sm z-30 md:hidden transition-opacity duration-300"
           onClick={onClose}
           aria-hidden="true"
         />
-      )}
+      )} */}
 
       <div
         className={`
@@ -67,7 +67,7 @@ export default function SideBar({ isOpen, onClose, collapsed = false, onToggleCo
       `}
       >
         <div className={`h-16 sm:h-[68px] flex items-center shrink-0 border-b border-white/10 bg-white/[0.03] backdrop-blur-sm ${collapsed ? "justify-center px-2 md:px-3" : "justify-between px-4 sm:px-5"}`}>
-          <div className={`flex items-center gap-3 min-w-0 ${collapsed ? "md:justify-center" : ""}`}>
+          {/* <div className={`flex items-center gap-3 min-w-0 ${collapsed ? "md:justify-center" : ""}`}>
             <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl bg-white/15 backdrop-blur-md border border-white/20 flex items-center justify-center shadow-lg shadow-black/10 shrink-0">
               <span className="text-white font-extrabold text-sm sm:text-base tracking-tight">S</span>
             </div>
@@ -77,7 +77,7 @@ export default function SideBar({ isOpen, onClose, collapsed = false, onToggleCo
                 <span className="text-[10px] sm:text-[11px] font-medium tracking-[0.14em] uppercase text-white/60">Control Center</span>
               </div>
             )}
-          </div>
+          </div> */}
           {/* Mobile close button */}
           <button
             className="md:hidden inline-flex items-center justify-center text-white/80 hover:text-white p-2 rounded-xl hover:bg-white/10 border border-transparent hover:border-white/10 transition-all duration-200 shrink-0"
@@ -100,7 +100,7 @@ export default function SideBar({ isOpen, onClose, collapsed = false, onToggleCo
         </div>
 
         {/* Collapsed: show expand button below header for md screens where header button is hidden due to centering */}
-        {collapsed && onToggleCollapse && (
+        {/* {collapsed && onToggleCollapse && (
           <div className="hidden md:flex justify-center py-2 border-b border-white/5">
             <button
               onClick={onToggleCollapse}
@@ -111,7 +111,7 @@ export default function SideBar({ isOpen, onClose, collapsed = false, onToggleCo
               <PanelLeft size={16} />
             </button>
           </div>
-        )}
+        )} */}
 
         <nav className={`flex-1 overflow-y-auto py-4 sm:py-5 space-y-1.5 scrollbar-thin scrollbar-thumb-white/10 ${collapsed ? "px-2 md:px-2" : "px-3 sm:px-3.5"}`}>
           {navItems.map((item, index) => (
