@@ -12,8 +12,9 @@ import Users from './pages/Users'
 import Assessment from './pages/Assessment'
 // import Notification from './pages/Notification'
 // import Support from './pages/Support'
-import Community from './pages/Community'
+// import Community from './pages/Community'
 import CertificationsSignatoriesPage from './pages/certificationssginatoriesPage'
+import Discussions from './pages/Discussions'
 // import AdminUsers from './pages/Share'
 import AddAdmin from './pages/AddAdmin'
 
@@ -70,7 +71,8 @@ function App() {
           <Route path='/assessment' element={<Assessment />}/>
           {/* <Route path='/notification' element={<Notification />}/>
           <Route path='/support' element={<Support />}/> */}
-          <Route path='/community' element={<Community />}/>
+          {/* <Route path='/community' element={<Community />}/> */}
+          <Route path='/discussions' element={<Discussions />}/>
           <Route path='/certificate' element={<CertificationsSignatoriesPage />}/>
           <Route path='/share' element={<AddAdmin />}/>
         </Route>
