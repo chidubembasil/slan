@@ -1,11 +1,11 @@
 import { NavLink } from "react-router-dom"
 // import { Link } from "react-router-dom";
 // Share2, Headset, ChartCandlestick,
-//CreditCard,
+//CreditCard, PanelLeftClose, PanelLeft,
 import {
   LayoutGrid, BookOpen, Users, CheckSquare, 
   LogOut, X, Award, MessageSquare,
-  PanelLeftClose, PanelLeft,
+  
 } from "lucide-react"
 
 type Props = {
@@ -15,7 +15,7 @@ type Props = {
   onToggleCollapse?: () => void
 }
 
-export default function SideBar({ isOpen, onClose, collapsed = false, onToggleCollapse }: Props) {
+export default function SideBar({ isOpen, onClose, collapsed = false }: Props) {
   const BASE = import.meta.env.VITE_BASE_URL;
 
   const navItems = [
@@ -67,7 +67,7 @@ export default function SideBar({ isOpen, onClose, collapsed = false, onToggleCo
       `}
       >
         <div className={`h-16 sm:h-[68px] flex items-center shrink-0 border-b border-white/10 bg-white/[0.03] backdrop-blur-sm ${collapsed ? "justify-center px-2 md:px-3" : "justify-between px-4 sm:px-5"}`}>
-          {/* <div className={`flex items-center gap-3 min-w-0 ${collapsed ? "md:justify-center" : ""}`}>
+          <div className={`flex items-center gap-3 min-w-0 ${collapsed ? "md:justify-center" : ""}`}>
             <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl bg-white/15 backdrop-blur-md border border-white/20 flex items-center justify-center shadow-lg shadow-black/10 shrink-0">
               <span className="text-white font-extrabold text-sm sm:text-base tracking-tight">S</span>
             </div>
@@ -77,7 +77,7 @@ export default function SideBar({ isOpen, onClose, collapsed = false, onToggleCo
                 <span className="text-[10px] sm:text-[11px] font-medium tracking-[0.14em] uppercase text-white/60">Control Center</span>
               </div>
             )}
-          </div> */}
+          </div>
           {/* Mobile close button */}
           <button
             className="md:hidden inline-flex items-center justify-center text-white/80 hover:text-white p-2 rounded-xl hover:bg-white/10 border border-transparent hover:border-white/10 transition-all duration-200 shrink-0"
@@ -87,7 +87,7 @@ export default function SideBar({ isOpen, onClose, collapsed = false, onToggleCo
             <X size={20} className="sm:w-[22px] sm:h-[22px]" />
           </button>
           {/* Desktop collapse / expand button */}
-          {onToggleCollapse && (
+          {/* {onToggleCollapse && (
             <button
               className={`hidden md:inline-flex items-center justify-center text-white/70 hover:text-white p-2 rounded-xl hover:bg-white/10 border border-white/10 transition-all duration-200 shrink-0 ${collapsed ? "md:hidden lg:inline-flex" : ""}`}
               onClick={onToggleCollapse}
@@ -96,7 +96,7 @@ export default function SideBar({ isOpen, onClose, collapsed = false, onToggleCo
             >
               {collapsed ? <PanelLeft size={18} /> : <PanelLeftClose size={18} />}
             </button>
-          )}
+          )} */}
         </div>
 
         {/* Collapsed: show expand button below header for md screens where header button is hidden due to centering */}
