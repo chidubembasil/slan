@@ -3,7 +3,7 @@ import { NavLink } from "react-router-dom"
 // Share2, Headset, ChartCandlestick,
 import {
   LayoutGrid, BookOpen, Users, CheckSquare, CreditCard,
-  LogOut, Flag, X, Award, MessageSquare,
+  LogOut, X, Award, MessageSquare,
 } from "lucide-react"
 
 type Props = {
