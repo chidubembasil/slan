@@ -2,7 +2,8 @@ import React, { useState } from "react";
 import { UserPlus, Mail, User, Loader2, CheckCircle2, XCircle, ShieldCheck } from "lucide-react";
 
 // Adjust this to wherever you keep your base API URL constant
-const API_BASE_URL = import.meta.env.VITE_BASE_URL;
+const API_BASE_RAW = import.meta.env.VITE_BASE_URL as string;
+const API = (API_BASE_RAW ?? "").replace(/\/+$/, "");
 
 interface InvitedAdmin {
   fullName: string;
@@ -40,10 +41,16 @@ const AddAdmin: React.FC = () => {
     setFormError(null);
     setLoading(true);
 
-    const token = localStorage.getItem("token");
+    const token = localStorage.getItem("adminAccessToken") || localStorage.getItem("token") || "";
+    if (!token) {
+      setFormError("Not authenticated — please log in again.");
+      setLoading(false);
+      return;
+    }
 
     try {
-      const response = await fetch(`${API_BASE_URL}/admin/admins`, {
+      const origin = typeof window !== "undefined" ? window.location.origin : "";
+      const response = await fetch(`${API}/admin/admins`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -52,10 +59,17 @@ const AddAdmin: React.FC = () => {
         body: JSON.stringify({
           fullName: fullName.trim(),
           email: email.trim(),
+          // Ensure backend can embed correct URL in the invite email
+          appUrl: origin,
+          frontendUrl: origin,
+          loginUrl: `${origin}/`,
+          platformUrl: origin,
+          inviteUrl: `${origin}/`,
         }),
       });
 
-      if (response.status === 201) {
+      if (response.ok) {
+        // 200 or 201 both mean success — backend may return either
         setInvitedList((prev) => [
           {
             fullName: fullName.trim(),
@@ -76,9 +90,14 @@ const AddAdmin: React.FC = () => {
           },
           ...prev,
         ]);
+        const data = await response.json().catch(() => null);
+        if (data?.message) setFormError(data.message);
       } else {
         const data = await response.json().catch(() => null);
-        setFormError(data?.message || `Something went wrong (${response.status}).`);
+        const msg = data?.message || data?.error || data?.msg;
+        if (response.status === 401) setFormError(msg || "Unauthorized — admin token missing or expired. Please log in again.");
+        else if (response.status === 403) setFormError(msg || "Forbidden — you don't have permission to invite admins.");
+        else setFormError(msg || `Something went wrong (${response.status}).`);
       }
     } catch (err) {
       setFormError("Network error — could not reach the server.");

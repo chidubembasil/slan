@@ -20,9 +20,6 @@ export default function SideBar({ isOpen, onClose }: Props) {
     { path: "/users", name: "Users", icon: Users },
     { path: "/assessment", name: "Assessment", icon: CheckSquare },
     { path: "/payment", name: "Payment", icon: CreditCard },
-    // { path: "/report", name: "Report", icon: ChartCandlestick },
-    // { path: "/support", name: "Support Queue", icon: Headset },
-    // { path: "/community", name: "Community Mod", icon: Flag },
     { path: "/discussions", name: "Discussions", icon: MessageSquare },
     { path: "/certificate", name: "Certificate", icon: Award },
   ]

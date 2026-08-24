@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { UserPlus, X, Mail, User as UserIcon, ShieldCheck } from "lucide-react";
 import { useAuthGuard } from "../hooks/useAuthGuard"
-const API_BASE = import.meta.env.VITE_BASE_URL;
+const API_BASE_RAW = import.meta.env.VITE_BASE_URL as string;
+const API = (API_BASE_RAW ?? "").replace(/\/+$/, "");
 
 interface InvitedAdmin {
   fullName: string;
@@ -20,10 +21,7 @@ function emptyForm(): InviteFormState {
 
 export default function AdminUsers() {
   useAuthGuard();
-  // There's no documented GET /admin/admins endpoint yet, so this keeps a
-  // local running list of admins invited during this session as a lightweight
-  // confirmation trail. Swap this for real fetched data once a list endpoint
-  // exists.
+
   const [invitedAdmins, setInvitedAdmins] = useState<InvitedAdmin[]>([]);
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -31,9 +29,8 @@ export default function AdminUsers() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const token = localStorage.getItem("adminAccessToken") || "";
-
   function authHeaders() {
+    const token = localStorage.getItem("adminAccessToken") || localStorage.getItem("token") || "";
     return {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
@@ -69,13 +66,27 @@ export default function AdminUsers() {
 
     setSubmitting(true);
     setError(null);
+    // ensure we are authenticated - matches Auth.tsx saveSession keys
+    const rawToken = localStorage.getItem("adminAccessToken") || localStorage.getItem("token") || "";
+    if (!rawToken) {
+      setError("Not authenticated — please log in again.");
+      return;
+    }
     try {
-      const res = await fetch(`${API_BASE}admin/admins`, {
+      const origin = typeof window !== "undefined" ? window.location.origin : "";
+      const res = await fetch(`${API}/admin/admins`, {
         method: "POST",
         headers: authHeaders(),
         body: JSON.stringify({
           fullName: form.fullName.trim(),
           email: form.email.trim(),
+          // Provide frontend URLs so backend can embed correct login URL in the email.
+          // Backend may expect any of these keys; sending all is safe.
+          appUrl: origin,
+          frontendUrl: origin,
+          loginUrl: `${origin}/`,
+          platformUrl: origin,
+          inviteUrl: `${origin}/`,
         }),
       });
 
@@ -88,9 +99,12 @@ export default function AdminUsers() {
         let message = "Failed to invite administrator";
         try {
           const d = await res.json();
-          message = d?.message || d?.error || message;
+          message = d?.message || d?.error || d?.msg || message;
+          if (res.status === 401) message = "Unauthorized — admin token missing or expired. Please log in again.";
+          if (res.status === 403) message = "Forbidden — you don't have permission to invite admins.";
         } catch {}
-        throw new Error(message);
+        // include status for debugging
+        throw new Error(`${message} (${res.status})`);
       }
 
       setInvitedAdmins((prev) => [
