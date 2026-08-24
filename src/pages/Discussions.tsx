@@ -144,6 +144,15 @@ export default function Discussions() {
   const [toast, setToast] = useState<{ kind: "success" | "error"; msg: string } | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
 
+  // — API filters: GET /discussions?unitId=&moduleId=&page=&limit=  (pinned first)
+  const [filterUnitId, setFilterUnitId] = useState<string>("");
+  const [filterModuleId, setFilterModuleId] = useState<string>("");
+  const [page, setPage] = useState(1);
+  const [limit] = useState(20);
+  const [filterUnits, setFilterUnits] = useState<{ id: number; title: string }[]>([]);
+  const [filterModules, setFilterModules] = useState<{ id: number; title: string }[]>([]);
+  const [filterLoading, setFilterLoading] = useState(false);
+
   // edit modal
   const [editOpen, setEditOpen] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
@@ -159,11 +168,110 @@ export default function Discussions() {
     setTimeout(() => setToast(null), 3000);
   };
 
+  // Fetch units/modules for filter dropdowns (lightweight, reuses admin endpoints)
+  const fetchFilterOptions = async () => {
+    setFilterLoading(true);
+    const token = localStorage.getItem("adminAccessToken") ?? "";
+    const h = token ? { Authorization: `Bearer ${token}` } : {} as Record<string,string>;
+    try {
+      // tracks -> modules -> units
+      const tracksRes = await fetch(`${API}/admin/tracks`, { headers: h });
+      if (!tracksRes.ok) throw new Error("tracks");
+      const tracksData = await tracksRes.json();
+      const tracksList: { id:number }[] = Array.isArray(tracksData) ? tracksData : (tracksData.data ?? tracksData.tracks ?? []);
+      // modules
+      const modResults = await Promise.all(
+        tracksList.map((t) =>
+          fetch(`${API}/admin/tracks/${t.id}/modules`, { headers: h })
+            .then((r) => r.json())
+            .then((d) => (Array.isArray(d) ? d : (d.data ?? d.modules ?? [])))
+            .catch(() => [])
+        )
+      );
+      const allMods = modResults.flat() as { id:number; title:string }[];
+      setFilterModules(allMods.map((m) => ({ id: m.id, title: m.title })));
+      if (allMods.length === 0) {
+        setFilterUnits([]);
+        return;
+      }
+      const unitResults = await Promise.all(
+        allMods.map((m) =>
+          fetch(`${API}/admin/modules/${m.id}/units`, { headers: h })
+            .then((r) => r.json())
+            .then((d) => (Array.isArray(d) ? d : (d.data ?? d.units ?? [])))
+            .catch(() => [])
+        )
+      );
+      const allUnits = unitResults.flat() as { id:number; title:string }[];
+      setFilterUnits(allUnits.map((u) => ({ id: u.id, title: u.title })));
+    } catch {
+      // non-fatal
+    } finally {
+      setFilterLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchFilterOptions();
+  }, []);
+
+  // Lock body scroll when any modal is open — modal fits full screen, no background scroll
+  useEffect(() => {
+    const locked = editOpen || !!deleteTarget;
+    const prev = document.body.style.overflow;
+    const prevHtml = document.documentElement.style.overflow;
+    if (locked) {
+      document.body.style.overflow = "hidden";
+      document.documentElement.style.overflow = "hidden";
+    }
+    return () => {
+      document.body.style.overflow = prev;
+      document.documentElement.style.overflow = prevHtml;
+    };
+  }, [editOpen, deleteTarget]);
+
+  const fetchDiscussionDetail = async (id: number) => {
+    // GET /discussions/{id} — discussion + all replies
+    const candidates = [`${API}/discussions/${id}`, `${API}/api/discussions/${id}`];
+    for (const url of candidates) {
+      try {
+        const res = await fetch(url, { headers: { ...authHeaders() } });
+        if (!res.ok) {
+          if (res.status === 404) continue;
+          throw new Error(`${res.status}`);
+        }
+        const json = await res.json();
+        // API may wrap in data/discussion
+        const d = (json as Record<string, unknown>).data ?? json;
+        if (d && typeof d === "object" && "id" in (d as Record<string, unknown>)) return d as Discussion;
+        if (Array.isArray(json) && json[0]) return json[0] as Discussion;
+        return d as Discussion;
+      } catch {
+        continue;
+      }
+    }
+    return null;
+  };
+
+  const handleSelectDiscussion = async (d: Discussion) => {
+    setSelected(d);
+    const detail = await fetchDiscussionDetail(d.id);
+    if (detail) {
+      setSelected(detail);
+      setDiscussions((prev) => prev.map((x) => (x.id === detail.id ? { ...x, ...detail } : x)));
+    }
+  };
+
   const fetchDiscussions = async () => {
     setLoading(true);
     try {
-      // try canonical endpoint first, fall back gracefully
-      const candidates = [`${API}/discussions`, `${API}/api/discussions`];
+      const params = new URLSearchParams();
+      if (filterUnitId) params.set("unitId", filterUnitId);
+      if (filterModuleId) params.set("moduleId", filterModuleId);
+      params.set("page", String(page));
+      params.set("limit", String(limit));
+      const qs = params.toString();
+      const candidates = [`${API}/discussions?${qs}`, `${API}/api/discussions?${qs}`];
       let lastErr: unknown = null;
       for (const url of candidates) {
         try {
@@ -173,12 +281,30 @@ export default function Discussions() {
             throw new Error(`${res.status} ${res.statusText}`);
           }
           const json = await res.json();
-          const arr = extractArray(json);
+          let arr = extractArray(json);
+          // Pinned threads appear first (client-side guarantee even if API doesn't sort)
+          arr = [...arr].sort((a, b) => {
+            const pa = getIsPinned(a) ? 1 : 0;
+            const pb = getIsPinned(b) ? 1 : 0;
+            if (pb !== pa) return pb - pa;
+            const da = new Date(getCreatedAt(a) ?? 0).getTime();
+            const db = new Date(getCreatedAt(b) ?? 0).getTime();
+            return db - da;
+          });
           setDiscussions(arr);
-          if (!selected && arr.length > 0) setSelected(arr[0]);
-          else if (selected) {
-            const fresh = arr.find((d) => d.id === selected.id);
-            if (fresh) setSelected(fresh);
+          if (arr.length > 0) {
+            // keep selection if still present, else pick first pinned
+            const keep = selected ? arr.find((x) => x.id === selected.id) : null;
+            if (keep) {
+              const detail = await fetchDiscussionDetail(keep.id);
+              setSelected(detail ?? keep);
+            } else {
+              const first = arr[0];
+              const detail = await fetchDiscussionDetail(first.id);
+              setSelected(detail ?? first);
+            }
+          } else {
+            setSelected(null);
           }
           lastErr = null;
           break;
@@ -191,7 +317,6 @@ export default function Discussions() {
     } catch (e) {
       console.error(e);
       showToast("error", e instanceof Error ? e.message : "Failed to load discussions");
-      // keep mock data for aesthetic preview if API empty/unreachable
       if (discussions.length === 0) {
         const mock: Discussion[] = [
           {
@@ -239,7 +364,7 @@ export default function Discussions() {
   useEffect(() => {
     fetchDiscussions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [filterUnitId, filterModuleId, page, limit]);
 
   const filtered = useMemo(() => {
     return discussions.filter((d) => {
@@ -463,7 +588,50 @@ export default function Discussions() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 w-full overflow-hidden">
           {/* list */}
           <div className="lg:col-span-2">
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 mb-4">
+            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 mb-4 space-y-3">
+              {/* API filters: unitId / moduleId — GET /discussions?unitId=&moduleId=&page=&limit= */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="text-[11px] font-semibold tracking-widest uppercase text-gray-500">Module</span>
+                  <select
+                    value={filterModuleId}
+                    onChange={(e) => { setFilterModuleId(e.target.value); setFilterUnitId(""); setPage(1); }}
+                    className="mt-1 w-full px-3 py-2.5 rounded-xl border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900]"
+                    disabled={filterLoading}
+                  >
+                    <option value="">All modules</option>
+                    {filterModules.map((m) => (
+                      <option key={m.id} value={String(m.id)}>{m.title} — #{m.id}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="text-[11px] font-semibold tracking-widest uppercase text-gray-500">Unit</span>
+                  <select
+                    value={filterUnitId}
+                    onChange={(e) => { setFilterUnitId(e.target.value); setPage(1); }}
+                    className="mt-1 w-full px-3 py-2.5 rounded-xl border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900]"
+                    disabled={filterLoading}
+                  >
+                    <option value="">All units</option>
+                    {filterUnits.map((u) => (
+                      <option key={u.id} value={String(u.id)}>{u.title} — #{u.id}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                <span className="inline-flex items-center gap-1 bg-gray-50 border border-gray-200 px-2.5 py-1 rounded-full">page {page} · limit {limit}</span>
+                {(filterUnitId || filterModuleId) && (
+                  <button
+                    onClick={() => { setFilterUnitId(""); setFilterModuleId(""); setPage(1); }}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#004900] text-white text-xs font-semibold"
+                  >
+                    <X size={12} /> Clear filters
+                  </button>
+                )}
+                <span className="ml-auto text-xs text-gray-400 hidden sm:inline">GET /discussions · pinned first</span>
+              </div>
               <div className="relative">
                 <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                 <input
@@ -476,7 +644,7 @@ export default function Discussions() {
                   <button onClick={() => setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X size={14} /></button>
                 )}
               </div>
-              <div className="flex gap-2 mt-3">
+              <div className="flex gap-2">
                 {(["all", "pinned", "locked"] as const).map((f) => (
                   <button
                     key={f}
@@ -511,7 +679,7 @@ export default function Discussions() {
                   return (
                     <div
                       key={d.id}
-                      onClick={() => setSelected(d)}
+                      onClick={() => handleSelectDiscussion(d)}
                       className={`group bg-white rounded-2xl border p-4 cursor-pointer transition-all ${active ? "border-[#004900] ring-2 ring-[#004900]/15 shadow-md" : "border-gray-200 hover:border-gray-300 hover:shadow-sm"} ${pinned ? "bg-amber-50/20" : ""}`}
                     >
                       <div className="flex gap-3">

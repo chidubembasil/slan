@@ -440,16 +440,6 @@ export default function Dashboard() {
                 </a>
               ))}
             </div>
-
-            <div className="mt-5 rounded-2xl bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-100 p-4 flex items-start gap-3">
-              <div className="w-8 h-8 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0">
-                <Sparkles size={14} />
-              </div>
-              <div>
-                <p className="text-xs font-semibold text-amber-900">Tip</p>
-                <p className="text-xs text-amber-800/80 leading-relaxed mt-0.5">Use shortcuts to quickly navigate and manage your platform without extra clicks.</p>
-              </div>
-            </div>
           </div>
         </div>
 

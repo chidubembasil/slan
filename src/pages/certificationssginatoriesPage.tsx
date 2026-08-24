@@ -546,7 +546,7 @@ export default function CertificatesPage() {
                       <form onSubmit={handleIssue} className="rounded-2xl border border-gray-200 bg-gray-50/50 p-5 space-y-4">
                         <label className="block">
                           <span className="text-xs font-semibold text-slate-700">User ID <span className="text-red-500">*</span></span>
-                          <input type="number" value={userId} onChange={(e) => setUserId(e.target.value)} placeholder="e.g. 42" className="mt-1.5 w-full rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900]" required />
+                          <input type="number" value={userId} onChange={(e) => setUserId(e.target.value)} placeholder="e.g. 42" min={1} className="mt-1.5 w-full rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900]" required />
                         </label>
                         <label className="block">
                           <span className="text-xs font-semibold text-slate-700">Certificate Type</span>
@@ -557,7 +557,7 @@ export default function CertificatesPage() {
                         </label>
                         <label className="block">
                           <span className="text-xs font-semibold text-slate-700">Reference ID <span className="text-red-500">*</span></span>
-                          <input type="number" value={referenceId} onChange={(e) => setReferenceId(e.target.value)} placeholder="Course ID" className="mt-1.5 w-full rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900]" required />
+                          <input type="number" value={referenceId} onChange={(e) => setReferenceId(e.target.value)} placeholder="Course ID" min={1} className="mt-1.5 w-full rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#004900]/20 focus:border-[#004900]" required />
                           <span className="text-xs text-gray-500 mt-1 block">The course ID to certify.</span>
                         </label>
                         <button type="submit" disabled={issuing} className="w-full inline-flex items-center justify-center gap-2 bg-[#004900] hover:bg-[#003d00] disabled:opacity-50 text-white text-sm font-semibold px-4 py-3 rounded-xl shadow">
@@ -586,7 +586,7 @@ export default function CertificatesPage() {
                     <>
                       <div>
                         <h3 className="font-semibold text-slate-900 flex items-center gap-2"><Search size={16} className="text-[#004900]" /> Look Up a Certificate</h3>
-                        <p className="text-xs text-gray-500 mt-1">Fetch by ID and download the PDF. Uses <span className="font-mono bg-gray-100 px-1 py-0.5 rounded">GET /admin/certifications/{"{id}"}</span></p>
+                        
                       </div>
                       {lookupNotice && <Banner kind={lookupNotice.kind as "success" | "error"} message={lookupNotice.message} onClose={() => setLookupNotice(null)} />}
 
@@ -762,7 +762,7 @@ export default function CertificatesPage() {
           )}
         </div>
 
-        <p className="text-xs text-gray-400 text-center mt-4">API: <span className="font-mono">{API || "VITE_BASE_URL not set"}</span> · Admin token via <span className="font-mono">Authorization: Bearer {"{adminAccessToken}"}</span></p>
+        
       </div>
 
       {/* modals */}

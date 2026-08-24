@@ -6,13 +6,9 @@ import { useState } from 'react'
 import Dashboard from "./pages/Dashboard"
 import Auth from './pages/Auth'
 import Course from "./pages/Course"
-import Payment from './pages/Payment'
-// import Report from './pages/Report'
+// import Payment from './pages/Payment'
 import Users from './pages/Users'
 import Assessment from './pages/Assessment'
-// import Notification from './pages/Notification'
-// import Support from './pages/Support'
-// import Community from './pages/Community'
 import CertificationsSignatoriesPage from './pages/certificationssginatoriesPage'
 import Discussions from './pages/Discussions'
 import Share from './pages/Share'
@@ -85,13 +81,9 @@ function App() {
         <Route element={<RequireAuth><DashboardLayout /></RequireAuth>}>
           <Route path='/dashboard' element={<Dashboard />}/>
           <Route path='/course' element={<Course/>}/>
-          <Route path='/payment' element={<Payment />}/>
-          {/* <Route path='/report' element={<Report />}/> */}
+          {/* <Route path='/payment' element={<Payment />}/> */}
           <Route path='/users' element={<Users />}/>
           <Route path='/assessment' element={<Assessment />}/>
-          {/* <Route path='/notification' element={<Notification />}/>
-          <Route path='/support' element={<Support />}/> */}
-          {/* <Route path='/community' element={<Community />}/> */}
           <Route path='/discussions' element={<Discussions />}/>
           <Route path='/certificate' element={<CertificationsSignatoriesPage />}/>
           <Route path='/share' element={<Share />}/>

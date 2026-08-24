@@ -22,7 +22,7 @@ export default function SideBar({ isOpen, onClose, collapsed = false, onToggleCo
     { path: "/course", name: "Courses", icon: BookOpen },
     { path: "/users", name: "Users", icon: Users },
     { path: "/assessment", name: "Assessment", icon: CheckSquare },
-    { path: "/payment", name: "Payment", icon: CreditCard },
+    // { path: "/payment", name: "Payment", icon: CreditCard },
     { path: "/discussions", name: "Discussions", icon: MessageSquare },
     { path: "/certificate", name: "Certificate", icon: Award },
   ]
@@ -153,7 +153,7 @@ export default function SideBar({ isOpen, onClose, collapsed = false, onToggleCo
             {!collapsed && <span className="font-medium">Logout</span>}
           </button>
           {/* Desktop collapse button at bottom when expanded - secondary affordance */}
-          {onToggleCollapse && !collapsed && (
+          {/* {onToggleCollapse && !collapsed && (
             <button
               onClick={onToggleCollapse}
               className="hidden md:flex items-center justify-center gap-2 w-full mt-3 px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-white/60 hover:text-white text-xs font-medium border border-white/5 hover:border-white/10 transition-all"
@@ -162,7 +162,7 @@ export default function SideBar({ isOpen, onClose, collapsed = false, onToggleCo
               <PanelLeftClose size={14} />
               Collapse
             </button>
-          )}
+          )} */}
         </div>
       </div>
     </>
