@@ -16,7 +16,7 @@ import Assessment from './pages/Assessment'
 import CertificationsSignatoriesPage from './pages/certificationssginatoriesPage'
 import Discussions from './pages/Discussions'
 import Share from './pages/Share'
-import AddAdmin from './pages/AddAdmin'
+// import AddAdmin from './pages/AddAdmin'
 
 // components
 import Header from './components/Header'
@@ -75,7 +75,7 @@ function App() {
           <Route path='/discussions' element={<Discussions />}/>
           <Route path='/certificate' element={<CertificationsSignatoriesPage />}/>
           <Route path='/share' element={<Share />}/>
-          <Route path='/add-admin' element={<AddAdmin />}/>
+          {/* <Route path='/add-admin' element={<AddAdmin />}/> */}
         </Route>
       </Routes>
     </BrowserRouter>
