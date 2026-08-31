@@ -1,6 +1,6 @@
 // src/pages/Payment.tsx
 import { useEffect, useState, useMemo } from "react"
-import { Search, Download, Eye, CreditCard, Clock, AlertCircle, TrendingUp, Wallet, ArrowUpRight, FileText, SlidersHorizontal, Sparkles, Loader2, Receipt, Filter } from "lucide-react"
+import { Search, Download, Eye, CreditCard, Clock, AlertCircle, TrendingUp, Wallet, ArrowUpRight, FileText, SlidersHorizontal, Loader2, Receipt, Filter } from "lucide-react"
 import { useAuthGuard } from "../hooks/useAuthGuard"
 
 type Stats = {
