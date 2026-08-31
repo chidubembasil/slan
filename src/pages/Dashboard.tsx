@@ -11,7 +11,6 @@ import {
   CreditCard,
   Flag,
   Award,
-  Sparkles,
   ArrowUpRight,
   Activity,
   ShieldCheck,
@@ -226,7 +225,7 @@ export default function Dashboard() {
           <div className="relative z-10 flex flex-col md:flex-row md:items-center md:justify-between gap-5 lg:gap-6">
             <div className="space-y-4">
               <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-md border border-white/15 rounded-full px-3.5 py-1.5 text-xs font-medium tracking-wide">
-                <Sparkles size={14} className="text-emerald-200" />
+                
                 <span className="text-white/90">Admin Overview</span>
                 <span className="w-1 h-1 bg-white/40 rounded-full" />
                 <span className="text-white/60 hidden sm:inline">SLAN Platform</span>
@@ -256,23 +255,7 @@ export default function Dashboard() {
 
             {/* right meta card - visible on xl */}
             <div className="hidden lg:flex flex-col gap-3 min-w-[280px]">
-              <div className="bg-white/10 backdrop-blur-xl border border-white/15 rounded-2xl p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-xs font-medium text-white/60 uppercase tracking-wider">Platform health</span>
-                  <span className="inline-flex items-center gap-1 bg-emerald-400 text-emerald-950 rounded-full px-2 py-0.5 text-[11px] font-bold">
-                    <span className="w-1.5 h-1.5 bg-emerald-950 rounded-full animate-pulse" />
-                    Operational
-                  </span>
-                </div>
-                <div className="flex items-end gap-1.5 h-10">
-                  {[40, 65, 35, 80, 55, 90, 70].map((h, i) => (
-                    <div key={i} className="flex-1 bg-white/80 rounded-full" style={{ height: `${h}%`, opacity: 0.9 - i * 0.05 }} />
-                  ))}
-                </div>
-                <p className="text-[11px] text-white/50 mt-2 flex items-center gap-1">
-                  <TrendingUp size={12} /> All systems nominal
-                </p>
-              </div>
+
               <div className="grid grid-cols-2 gap-2.5">
                 <div className="bg-white rounded-2xl px-4 py-3 shadow-lg">
                   <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Users</p>

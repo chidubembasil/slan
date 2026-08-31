@@ -11,7 +11,6 @@ import {
   GitBranch,
   Layers,
   Boxes,
-  Sparkles,
 } from "lucide-react";
 
 const TABS = [
@@ -50,7 +49,7 @@ export default function Course() {
           <div className="relative z-10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
               <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-sm border border-white/10 rounded-full px-3 py-1 text-xs font-medium text-white/90 mb-3">
-                <Sparkles size={12} className="text-white/80" />
+                
                 Course Management
               </div>
               <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">

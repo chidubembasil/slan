@@ -481,7 +481,7 @@ export default function CertificatesPage() {
               </div>
               <div className="min-w-0 flex-1">
                 <h1 className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight flex flex-wrap items-center gap-2">
-                  Certificates & Signatories <Sparkles size={18} className="text-amber-300 hidden md:inline" />
+                  Certificates & Signatories 
                 </h1>
                 <p className="text-xs sm:text-sm text-white/70 mt-1 max-w-xl leading-relaxed">
                   Issue certificates for courses — and manage the signatories whose signatures appear on them. Max 2 active signatories are rendered on each PDF.
@@ -537,7 +537,7 @@ export default function CertificatesPage() {
                   {certSubTab === "issue" ? (
                     <>
                       <div>
-                        <h3 className="font-semibold text-slate-900 flex items-center gap-2"><Sparkles size={16} className="text-amber-500" /> Manually Issue a Certificate</h3>
+                        <h3 className="font-semibold text-slate-900 flex items-center gap-2"> Manually Issue a Certificate</h3>
                         <p className="text-xs text-gray-500 mt-1">Creates a certificate record and makes it available for download as PDF.</p>
                       </div>
 

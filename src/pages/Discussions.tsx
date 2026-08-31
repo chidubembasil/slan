@@ -317,45 +317,8 @@ export default function Discussions() {
     } catch (e) {
       console.error(e);
       showToast("error", e instanceof Error ? e.message : "Failed to load discussions");
-      if (discussions.length === 0) {
-        const mock: Discussion[] = [
-          {
-            id: 1,
-            title: "How to structure a great field report?",
-            body: "Hello everyone! I'm preparing my first field report for the SLAN community. What structure do you recommend? Should I include methodology and reflections separately?",
-            authorName: "Amina Bello",
-            isPinned: true,
-            isLocked: false,
-            createdAt: new Date(Date.now() - 2 * 3600000).toISOString(),
-            replies: [
-              { id: 101, body: "Great question! Use the STAR method — Situation, Task, Action, Result. Keep it under 800 words.", authorName: "Dr. Chidi Okoro", createdAt: new Date(Date.now() - 3600000).toISOString() },
-              { id: 102, body: "Also attach photos from the field — it really helps reviewers.", authorName: "Fatima Musa", createdAt: new Date(Date.now() - 1800000).toISOString() },
-            ],
-          },
-          {
-            id: 2,
-            title: "Assessment feedback not reflecting",
-            body: "I submitted my module 3 assessment 4 days ago but the status still shows pending. Is this normal?",
-            authorName: "Samuel Okafor",
-            isPinned: false,
-            isLocked: true,
-            createdAt: new Date(Date.now() - 86400000).toISOString(),
-            replies: [{ id: 201, body: "Hi Samuel, our team is reviewing. You'll get an update within 24h.", authorName: "SLAN Admin", createdAt: new Date().toISOString() }],
-          },
-          {
-            id: 3,
-            title: "Best resources for soil science track?",
-            body: "Could anyone recommend open-access resources for the Soil Science track? Videos or PDFs work.",
-            authorName: "Grace E.",
-            isPinned: false,
-            isLocked: false,
-            createdAt: new Date(Date.now() - 3 * 86400000).toISOString(),
-            replies: [],
-          },
-        ];
-        setDiscussions(mock);
-        if (!selected) setSelected(mock[0]);
-      }
+      setDiscussions([]);
+      setSelected(null);
     } finally {
       setLoading(false);
     }
@@ -630,7 +593,6 @@ export default function Discussions() {
                     <X size={12} /> Clear filters
                   </button>
                 )}
-                <span className="ml-auto text-xs text-gray-400 hidden sm:inline">GET /discussions · pinned first</span>
               </div>
               <div className="relative">
                 <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />

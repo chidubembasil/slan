@@ -120,7 +120,7 @@ export default function Payment() {
               <div className="flex flex-wrap items-center gap-2">
                 <h1 className="text-lg sm:text-xl md:text-2xl font-bold tracking-tight text-white">Payments & Invoices</h1>
                 <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-white/15 px-2.5 py-1 text-xs font-medium text-white backdrop-blur border border-white/10 shrink-0">
-                  <Sparkles size={12} /> Finance
+               Finance
                 </span>
               </div>
               <p className="mt-1 text-xs sm:text-sm text-white/80 max-w-2xl leading-relaxed">

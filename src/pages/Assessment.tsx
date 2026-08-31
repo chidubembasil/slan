@@ -2,7 +2,7 @@ import { useState } from "react";
 // import CourseAssessments from "../components/CourseAssessment";
 import TrackAssessments from "../components/TrackAssessments";
 import ModuleAssessments from "../components/ModuleAssessments";
-import { GitBranch, Layers, ClipboardCheck, Sparkles } from "lucide-react";
+import { GitBranch, Layers, ClipboardCheck} from "lucide-react";
 
 type Tab = "course" | "track" | "module";
 
@@ -39,7 +39,6 @@ export default function ManageAssessments() {
           <div className="relative z-10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
               <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-sm border border-white/10 rounded-full px-3 py-1 text-xs font-medium text-white/90 mb-3">
-                <Sparkles size={12} className="text-white/80" />
                 Assessment Center
               </div>
               <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex items-center gap-3">
