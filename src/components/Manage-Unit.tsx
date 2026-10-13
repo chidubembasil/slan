@@ -19,6 +19,8 @@ import {
 } from "lucide-react";
 
 const BASE = import.meta.env.VITE_BASE_URL;
+const CLOUDINARY_CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
+const CLOUDINARY_UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
 
 type UnitStatus = "draft" | "published" | "archived";
 
@@ -52,33 +54,20 @@ const statusOptions = ["draft", "published", "archived"] as const;
 
 // ── Cloudinary upload helper ───────────────────────────────────────────────────
 
-const uploadToCloudinary = async (file: File, folder: string = "curriculum"): Promise<string> => {
-  const API_KEY = import.meta.env.VITE_API_KEY;
-  const API_SECRET = import.meta.env.VITE_API_SECRET_KEY;
-  const CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
-  if (!API_KEY || !API_SECRET || !CLOUD_NAME) throw new Error("Cloudinary credentials missing");
-
-  const timestamp = Math.round(new Date().getTime() / 1000);
-  const signatureString = `folder=${folder}&timestamp=${timestamp}${API_SECRET}`;
-  const signature = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(signatureString));
-  const signatureHex = Array.from(new Uint8Array(signature))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+const uploadToCloudinary = async (file: File): Promise<string> => {
+  if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_UPLOAD_PRESET) throw new Error("Cloudinary credentials missing");
 
   const formData = new FormData();
   formData.append("file", file);
-  formData.append("api_key", API_KEY);
-  formData.append("timestamp", timestamp.toString());
-  formData.append("signature", signatureHex);
-  formData.append("folder", folder);
+  formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
 
-  const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/upload`, {
+  const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`, {
     method: "POST",
     body: formData,
   });
   const data = await res.json();
-  if (!res.ok || data.error) throw new Error(data.error?.message || "Upload failed");
-  return data.secure_url;
+  if (!res.ok) throw new Error(data.error?.message || "Upload failed");
+  return data.secure_url as string;
 };
 
 const ACCEPTED_VIDEO_TYPES = ["video/mp4", "video/webm", "video/ogg", "video/quicktime"];
@@ -294,11 +283,11 @@ function EditUnitForm({
     try {
       if (videoFile) {
         setUploadStage("Uploading video...");
-        videoUrl = await uploadToCloudinary(videoFile, "videos");
+        videoUrl = await uploadToCloudinary(videoFile);
       }
       if (pdfFile) {
         setUploadStage("Uploading PDF...");
-        pdfUrl = await uploadToCloudinary(pdfFile, "pdfs");
+        pdfUrl = await uploadToCloudinary(pdfFile);
       }
 
       setUploadStage("Saving changes...");

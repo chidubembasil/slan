@@ -70,13 +70,7 @@ interface RichTextEditorProps {
 }
 
 const CLOUDINARY_CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME as string;
-const CLOUDINARY_API_KEY = import.meta.env.VITE_API_KEY as string;
-const CLOUDINARY_API_SECRET = import.meta.env.VITE_API_SECRET_KEY as string;
-
-async function sha1(text: string) {
-  const hash = await crypto.subtle.digest("SHA-1", new TextEncoder().encode(text));
-  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, "0")).join("");
-}
+const CLOUDINARY_UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET as string;
 
 // --- Global editor CSS (headings, lists, table borders) ---
 // Injected once. Keeps the editor visually correct without a separate CSS file.
@@ -656,11 +650,10 @@ function Toolbar() {
 
   const upload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return;
-    const timestamp = Math.round(Date.now() / 1000);
-    const sig = await sha1(`timestamp=${timestamp}${CLOUDINARY_API_SECRET}`);
-    const fd = new FormData(); fd.append("file", file); fd.append("api_key", CLOUDINARY_API_KEY); fd.append("timestamp", String(timestamp)); fd.append("signature", sig);
-    const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, { method: "POST", body: fd });
+    const fd = new FormData(); fd.append("file", file); fd.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+    const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`, { method: "POST", body: fd });
     const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || "Cloudinary upload failed");
     if (data.secure_url) {
       editor.update(() => { const sel = $getSelection(); if ($isRangeSelection(sel)) sel.insertNodes([new CustomImageNode(data.secure_url)]); });
       fetch("/api/images", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: data.secure_url }) }).catch(() => { });
