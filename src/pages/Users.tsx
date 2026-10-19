@@ -177,7 +177,7 @@ export default function Users() {
         );
       case "schoolName":
         return (
-          <span className="inline-flex max-w-[180px] truncate text-sm font-medium text-slate-700 bg-slate-50 border border-slate-100 px-2.5 py-1 rounded-full">
+          <span className="inline-flex max-w-[150px] truncate text-sm font-medium text-slate-700 bg-slate-50 border border-slate-100 px-2.5 py-1 rounded-full">
             {user.schoolName || "—"}
           </span>
         );
@@ -367,13 +367,13 @@ export default function Users() {
 
         {/* TABLE — desktop/tablet */}
         <div className="hidden md:block overflow-x-auto">
-          <table className="w-full min-w-[720px]">
+          <table className="w-full min-w-[680px]">
             <thead className="bg-slate-50/80 border-y border-slate-100">
               <tr>
                 {COLUMNS.map((col) => (
                   <th
                     key={col.key}
-                    className="text-left py-3.5 px-4 sm:px-5 text-[11px] font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap"
+                    className="text-left py-3.5 px-3 xl:px-4 text-[11px] font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap"
                   >
                     {col.label}
                   </th>
@@ -427,7 +427,7 @@ export default function Users() {
                 paginatedUsers.map((user) => (
                   <tr key={user.id} className="hover:bg-[#004900]/[0.03] transition-colors duration-200 group">
                     {COLUMNS.map((col) => (
-                      <td key={col.key} className="py-4 px-4 sm:px-5 align-middle whitespace-nowrap">
+                      <td key={col.key} className="py-4 px-3 xl:px-4 align-middle whitespace-nowrap">
                         {renderCell(user, col.key)}
                       </td>
                     ))}

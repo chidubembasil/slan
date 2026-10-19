@@ -161,10 +161,10 @@ export default function AdminLogin() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-[#004900]/5 flex items-center justify-center p-4 sm:p-6 md:p-8">
-      <div className="w-full max-w-5xl grid lg:grid-cols-2 bg-white rounded-3xl shadow-2xl overflow-hidden animate-scale-in">
+    <div className="min-h-[100dvh] w-full bg-gradient-to-br from-gray-50 via-white to-[#004900]/5 flex items-start sm:items-center justify-center p-4 py-6 sm:p-6 md:p-8">
+      <div className="w-full max-w-5xl min-w-0 grid lg:grid-cols-2 bg-white rounded-3xl shadow-2xl overflow-hidden animate-scale-in">
         {/* Left panel */}
-        <div className="bg-gradient-to-br from-[#004900] via-[#003d00] to-[#002a00] p-8 sm:p-10 md:p-10 lg:p-12 text-white flex flex-col justify-between relative overflow-hidden">
+        <div className="hidden lg:flex bg-gradient-to-br from-[#004900] via-[#003d00] to-[#002a00] p-8 sm:p-10 md:p-10 lg:p-12 text-white flex-col justify-between relative overflow-hidden">
           {/* Decorative elements */}
           <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/2" />
           <div className="absolute bottom-0 left-0 w-48 h-48 bg-white/5 rounded-full translate-y-1/2 -translate-x-1/2" />
@@ -194,7 +194,16 @@ export default function AdminLogin() {
         </div>
 
         {/* Right panel */}
-        <div className="p-6 sm:p-8 md:p-8 lg:p-12 flex flex-col justify-center animate-fade-in">
+        <div className="p-5 sm:p-8 md:p-8 lg:p-12 flex flex-col justify-center animate-fade-in w-full min-w-0 sm:max-w-xl sm:mx-auto lg:max-w-none">
+          <div className="flex items-center gap-2 mb-8 lg:hidden">
+            <div className="w-10 h-10 rounded-xl bg-[#004900] flex items-center justify-center shrink-0">
+              <span className="text-white font-bold text-lg">S</span>
+            </div>
+            <div className="min-w-0">
+              <p className="font-bold text-sm tracking-widest uppercase text-gray-900 leading-none">SLAN ADMIN</p>
+              <span className="text-[10px] font-medium tracking-[0.14em] uppercase text-gray-400">Control Center</span>
+            </div>
+          </div>
           <h2 className="text-2xl font-semibold mb-1 text-gray-900">Authorize Access</h2>
           <p className="text-sm text-gray-500 mb-7">
             {step === 'credentials' ? 'Enter your credentials to continue.' : 'Enter the 6-digit code sent to your email.'}
@@ -268,12 +277,12 @@ export default function AdminLogin() {
               </>
             ) : (
               <>
-                <div className="bg-gray-50 border border-gray-200 rounded-lg px-3.5 py-2.5 flex items-center justify-between">
-                  <div>
+                <div className="bg-gray-50 border border-gray-200 rounded-lg px-3.5 py-2.5 flex items-center justify-between gap-3 min-w-0">
+                  <div className="min-w-0">
                     <p className="text-[11px] text-gray-500">OTP sent to</p>
-                    <p className="text-sm font-medium text-gray-900">{email}</p>
+                    <p className="text-sm font-medium text-gray-900 truncate">{email}</p>
                   </div>
-                  <button type="button" onClick={() => setStep('credentials')} className="text-xs text-[#004900] font-medium">
+                  <button type="button" onClick={() => setStep('credentials')} className="text-xs text-[#004900] font-medium shrink-0">
                     Change
                   </button>
                 </div>
@@ -290,7 +299,7 @@ export default function AdminLogin() {
                       {otpSending ? "Sending…" : resendTimer > 0 ? `Resend in ${resendTimer}s` : "Resend OTP"}
                     </button>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="grid grid-cols-6 gap-1.5 sm:gap-2 w-full min-w-0">
                     {otp.map((digit, i) => (
                       <input
                         key={i}
@@ -312,7 +321,7 @@ export default function AdminLogin() {
                           pasted.split("").forEach((ch, idx) => { if (idx < 6) newOtp[idx] = ch; });
                           setOtp(newOtp);
                         }}
-                        className={`flex-1 min-w-0 h-12 text-center text-xl font-semibold border-2 rounded-xl focus:outline-none focus:ring-2 transition-all duration-300 ${digit ? "border-[#004900] focus:ring-[#004900]/20 bg-[#004900]/5" : "border-gray-200 focus:border-[#004900] focus:ring-[#004900]/20 hover:border-gray-300"}`}
+                        className={`w-full min-w-0 h-11 sm:h-12 px-0 text-center text-lg sm:text-xl font-semibold border-2 rounded-lg sm:rounded-xl focus:outline-none focus:ring-2 transition-all duration-300 ${digit ? "border-[#004900] focus:ring-[#004900]/20 bg-[#004900]/5" : "border-gray-200 focus:border-[#004900] focus:ring-[#004900]/20 hover:border-gray-300"}`}
                         aria-label="input"
                       />
                     ))}

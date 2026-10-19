@@ -1400,8 +1400,8 @@ export default function ManageTracks() {
 
           {!loading && !fetchError && filteredTracks.length > 0 && (
             <>
-              {/* Mobile cards — visible below lg */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 p-3 sm:p-4 lg:hidden">
+              {/* Mobile cards — visible below xl */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 p-3 sm:p-4 xl:hidden">
                 {filteredTracks.map((track) => (
                   <div key={track.id} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow">
                     <div className="flex gap-3">
@@ -1461,25 +1461,25 @@ export default function ManageTracks() {
               </div>
 
               {/* Desktop table — hidden on mobile/tablet */}
-              <div className="hidden lg:block overflow-x-auto">
+              <div className="hidden xl:block overflow-x-auto">
                 <table className="w-full text-sm min-w-[760px]">
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-100">
-                      <th className="text-left px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide w-12">ID</th>
-                      <th className="text-left px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Track Name</th>
-                      <th className="text-left px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Course</th>
-                      <th className="text-left px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
-                      <th className="text-left px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Free</th>
-                      <th className="text-right px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Actions</th>
+                      <th className="text-left px-3 xl:px-5 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide w-12">ID</th>
+                      <th className="text-left px-3 xl:px-5 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Track Name</th>
+                      <th className="text-left px-3 xl:px-5 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Course</th>
+                      <th className="text-left px-3 xl:px-5 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
+                      <th className="text-left px-3 xl:px-5 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Free</th>
+                      <th className="text-right px-3 xl:px-5 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
                     {filteredTracks.map((track) => (
                       <tr key={track.id} className="hover:bg-gray-50/60 transition-colors">
 
-                        <td className="px-6 py-4 text-gray-400 font-mono text-xs">{track.id}</td>
+                        <td className="px-3 xl:px-5 py-4 text-gray-400 font-mono text-xs">{track.id}</td>
 
-                        <td className="px-6 py-4">
+                        <td className="px-3 xl:px-5 py-4">
                           <div className="flex items-center gap-3">
                             <div className="w-8 h-8 rounded-lg border border-gray-100 bg-gray-50 overflow-hidden flex items-center justify-center shrink-0">
                               {track.thumbnail ? (
@@ -1503,17 +1503,17 @@ export default function ManageTracks() {
                           </div>
                         </td>
 
-                        <td className="px-6 py-4">
+                        <td className="px-3 xl:px-5 py-4">
                           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-100">
                             {track.course?.title ?? `Course #${track.courseId}`}
                           </span>
                         </td>
 
-                        <td className="px-6 py-4">
+                        <td className="px-3 xl:px-5 py-4">
                           <Badge status={track.status} />
                         </td>
 
-                        <td className="px-6 py-4">
+                        <td className="px-3 xl:px-5 py-4">
                           {track.isFree ? (
                             <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-600 border border-emerald-100">Free</span>
                           ) : (
@@ -1521,13 +1521,13 @@ export default function ManageTracks() {
                           )}
                         </td>
 
-                        <td className="px-6 py-4">
-                          <div className="flex items-center justify-end gap-2">
+                        <td className="px-3 xl:px-5 py-4">
+                          <div className="flex flex-wrap items-center justify-end gap-2">
 
                             {/* Add Module */}
                             <button
                               onClick={() => setModal({ type: "addModule", track })}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#004900] text-white hover:bg-[#003700] transition-colors"
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#004900] text-white hover:bg-[#003700] transition-colors whitespace-nowrap"
                             >
                               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                                 <line x1="12" y1="5" x2="12" y2="19" />
@@ -1539,7 +1539,7 @@ export default function ManageTracks() {
                             {/* Add Assessment */}
                             <button
                               onClick={() => setModal({ type: "addAssessment", track })}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-purple-600 text-white hover:bg-purple-700 transition-colors"
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-purple-600 text-white hover:bg-purple-700 transition-colors whitespace-nowrap"
                             >
                               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                                 <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />

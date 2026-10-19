@@ -123,7 +123,7 @@ export default function Course() {
             </div>
           </div>
 
-          <div className="animate-slide-up">
+          <div className="animate-slide-up w-full min-w-0">
             {activeTab === "manage" && <Manage />}
             {activeTab === "upload" && <Upload onComplete={() => setActiveTab("manage")} />}
             {activeTab === "tracks" && <ManageTracks />}

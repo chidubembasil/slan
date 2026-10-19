@@ -848,23 +848,23 @@ export default function ManageCourses() {
 
           {!loading && !fetchError && filteredCourses.length > 0 && (
             <>
-              {/* Desktop / tablet table */}
-              <div className="hidden md:block overflow-x-auto">
-                <table className="w-full text-sm min-w-[760px]">
+              {/* Desktop / laptop table */}
+              <div className="hidden xl:block overflow-x-auto">
+                <table className="w-full text-sm min-w-[720px]">
                   <thead>
                     <tr className="bg-gray-50/80 border-b border-gray-100">
-                      <th className="text-left px-4 lg:px-6 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider w-16">ID</th>
-                      <th className="text-left px-4 lg:px-6 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">Course Name</th>
-                      <th className="text-left px-4 lg:px-6 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
-                      <th className="text-left px-4 lg:px-6 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">Tracks</th>
-                      <th className="text-right px-4 lg:px-6 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">Actions</th>
+                      <th className="text-left px-3 xl:px-5 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider w-14">ID</th>
+                      <th className="text-left px-3 xl:px-5 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">Course Name</th>
+                      <th className="text-left px-3 xl:px-5 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
+                      <th className="text-left px-3 xl:px-5 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">Tracks</th>
+                      <th className="text-right px-3 xl:px-5 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
                     {filteredCourses.map((course) => (
                       <tr key={course.id} className="hover:bg-gray-50/60 transition-colors group">
-                        <td className="px-4 lg:px-6 py-4 text-gray-400 font-mono text-xs">{course.id}</td>
-                        <td className="px-4 lg:px-6 py-4">
+                        <td className="px-3 xl:px-5 py-4 text-gray-400 font-mono text-xs">{course.id}</td>
+                        <td className="px-3 xl:px-5 py-4">
                           <div className="font-semibold text-gray-900 group-hover:text-[#004900] transition-colors line-clamp-1">{course.title}</div>
                           {course.shortDescription && (
                             <div className="text-xs text-gray-400 mt-0.5 line-clamp-1 max-w-sm">
@@ -872,15 +872,15 @@ export default function ManageCourses() {
                             </div>
                           )}
                         </td>
-                        <td className="px-4 lg:px-6 py-4">
+                        <td className="px-3 xl:px-5 py-4">
                           <Badge status={course.status} />
                         </td>
-                        <td className="px-4 lg:px-6 py-4">
+                        <td className="px-3 xl:px-5 py-4">
                           <span className="inline-flex items-center justify-center min-w-7 h-7 px-2 rounded-lg bg-gray-50 border border-gray-100 text-xs font-semibold text-gray-600">
                             {course.trackCount ?? "—"}
                           </span>
                         </td>
-                        <td className="px-4 lg:px-6 py-4">
+                        <td className="px-3 xl:px-5 py-4">
                           <div className="flex items-center justify-end gap-1.5 lg:gap-2 flex-wrap">
                             {/* Add Track */}
                             <button
@@ -935,8 +935,8 @@ export default function ManageCourses() {
                 </table>
               </div>
 
-              {/* Mobile stacked cards */}
-              <div className="md:hidden divide-y divide-gray-100">
+              {/* Mobile / tablet stacked cards */}
+              <div className="xl:hidden divide-y divide-gray-100">
                 {filteredCourses.map((course) => (
                   <div key={course.id} className="p-4 sm:p-5 space-y-3">
                     <div className="flex items-start justify-between gap-3">

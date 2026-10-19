@@ -1960,7 +1960,7 @@ export default function ManageModules() {
           {!loading && !fetchError && filteredModules.length > 0 && (
             <>
               {/* Mobile cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 p-3 sm:p-4 lg:hidden">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 p-3 sm:p-4 xl:hidden">
                 {filteredModules.map((mod) => {
                   const thumb = getModuleThumbnail(mod);
                   return (
@@ -1988,15 +1988,15 @@ export default function ManageModules() {
                 })}
               </div>
               {/* Desktop table */}
-              <div className="hidden lg:block overflow-x-auto">
+              <div className="hidden xl:block overflow-x-auto">
                 <table className="w-full text-sm min-w-[760px]">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-100">
-                    <th className="text-left px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide w-12">ID</th>
-                    <th className="text-left px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Module Name</th>
-                    <th className="text-left px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Track</th>
-                    <th className="text-left px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
-                    <th className="text-right px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Actions</th>
+                    <th className="text-left px-3 xl:px-5 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide w-12">ID</th>
+                    <th className="text-left px-3 xl:px-5 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Module Name</th>
+                    <th className="text-left px-3 xl:px-5 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Track</th>
+                    <th className="text-left px-3 xl:px-5 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
+                    <th className="text-right px-3 xl:px-5 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
@@ -2004,8 +2004,8 @@ export default function ManageModules() {
                     const thumb = getModuleThumbnail(mod);
                     return (
                       <tr key={mod.id} className="hover:bg-gray-50/60 transition-colors">
-                        <td className="px-6 py-4 text-gray-400 font-mono text-xs">{mod.id}</td>
-                        <td className="px-6 py-4">
+                        <td className="px-3 xl:px-5 py-4 text-gray-400 font-mono text-xs">{mod.id}</td>
+                        <td className="px-3 xl:px-5 py-4">
                           <div className="flex items-center gap-3">
                             <div className="w-9 h-9 rounded-lg border border-gray-100 bg-gray-50 overflow-hidden flex items-center justify-center shrink-0">
                               {thumb ? (
@@ -2018,7 +2018,7 @@ export default function ManageModules() {
                                 </svg>
                               )}
                             </div>
-                            <div>
+                            <div className="min-w-0">
                               <div className="font-medium text-gray-900">{mod.title}</div>
                               {mod.shortDescription && (
                                 <div className="text-xs text-gray-400 mt-0.5 line-clamp-1 max-w-xs">
@@ -2028,19 +2028,19 @@ export default function ManageModules() {
                             </div>
                           </div>
                         </td>
-                        <td className="px-6 py-4">
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700">
+                        <td className="px-3 xl:px-5 py-4">
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 max-w-[180px]">
                             {mod.track?.title ?? `Track #${mod.trackId}`}
                           </span>
                         </td>
-                        <td className="px-6 py-4"><Badge status={mod.status} /></td>
-                        <td className="px-6 py-4">
-                          <div className="flex items-center justify-end gap-2">
+                        <td className="px-3 xl:px-5 py-4"><Badge status={mod.status} /></td>
+                        <td className="px-3 xl:px-5 py-4">
+                          <div className="flex flex-wrap items-center justify-end gap-2">
 
                             {/* Add Unit */}
                             <button
                               onClick={() => setModal({ type: "addUnit", module: mod })}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-[#004900] text-white hover:bg-[#003700] transition-colors"
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-[#004900] text-white hover:bg-[#003700] transition-colors whitespace-nowrap"
                             >
                               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                                 <line x1="12" y1="5" x2="12" y2="19" />
@@ -2052,7 +2052,7 @@ export default function ManageModules() {
                             {/* Add Assessment */}
                             <button
                               onClick={() => setModal({ type: "addAssessment", module: mod })}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-purple-600 text-white hover:bg-purple-700 transition-colors"
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-purple-600 text-white hover:bg-purple-700 transition-colors whitespace-nowrap"
                             >
                               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                                 <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
